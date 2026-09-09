@@ -1,3 +1,4 @@
+    dart
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -8,6 +9,7 @@ import '../../models/payment_model.dart';
 import '../../repositories/business_repository.dart';
 import '../../repositories/customer_repository.dart';
 import '../../repositories/payment_repository.dart';
+import '../../services/ledger/ledger_service.dart';
 
 class AddPaymentScreen extends StatefulWidget {
   const AddPaymentScreen({
@@ -32,6 +34,9 @@ class _AddPaymentScreenState
 
   final PaymentRepository _paymentRepository =
       PaymentRepository();
+
+  final LedgerService _ledgerService =
+      LedgerService();
 
   final TextEditingController _amountController =
       TextEditingController();
@@ -90,30 +95,24 @@ class _AddPaymentScreenState
   }
 
   Future<void> _loadData() async {
-    if (mounted) {
-      setState(() {
-        _isLoading = true;
-        _errorMessage = null;
-      });
+    if (!mounted) {
+      return;
     }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
 
     try {
       final business =
-          await _businessRepository
-              .getBusinessForCurrentUser();
-
-      if (!mounted) {
-        return;
-      }
+          await _businessRepository.getCurrentBusiness();
 
       if (business == null ||
           business.id.trim().isEmpty) {
-        setState(() {
-          _isLoading = false;
-          _errorMessage =
-              'Business profile not found.';
-        });
-        return;
+        throw Exception(
+          'Business profile is not available.',
+        );
       }
 
       final customers =
@@ -129,16 +128,16 @@ class _AddPaymentScreenState
         _business = business;
         _customers = customers;
         _isLoading = false;
+        _errorMessage = null;
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) {
         return;
       }
 
       setState(() {
         _isLoading = false;
-        _errorMessage =
-            'Unable to load payment data.';
+        _errorMessage = _cleanError(e);
       });
     }
   }
@@ -146,8 +145,7 @@ class _AddPaymentScreenState
   Future<void> _selectPaymentDate() async {
     final now = DateTime.now();
 
-    final selected =
-        await showDatePicker(
+    final selected = await showDatePicker(
       context: context,
       initialDate: _paymentDate,
       firstDate: DateTime(2020),
@@ -235,6 +233,8 @@ class _AddPaymentScreenState
       _isSaving = true;
     });
 
+    PaymentModel? savedPayment;
+
     try {
       final now = DateTime.now();
 
@@ -256,15 +256,45 @@ class _AddPaymentScreenState
         createdAt: now,
       );
 
-      await _paymentRepository
-          .createPayment(payment);
+      savedPayment =
+          await _paymentRepository.createPayment(
+        payment,
+      );
+
+      final balanceBefore =
+          await _ledgerService.getCustomerBalance(
+        businessId: business.id.trim(),
+        customerId: customer.id.trim(),
+      );
+
+      final balanceAfter =
+          balanceBefore - amount;
+
+      await _ledgerService.createTransaction(
+        businessId: business.id.trim(),
+        customerId: customer.id.trim(),
+        customerName: customer.name.trim(),
+        transactionType: 'PAYMENT',
+        amount: amount,
+        balanceBefore: balanceBefore,
+        balanceAfter: balanceAfter,
+        referenceId: savedPayment.id,
+        date: _paymentDate,
+        notes: _buildLedgerNotes(
+          paymentMethod: paymentMethod,
+          reference:
+              _referenceController.text.trim(),
+          notes:
+              _notesController.text.trim(),
+        ),
+      );
 
       if (!mounted) {
         return;
       }
 
       _showMessage(
-        'Payment recorded successfully.',
+        'Payment recorded and customer ledger updated successfully.',
       );
 
       Navigator.pop(
@@ -272,6 +302,17 @@ class _AddPaymentScreenState
         true,
       );
     } catch (e) {
+      if (savedPayment != null) {
+        try {
+          await _paymentRepository.deletePayment(
+            businessId: business.id.trim(),
+            paymentId: savedPayment!.id,
+          );
+        } catch (_) {
+          // Keep the original error message if rollback also fails.
+        }
+      }
+
       if (!mounted) {
         return;
       }
@@ -287,6 +328,34 @@ class _AddPaymentScreenState
         });
       }
     }
+  }
+
+  String _buildLedgerNotes({
+    required String paymentMethod,
+    required String reference,
+    required String notes,
+  }) {
+    final List<String> parts = <String>[];
+
+    if (paymentMethod.trim().isNotEmpty) {
+      parts.add(
+        'Method: ${paymentMethod.trim()}',
+      );
+    }
+
+    if (reference.trim().isNotEmpty) {
+      parts.add(
+        'Reference: ${reference.trim()}',
+      );
+    }
+
+    if (notes.trim().isNotEmpty) {
+      parts.add(
+        notes.trim(),
+      );
+    }
+
+    return parts.join(' | ');
   }
 
   String _cleanError(Object error) {
@@ -448,34 +517,23 @@ class _AddPaymentScreenState
           const TextInputType.numberWithOptions(
         decimal: true,
       ),
-      onChanged: (_) {
-        setState(() {});
-      },
       decoration: _inputDecoration(
-        label: 'Amount',
+        label: 'Payment Amount',
         icon:
             Icons.currency_rupee_rounded,
-        hint: 'Enter payment amount',
+        hint: 'Enter amount',
       ),
       validator: (value) {
-        final text =
-            value?.trim() ?? '';
-
-        if (text.isEmpty) {
-          return 'Please enter amount';
-        }
-
         final amount = double.tryParse(
-          text.replaceAll(',', ''),
+          (value ?? '')
+              .trim()
+              .replaceAll(',', ''),
         );
 
         if (amount == null ||
-            !amount.isFinite) {
+            !amount.isFinite ||
+            amount <= 0) {
           return 'Enter a valid amount';
-        }
-
-        if (amount <= 0) {
-          return 'Amount must be greater than zero';
         }
 
         return null;
@@ -485,18 +543,17 @@ class _AddPaymentScreenState
 
   Widget _buildReferenceField() {
     return TextFormField(
-      controller:
-          _referenceController,
+      controller: _referenceController,
       enabled: !_isSaving,
       textInputAction:
           TextInputAction.next,
       decoration: _inputDecoration(
         label: 'Transaction Reference',
-        icon:
-            Icons.receipt_long_rounded,
+        icon: Icons.receipt_long_rounded,
         hint:
-            'UPI ID, cheque no., transaction ID...',
+            'Optional reference / transaction ID',
       ),
+      maxLength: 100,
     );
   }
 
@@ -504,198 +561,231 @@ class _AddPaymentScreenState
     return TextFormField(
       controller: _notesController,
       enabled: !_isSaving,
-      minLines: 3,
-      maxLines: 5,
-      textInputAction:
-          TextInputAction.newline,
+      maxLines: 4,
+      maxLength: 500,
       decoration: _inputDecoration(
         label: 'Notes',
         icon: Icons.notes_rounded,
         hint:
-            'Add any additional notes',
+            'Add optional payment notes',
       ),
     );
   }
 
-  Widget _buildPaymentSummary() {
-    final amount =
-        double.tryParse(
-              _amountController.text
-                  .trim()
-                  .replaceAll(',', ''),
-            ) ??
-            0;
+  Widget _buildSummaryCard() {
+    final amount = double.tryParse(
+          _amountController.text
+              .trim()
+              .replaceAll(',', ''),
+        ) ??
+        0;
 
-    final safeAmount =
-        amount.isFinite ? amount : 0;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppColors.success
-                .withValues(alpha: 0.10),
-            AppColors.primary
-                .withValues(alpha: 0.08),
-          ],
-        ),
-        borderRadius:
-            BorderRadius.circular(18),
-        border: Border.all(
-          color: AppColors.success
-              .withValues(alpha: 0.20),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: AppColors.success
-                  .withValues(alpha: 0.12),
-              borderRadius:
-                  BorderRadius.circular(14),
-            ),
-            child: const Icon(
-              Icons.payments_rounded,
-              color:
-                  AppColors.success,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+    return Card(
+      child: Padding(
+        padding:
+            const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                Text(
-                  'Payment Amount',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall,
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  _currencyFormat.format(
-                    safeAmount,
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: AppColors.success
+                        .withOpacity(0.12),
+                    borderRadius:
+                        BorderRadius.circular(
+                      12,
+                    ),
                   ),
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleLarge
-                      ?.copyWith(
-                        color:
-                            AppColors.success,
-                        fontWeight:
-                            FontWeight.w800,
+                  child: const Icon(
+                    Icons.payments_rounded,
+                    color:
+                        AppColors.success,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Payment Summary',
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleMedium
+                            ?.copyWith(
+                              fontWeight:
+                                  FontWeight.w800,
+                            ),
                       ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Review payment details before saving',
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall,
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
-          ),
-          if (_selectedCustomer != null)
-            Flexible(
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    'Received from',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall,
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Expanded(
+                  child: _summaryItem(
+                    label: 'Amount',
+                    value:
+                        _currencyFormat.format(
+                      amount,
+                    ),
                   ),
-                  const SizedBox(height: 3),
-                  Text(
-                    _selectedCustomer!
-                        .name
-                        .trim(),
-                    textAlign:
-                        TextAlign.end,
-                    maxLines: 2,
-                    overflow:
-                        TextOverflow.ellipsis,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(
-                          fontWeight:
-                              FontWeight.w700,
-                        ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _summaryItem(
+                    label: 'Method',
+                    value:
+                        _paymentMethod,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
+            if (_selectedCustomer != null)
+              Padding(
+                padding:
+                    const EdgeInsets.only(
+                  top: 14,
+                ),
+                child: Row(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: _summaryItem(
+                        label: 'Customer',
+                        value:
+                            _selectedCustomer!
+                                .name
+                                .trim(),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _summaryItem(
+                        label: 'Date',
+                        value:
+                            _dateFormat.format(
+                          _paymentDate,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _summaryItem({
+    required String label,
+    required String value,
+  }) {
+    return Container(
+      padding:
+          const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius:
+            BorderRadius.circular(12),
+        border: Border.all(
+          color: AppColors.border,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall,
+          ),
+          const SizedBox(height: 5),
+          Text(
+            value,
+            maxLines: 2,
+            overflow:
+                TextOverflow.ellipsis,
+            style: Theme.of(context)
+                .textTheme
+                .titleSmall
+                ?.copyWith(
+                  fontWeight:
+                      FontWeight.w800,
+                ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildFormCard({
-    required Widget child,
-  }) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Theme.of(context)
-            .colorScheme
-            .surface,
-        borderRadius:
-            BorderRadius.circular(20),
-        border: Border.all(
-          color: Theme.of(context)
-              .dividerColor
-              .withValues(alpha: 0.5),
-        ),
-      ),
-      child: child,
-    );
-  }
-
-  Widget _buildSectionTitle(
-    String title,
-    String subtitle,
-    IconData icon,
-  ) {
+  Widget _buildHeader() {
     return Row(
       children: [
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: AppColors.primary
-                .withValues(alpha: 0.10),
-            borderRadius:
-                BorderRadius.circular(12),
-          ),
-          child: Icon(
-            icon,
-            color: AppColors.primary,
-            size: 20,
+        IconButton(
+          onPressed: _isSaving
+              ? null
+              : () => Navigator.pop(
+                    context,
+                  ),
+          icon: const Icon(
+            Icons.arrow_back_rounded,
           ),
         ),
-        const SizedBox(width: 11),
+        const SizedBox(width: 4),
+        Container(
+          width: 46,
+          height: 46,
+          decoration: BoxDecoration(
+            color: AppColors.success
+                .withOpacity(0.12),
+            borderRadius:
+                BorderRadius.circular(14),
+          ),
+          child: const Icon(
+            Icons.payments_rounded,
+            color: AppColors.success,
+          ),
+        ),
+        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment:
                 CrossAxisAlignment.start,
             children: [
               Text(
-                title,
+                'Add Payment',
                 style: Theme.of(context)
                     .textTheme
-                    .titleMedium
+                    .headlineSmall
                     ?.copyWith(
                       fontWeight:
-                          FontWeight.w700,
+                          FontWeight.w900,
                     ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 3),
               Text(
-                subtitle,
+                'Record customer payment',
                 style: Theme.of(context)
                     .textTheme
                     .bodySmall,
@@ -707,82 +797,11 @@ class _AddPaymentScreenState
     );
   }
 
-  Widget _buildPageHeader() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppColors.primary,
-            AppColors.primaryDark,
-          ],
-        ),
-        borderRadius: BorderRadius.all(
-          Radius.circular(20),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              color: Colors.white
-                  .withValues(alpha: 0.15),
-              borderRadius:
-                  BorderRadius.circular(16),
-            ),
-            child: const Icon(
-              Icons
-                  .account_balance_wallet_rounded,
-              color: Colors.white,
-              size: 27,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Record Payment',
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleLarge
-                      ?.copyWith(
-                        color: Colors.white,
-                        fontWeight:
-                            FontWeight.w800,
-                      ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Record money received from a customer or hotel.',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(
-                        color: Colors.white
-                            .withValues(
-                          alpha: 0.82,
-                        ),
-                      ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildSaveButton() {
     return SizedBox(
       width: double.infinity,
       height: 54,
-      child: FilledButton.icon(
+      child: ElevatedButton.icon(
         onPressed:
             _isSaving ? null : _savePayment,
         icon: _isSaving
@@ -791,160 +810,141 @@ class _AddPaymentScreenState
                 height: 20,
                 child:
                     CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
+                  strokeWidth: 2.5,
                 ),
               )
             : const Icon(
-                Icons
-                    .check_circle_outline_rounded,
+                Icons.check_circle_rounded,
               ),
         label: Text(
           _isSaving
-              ? 'SAVING PAYMENT...'
-              : 'SAVE PAYMENT',
+              ? 'Saving Payment...'
+              : 'Save Payment',
         ),
       ),
     );
   }
 
-  Widget _buildContent() {
-    return LayoutBuilder(
-      builder: (
-        context,
-        constraints,
-      ) {
-        final isDesktop =
-            constraints.maxWidth >= 1000;
-
-        return Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth:
-                  isDesktop ? 1100 : 700,
-            ),
-            child: Form(
-              key: _formKey,
-              child: SingleChildScrollView(
-                padding:
-                    const EdgeInsets.fromLTRB(
-                  16,
-                  16,
-                  16,
-                  30,
-                ),
-                child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-                    _buildPageHeader(),
-                    const SizedBox(height: 16),
-                    _buildPaymentSummary(),
-                    const SizedBox(height: 16),
-
-                    _buildFormCard(
-                      child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
-                        children: [
-                          _buildSectionTitle(
-                            'Payment Information',
-                            'Enter the payment transaction details.',
-                            Icons.payments_rounded,
-                          ),
-                          const SizedBox(
-                            height: 20,
-                          ),
-                          if (isDesktop)
-                            Row(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  child:
-                                      _buildCustomerSelector(),
-                                ),
-                                const SizedBox(
-                                  width: 14,
-                                ),
-                                Expanded(
-                                  child:
-                                      _buildAmountField(),
-                                ),
-                              ],
-                            )
-                          else ...[
-                            _buildCustomerSelector(),
-                            const SizedBox(
-                              height: 14,
-                            ),
-                            _buildAmountField(),
-                          ],
-                          const SizedBox(
-                            height: 14,
-                          ),
-                          if (isDesktop)
-                            Row(
-                              children: [
-                                Expanded(
-                                  child:
-                                      _buildPaymentMethodSelector(),
-                                ),
-                                const SizedBox(
-                                  width: 14,
-                                ),
-                                Expanded(
-                                  child:
-                                      _buildDateSelector(),
-                                ),
-                              ],
-                            )
-                          else ...[
-                            _buildPaymentMethodSelector(),
-                            const SizedBox(
-                              height: 14,
-                            ),
-                            _buildDateSelector(),
-                          ],
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    _buildFormCard(
-                      child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
-                        children: [
-                          _buildSectionTitle(
-                            'Additional Information',
-                            'Optional transaction details.',
-                            Icons
-                                .description_outlined,
-                          ),
-                          const SizedBox(
-                            height: 20,
-                          ),
-                          _buildReferenceField(),
-                          const SizedBox(
-                            height: 14,
-                          ),
-                          _buildNotesField(),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    _buildSaveButton(),
-                  ],
-                ),
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding:
+            const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment:
+              MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: AppColors.danger
+                    .withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.error_outline_rounded,
+                size: 38,
+                color: AppColors.danger,
               ),
             ),
-          ),
-        );
-      },
+            const SizedBox(height: 18),
+            Text(
+              'Unable to load payment form',
+              textAlign: TextAlign.center,
+              style: Theme.of(context)
+                  .textTheme
+                  .titleLarge
+                  ?.copyWith(
+                    fontWeight:
+                        FontWeight.w800,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _errorMessage ??
+                  'Something went wrong.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyMedium,
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: _loadData,
+              icon: const Icon(
+                Icons.refresh_rounded,
+              ),
+              label: const Text(
+                'Retry',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildForm() {
+    return Form(
+      key: _formKey,
+      child: LayoutBuilder(
+        builder: (
+          context,
+          constraints,
+        ) {
+          final isWide =
+              constraints.maxWidth >= 900;
+
+          final formContent = Column(
+            crossAxisAlignment:
+                CrossAxisAlignment.stretch,
+            children: [
+              _buildCustomerSelector(),
+              const SizedBox(height: 16),
+              if (isWide)
+                Row(
+                  children: [
+                    Expanded(
+                      child:
+                          _buildAmountField(),
+                    ),
+                    const SizedBox(
+                      width: 16,
+                    ),
+                    Expanded(
+                      child:
+                          _buildPaymentMethodSelector(),
+                    ),
+                  ],
+                )
+              else ...[
+                _buildAmountField(),
+                const SizedBox(height: 16),
+                _buildPaymentMethodSelector(),
+              ],
+              const SizedBox(height: 16),
+              _buildDateSelector(),
+              const SizedBox(height: 16),
+              _buildReferenceField(),
+              const SizedBox(height: 8),
+              _buildNotesField(),
+              const SizedBox(height: 8),
+              _buildSummaryCard(),
+              const SizedBox(height: 20),
+              _buildSaveButton(),
+            ],
+          );
+
+          return Card(
+            child: Padding(
+              padding:
+                  const EdgeInsets.all(20),
+              child: formContent,
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -954,9 +954,6 @@ class _AddPaymentScreenState
       appBar: AppBar(
         title: const Text(
           'Add Payment',
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-          ),
         ),
       ),
       body: SafeArea(
@@ -965,51 +962,32 @@ class _AddPaymentScreenState
                 child:
                     CircularProgressIndicator(),
               )
-            : _errorMessage != null
-                ? Center(
-                    child: Padding(
+            : _errorMessage != null &&
+                    _business == null
+                ? _buildErrorState()
+                : RefreshIndicator(
+                    onRefresh: _loadData,
+                    child: ListView(
+                      physics:
+                          const AlwaysScrollableScrollPhysics(),
                       padding:
-                          const EdgeInsets.all(24),
-                      child: Column(
-                        mainAxisSize:
-                            MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.cloud_off_rounded,
-                            size: 56,
-                            color:
-                                AppColors.danger,
-                          ),
-                          const SizedBox(
-                            height: 16,
-                          ),
-                          Text(
-                            _errorMessage!,
-                            textAlign:
-                                TextAlign.center,
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium,
-                          ),
-                          const SizedBox(
-                            height: 16,
-                          ),
-                          FilledButton.icon(
-                            onPressed:
-                                _loadData,
-                            icon: const Icon(
-                              Icons.refresh_rounded,
-                            ),
-                            label: const Text(
-                              'RETRY',
-                            ),
-                          ),
-                        ],
+                          const EdgeInsets.all(
+                        16,
                       ),
+                      children: [
+                        _buildHeader(),
+                        const SizedBox(
+                          height: 20,
+                        ),
+                        _buildForm(),
+                        const SizedBox(
+                          height: 24,
+                        ),
+                      ],
                     ),
-                  )
-                : _buildContent(),
+                  ),
       ),
     );
   }
 }
+    

@@ -6,33 +6,45 @@ import 'base_repository.dart';
 class SaleRepository extends BaseRepository {
   SaleRepository({super.firestore});
 
-  CollectionReference<Map<String, dynamic>> _sales(String businessId) {
+  CollectionReference<Map<String, dynamic>> _sales(
+    String businessId,
+  ) {
     return firestore
         .collection('businesses')
         .doc(businessId.trim())
         .collection('sales');
   }
 
-  Future<SaleModel> createSale(SaleModel sale) async {
-    _validateSale(sale, requireId: false);
+  Future<SaleModel> createSale(
+    SaleModel sale,
+  ) async {
+    _validateSale(
+      sale,
+      requireId: false,
+    );
 
-    final String businessId = sale.businessId.trim();
-    final CollectionReference<Map<String, dynamic>> sales =
-        _sales(businessId);
+    final String businessId =
+        sale.businessId.trim();
 
-    final DocumentReference<Map<String, dynamic>> document =
-        sale.id.trim().isEmpty
+    final CollectionReference<Map<String, dynamic>>
+        sales = _sales(businessId);
+
+    final DocumentReference<Map<String, dynamic>>
+        document = sale.id.trim().isEmpty
             ? sales.doc()
             : sales.doc(sale.id.trim());
 
-    final SaleModel saleToSave = _normalizedSale(
+    final SaleModel saleToSave =
+        _normalizedSale(
       sale,
       id: document.id,
       businessId: businessId,
       createdAt: DateTime.now(),
     );
 
-    await document.set(_toMap(saleToSave));
+    await document.set(
+      _toMap(saleToSave),
+    );
 
     return saleToSave;
   }
@@ -41,22 +53,26 @@ class SaleRepository extends BaseRepository {
     required String businessId,
     required String saleId,
   }) async {
-    final String normalizedBusinessId = _requireId(
+    final String normalizedBusinessId =
+        _requireId(
       businessId,
       'Business ID',
     );
 
-    final String normalizedSaleId = _requireId(
+    final String normalizedSaleId =
+        _requireId(
       saleId,
       'Sale ID',
     );
 
-    final DocumentSnapshot<Map<String, dynamic>> snapshot =
+    final DocumentSnapshot<
+        Map<String, dynamic>> snapshot =
         await _sales(normalizedBusinessId)
             .doc(normalizedSaleId)
             .get();
 
-    if (!snapshot.exists || snapshot.data() == null) {
+    if (!snapshot.exists ||
+        snapshot.data() == null) {
       return null;
     }
 
@@ -70,12 +86,14 @@ class SaleRepository extends BaseRepository {
   Future<List<SaleModel>> getSales({
     required String businessId,
   }) async {
-    final String normalizedBusinessId = _requireId(
+    final String normalizedBusinessId =
+        _requireId(
       businessId,
       'Business ID',
     );
 
-    final QuerySnapshot<Map<String, dynamic>> snapshot =
+    final QuerySnapshot<
+        Map<String, dynamic>> snapshot =
         await _sales(normalizedBusinessId)
             .orderBy(
               'date',
@@ -97,7 +115,8 @@ class SaleRepository extends BaseRepository {
   Stream<List<SaleModel>> watchSales({
     required String businessId,
   }) {
-    final String normalizedBusinessId = businessId.trim();
+    final String normalizedBusinessId =
+        businessId.trim();
 
     if (normalizedBusinessId.isEmpty) {
       return const Stream.empty();
@@ -126,17 +145,20 @@ class SaleRepository extends BaseRepository {
     required String businessId,
     required String customerId,
   }) async {
-    final String normalizedBusinessId = _requireId(
+    final String normalizedBusinessId =
+        _requireId(
       businessId,
       'Business ID',
     );
 
-    final String normalizedCustomerId = _requireId(
+    final String normalizedCustomerId =
+        _requireId(
       customerId,
       'Customer ID',
     );
 
-    final QuerySnapshot<Map<String, dynamic>> snapshot =
+    final QuerySnapshot<
+        Map<String, dynamic>> snapshot =
         await _sales(normalizedBusinessId)
             .where(
               'customerId',
@@ -163,8 +185,11 @@ class SaleRepository extends BaseRepository {
     required String businessId,
     required String customerId,
   }) {
-    final String normalizedBusinessId = businessId.trim();
-    final String normalizedCustomerId = customerId.trim();
+    final String normalizedBusinessId =
+        businessId.trim();
+
+    final String normalizedCustomerId =
+        customerId.trim();
 
     if (normalizedBusinessId.isEmpty ||
         normalizedCustomerId.isEmpty) {
@@ -202,17 +227,24 @@ class SaleRepository extends BaseRepository {
       requireId: true,
     );
 
-    final String businessId = sale.businessId.trim();
-    final String saleId = sale.id.trim();
+    final String businessId =
+        sale.businessId.trim();
 
-    final DocumentReference<Map<String, dynamic>> reference =
+    final String saleId =
+        sale.id.trim();
+
+    final DocumentReference<
+        Map<String, dynamic>> reference =
         _sales(businessId).doc(saleId);
 
-    final DocumentSnapshot<Map<String, dynamic>> snapshot =
+    final DocumentSnapshot<
+        Map<String, dynamic>> snapshot =
         await reference.get();
 
     if (!snapshot.exists) {
-      throw Exception('Sale not found.');
+      throw Exception(
+        'Sale not found.',
+      );
     }
 
     final Map<String, dynamic>? existingData =
@@ -225,7 +257,8 @@ class SaleRepository extends BaseRepository {
               )
             : sale.createdAt;
 
-    final SaleModel saleToUpdate = _normalizedSale(
+    final SaleModel saleToUpdate =
+        _normalizedSale(
       sale,
       id: saleId,
       businessId: businessId,
@@ -241,26 +274,32 @@ class SaleRepository extends BaseRepository {
     required String businessId,
     required String saleId,
   }) async {
-    final String normalizedBusinessId = _requireId(
+    final String normalizedBusinessId =
+        _requireId(
       businessId,
       'Business ID',
     );
 
-    final String normalizedSaleId = _requireId(
+    final String normalizedSaleId =
+        _requireId(
       saleId,
       'Sale ID',
     );
 
-    final DocumentReference<Map<String, dynamic>> reference =
+    final DocumentReference<
+        Map<String, dynamic>> reference =
         _sales(normalizedBusinessId).doc(
       normalizedSaleId,
     );
 
-    final DocumentSnapshot<Map<String, dynamic>> snapshot =
+    final DocumentSnapshot<
+        Map<String, dynamic>> snapshot =
         await reference.get();
 
     if (!snapshot.exists) {
-      throw Exception('Sale not found.');
+      throw Exception(
+        'Sale not found.',
+      );
     }
 
     await reference.delete();
@@ -271,35 +310,44 @@ class SaleRepository extends BaseRepository {
     required String saleId,
     required double paidAmount,
   }) async {
-    final String normalizedBusinessId = _requireId(
+    final String normalizedBusinessId =
+        _requireId(
       businessId,
       'Business ID',
     );
 
-    final String normalizedSaleId = _requireId(
+    final String normalizedSaleId =
+        _requireId(
       saleId,
       'Sale ID',
     );
 
-    if (!paidAmount.isFinite || paidAmount < 0) {
+    if (!paidAmount.isFinite ||
+        paidAmount < 0) {
       throw ArgumentError(
         'Paid amount must be a valid non-negative number.',
       );
     }
 
-    final DocumentReference<Map<String, dynamic>> reference =
+    final DocumentReference<
+        Map<String, dynamic>> reference =
         _sales(normalizedBusinessId).doc(
       normalizedSaleId,
     );
 
-    final DocumentSnapshot<Map<String, dynamic>> snapshot =
+    final DocumentSnapshot<
+        Map<String, dynamic>> snapshot =
         await reference.get();
 
-    if (!snapshot.exists || snapshot.data() == null) {
-      throw Exception('Sale not found.');
+    if (!snapshot.exists ||
+        snapshot.data() == null) {
+      throw Exception(
+        'Sale not found.',
+      );
     }
 
-    final double total = _toDouble(
+    final double total =
+        _toDouble(
       snapshot.data()!['total'],
     );
 
@@ -311,7 +359,8 @@ class SaleRepository extends BaseRepository {
 
     await reference.update({
       'paidAmount': paidAmount,
-      'paymentStatus': _calculatePaymentStatus(
+      'paymentStatus':
+          _calculatePaymentStatus(
         total: total,
         paidAmount: paidAmount,
       ),
@@ -322,7 +371,8 @@ class SaleRepository extends BaseRepository {
     required String businessId,
     required String query,
   }) async {
-    final List<SaleModel> sales = await getSales(
+    final List<SaleModel> sales =
+        await getSales(
       businessId: businessId,
     );
 
@@ -356,62 +406,72 @@ class SaleRepository extends BaseRepository {
   Future<double> getTotalSales({
     required String businessId,
   }) async {
-    final List<SaleModel> sales = await getSales(
+    final List<SaleModel> sales =
+        await getSales(
       businessId: businessId,
     );
 
     return sales.fold<double>(
       0,
-      (sum, sale) => sum + sale.total,
+      (total, sale) =>
+          total + sale.total,
     );
   }
 
   Future<double> getTotalPaid({
     required String businessId,
   }) async {
-    final List<SaleModel> sales = await getSales(
+    final List<SaleModel> sales =
+        await getSales(
       businessId: businessId,
     );
 
     return sales.fold<double>(
       0,
-      (sum, sale) => sum + sale.paidAmount,
+      (total, sale) =>
+          total + sale.paidAmount,
     );
   }
 
   Future<double> getTotalOutstanding({
     required String businessId,
   }) async {
-    final List<SaleModel> sales = await getSales(
+    final List<SaleModel> sales =
+        await getSales(
       businessId: businessId,
     );
 
     return sales.fold<double>(
       0,
-      (sum, sale) =>
-          sum +
+      (total, sale) =>
+          total +
           (sale.total - sale.paidAmount)
               .clamp(
-                0,
-                double.infinity,
-              ),
+            0,
+            double.infinity,
+          ),
     );
   }
 
   Future<List<SaleModel>> getTodaySales({
     required String businessId,
   }) async {
-    final List<SaleModel> sales = await getSales(
+    final List<SaleModel> sales =
+        await getSales(
       businessId: businessId,
     );
 
-    final DateTime now = DateTime.now();
+    final DateTime now =
+        DateTime.now();
 
     return sales.where(
       (sale) {
-        return sale.date.year == now.year &&
-            sale.date.month == now.month &&
-            sale.date.day == now.day;
+        return sale.date.year ==
+                now.year &&
+            sale.date.month ==
+                now.month &&
+            sale.date.day ==
+                now.day;
       },
     ).toList();
   }
@@ -426,14 +486,16 @@ class SaleRepository extends BaseRepository {
 
     return sales.fold<double>(
       0,
-      (sum, sale) => sum + sale.total,
+      (runningTotal, sale) =>
+          runningTotal + sale.total,
     );
   }
 
   Future<String> generateInvoiceNumber({
     required String businessId,
   }) async {
-    final List<SaleModel> sales = await getSales(
+    final List<SaleModel> sales =
+        await getSales(
       businessId: businessId,
     );
 
@@ -441,8 +503,7 @@ class SaleRepository extends BaseRepository {
 
     for (final SaleModel sale in sales) {
       final RegExpMatch? match =
-          RegExp(r'(\d+)$')
-              .firstMatch(
+          RegExp(r'(\d+)$').firstMatch(
         sale.invoiceNumber.trim(),
       );
 
@@ -450,7 +511,8 @@ class SaleRepository extends BaseRepository {
         continue;
       }
 
-      final int? number = int.tryParse(
+      final int? number =
+          int.tryParse(
         match.group(1)!,
       );
 
@@ -473,7 +535,8 @@ class SaleRepository extends BaseRepository {
       );
     }
 
-    if (requireId && sale.id.trim().isEmpty) {
+    if (requireId &&
+        sale.id.trim().isEmpty) {
       throw ArgumentError(
         'Sale ID cannot be empty.',
       );
@@ -531,8 +594,11 @@ class SaleRepository extends BaseRepository {
       );
     }
 
-    for (final SaleItemModel item in sale.items) {
-      if (item.productId.trim().isEmpty) {
+    for (final SaleItemModel item
+        in sale.items) {
+      if (item.productId
+          .trim()
+          .isEmpty) {
         throw ArgumentError(
           'Product ID cannot be empty for sale item: '
           '${item.productName}',
@@ -604,7 +670,8 @@ class SaleRepository extends BaseRepository {
     String value,
     String label,
   ) {
-    final String normalized = value.trim();
+    final String normalized =
+        value.trim();
 
     if (normalized.isEmpty) {
       throw ArgumentError(
@@ -628,20 +695,25 @@ class SaleRepository extends BaseRepository {
       customerName: sale.customerName.trim(),
       items: sale.items
           .map(_normalizedItem)
-          .toList(growable: false),
+          .toList(
+            growable: false,
+          ),
       subtotal: sale.subtotal,
       discount: sale.discount,
       tax: sale.tax,
       total: sale.total,
       paidAmount: sale.paidAmount,
-      paymentStatus: _calculatePaymentStatus(
+      paymentStatus:
+          _calculatePaymentStatus(
         total: sale.total,
         paidAmount: sale.paidAmount,
       ),
-      paymentMethod: sale.paymentMethod.trim(),
+      paymentMethod:
+          sale.paymentMethod.trim(),
       date: sale.date,
       notes: sale.notes.trim(),
-      invoiceNumber: sale.invoiceNumber.trim(),
+      invoiceNumber:
+          sale.invoiceNumber.trim(),
       createdAt: createdAt,
     );
   }
@@ -651,7 +723,8 @@ class SaleRepository extends BaseRepository {
   ) {
     return SaleItemModel(
       productId: item.productId.trim(),
-      productName: item.productName.trim(),
+      productName:
+          item.productName.trim(),
       quantity: item.quantity,
       unit: item.unit.trim(),
       sellingRate: item.sellingRate,
@@ -666,7 +739,8 @@ class SaleRepository extends BaseRepository {
     required double total,
     required double paidAmount,
   }) {
-    if (total <= 0 || paidAmount >= total) {
+    if (total <= 0 ||
+        paidAmount >= total) {
       return 'paid';
     }
 
@@ -693,14 +767,18 @@ class SaleRepository extends BaseRepository {
       'tax': sale.tax,
       'total': sale.total,
       'paidAmount': sale.paidAmount,
-      'paymentStatus': sale.paymentStatus,
-      'paymentMethod': sale.paymentMethod,
+      'paymentStatus':
+          sale.paymentStatus,
+      'paymentMethod':
+          sale.paymentMethod,
       'date': Timestamp.fromDate(
         sale.date,
       ),
       'notes': sale.notes,
-      'invoiceNumber': sale.invoiceNumber,
-      'createdAt': Timestamp.fromDate(
+      'invoiceNumber':
+          sale.invoiceNumber,
+      'createdAt':
+          Timestamp.fromDate(
         sale.createdAt,
       ),
     };
@@ -727,11 +805,15 @@ class SaleRepository extends BaseRepository {
     Map<String, dynamic> data,
     String businessId,
   ) {
-    final List<SaleItemModel> items = [];
-    final dynamic rawItems = data['items'];
+    final List<SaleItemModel> items =
+        [];
+
+    final dynamic rawItems =
+        data['items'];
 
     if (rawItems is List) {
-      for (final dynamic rawItem in rawItems) {
+      for (final dynamic rawItem
+          in rawItems) {
         if (rawItem is Map) {
           items.add(
             _saleItemFromMap(
@@ -745,25 +827,41 @@ class SaleRepository extends BaseRepository {
     }
 
     final double subtotal =
-        _toDouble(data['subtotal']);
+        _toDouble(
+      data['subtotal'],
+    );
 
     final double discount =
-        _toDouble(data['discount']);
+        _toDouble(
+      data['discount'],
+    );
 
     final double tax =
-        _toDouble(data['tax']);
+        _toDouble(
+      data['tax'],
+    );
 
     final double total =
-        _toDouble(data['total']);
+        _toDouble(
+      data['total'],
+    );
 
     final double paidAmount =
-        _toDouble(data['paidAmount']);
+        _toDouble(
+      data['paidAmount'],
+    );
 
     final String rawId =
-        data['id']?.toString().trim() ?? '';
+        data['id']
+                ?.toString()
+                .trim() ??
+            '';
 
     final String rawBusinessId =
-        data['businessId']?.toString().trim() ?? '';
+        data['businessId']
+                ?.toString()
+                .trim() ??
+            '';
 
     final String rawPaymentStatus =
         data['paymentStatus']
@@ -775,35 +873,48 @@ class SaleRepository extends BaseRepository {
       id: rawId.isEmpty
           ? documentId
           : rawId,
-      businessId: rawBusinessId.isEmpty
-          ? businessId
-          : rawBusinessId,
+      businessId:
+          rawBusinessId.isEmpty
+              ? businessId
+              : rawBusinessId,
       customerId:
-          data['customerId']?.toString() ?? '',
+          data['customerId']
+                  ?.toString() ??
+              '',
       customerName:
-          data['customerName']?.toString() ?? '',
+          data['customerName']
+                  ?.toString() ??
+              '',
       items: items,
       subtotal: subtotal,
       discount: discount,
       tax: tax,
       total: total,
       paidAmount: paidAmount,
-      paymentStatus: rawPaymentStatus.isEmpty
-          ? _calculatePaymentStatus(
-              total: total,
-              paidAmount: paidAmount,
-            )
-          : rawPaymentStatus,
+      paymentStatus:
+          rawPaymentStatus.isEmpty
+              ? _calculatePaymentStatus(
+                  total: total,
+                  paidAmount:
+                      paidAmount,
+                )
+              : rawPaymentStatus,
       paymentMethod:
-          data['paymentMethod']?.toString() ?? '',
+          data['paymentMethod']
+                  ?.toString() ??
+              '',
       date: dateFromFirestore(
         data['date'],
       ),
       notes:
-          data['notes']?.toString() ?? '',
+          data['notes']?.toString() ??
+              '',
       invoiceNumber:
-          data['invoiceNumber']?.toString() ?? '',
-      createdAt: dateFromFirestore(
+          data['invoiceNumber']
+                  ?.toString() ??
+              '',
+      createdAt:
+          dateFromFirestore(
         data['createdAt'],
       ),
     );
@@ -814,27 +925,46 @@ class SaleRepository extends BaseRepository {
   ) {
     return SaleItemModel(
       productId:
-          data['productId']?.toString() ?? '',
+          data['productId']
+                  ?.toString() ??
+              '',
       productName:
-          data['productName']?.toString() ?? '',
+          data['productName']
+                  ?.toString() ??
+              '',
       quantity:
-          _toDouble(data['quantity']),
+          _toDouble(
+        data['quantity'],
+      ),
       unit:
-          data['unit']?.toString() ?? '',
+          data['unit']?.toString() ??
+              '',
       sellingRate:
-          _toDouble(data['sellingRate']),
+          _toDouble(
+        data['sellingRate'],
+      ),
       discount:
-          _toDouble(data['discount']),
+          _toDouble(
+        data['discount'],
+      ),
       tax:
-          _toDouble(data['tax']),
+          _toDouble(
+        data['tax'],
+      ),
       total:
-          _toDouble(data['total']),
+          _toDouble(
+        data['total'],
+      ),
       costPrice:
-          _toDouble(data['costPrice']),
+          _toDouble(
+        data['costPrice'],
+      ),
     );
   }
 
-  double _toDouble(dynamic value) {
+  double _toDouble(
+    dynamic value,
+  ) {
     if (value is num) {
       return value.toDouble();
     }
@@ -849,3 +979,4 @@ class SaleRepository extends BaseRepository {
     return 0;
   }
 }
+     

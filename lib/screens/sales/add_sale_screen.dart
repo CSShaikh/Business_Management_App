@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/services/sale_stock_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/business_model.dart';
 import '../../models/customer_model.dart';
@@ -9,7 +10,8 @@ import '../../repositories/business_repository.dart';
 import '../../repositories/customer_repository.dart';
 import '../../repositories/product_repository.dart';
 import '../../repositories/sale_repository.dart';
-import '../../core/services/sale_stock_service.dart';
+import '../../services/ledger/ledger_service.dart';
+
 class AddSaleScreen extends StatefulWidget {
 const AddSaleScreen({
 super.key,
@@ -20,15 +22,23 @@ State<AddSaleScreen> createState() => _AddSaleScreenState();
 }
 
 class _AddSaleScreenState extends State<AddSaleScreen> {
-final BusinessRepository _businessRepository = BusinessRepository();
+final BusinessRepository _businessRepository =
+BusinessRepository();
 
-final ProductRepository _productRepository = ProductRepository();
+final ProductRepository _productRepository =
+ProductRepository();
 
-final CustomerRepository _customerRepository = CustomerRepository();
+final CustomerRepository _customerRepository =
+CustomerRepository();
 
-final SaleRepository _saleRepository = SaleRepository();
+final SaleRepository _saleRepository =
+SaleRepository();
 
-final SaleStockService _saleStockService = SaleStockService();
+final SaleStockService _saleStockService =
+SaleStockService();
+
+final LedgerService _ledgerService =
+LedgerService();
 
 final TextEditingController _discountController =
 TextEditingController(text: '0');
@@ -46,7 +56,8 @@ BusinessModel? _business;
 CustomerModel? _selectedCustomer;
 
 List<ProductModel> _products = <ProductModel>[];
-final List<_SaleDraftItem> _items = <_SaleDraftItem>[];
+final List<_SaleDraftItem> _items =
+<_SaleDraftItem>[];
 
 bool _loading = true;
 bool _saving = false;
@@ -59,12 +70,21 @@ String _paymentMethod = 'Cash';
 void initState() {
 super.initState();
 
+    
+_discountController.addListener(
+  _refreshTotals,
+);
 
-_discountController.addListener(_refreshTotals);
-_taxController.addListener(_refreshTotals);
-_paidController.addListener(_refreshTotals);
+_taxController.addListener(
+  _refreshTotals,
+);
+
+_paidController.addListener(
+  _refreshTotals,
+);
 
 _loadData();
+    
 
 }
 
@@ -74,7 +94,7 @@ _discountController
 ..removeListener(_refreshTotals)
 ..dispose();
 
-
+    
 _taxController
   ..removeListener(_refreshTotals)
   ..dispose();
@@ -86,7 +106,7 @@ _paidController
 _notesController.dispose();
 
 super.dispose();
-
+    
 
 }
 
@@ -102,14 +122,16 @@ _errorMessage = null;
 });
 }
 
-
+    
 try {
   final BusinessModel? business =
-      await _businessRepository.getBusinessForCurrentUser();
+      await _businessRepository
+          .getBusinessForCurrentUser();
 
   if (business == null) {
     throw Exception(
-      'Business profile not found. Please complete business setup first.',
+      'Business profile not found. '
+      'Please complete business setup first.',
     );
   }
 
@@ -135,7 +157,7 @@ try {
         'Unable to load products and business information.';
   });
 }
-
+    
 
 }
 
@@ -146,43 +168,51 @@ try {
 double get _subtotal {
 double value = 0;
 
-
+    
 for (final _SaleDraftItem item in _items) {
   value += item.total;
 }
 
 return value;
-
+    
 
 }
 
 double get _discount {
-return _parseAmount(_discountController.text);
+return _parseAmount(
+_discountController.text,
+);
 }
 
 double get _tax {
-return _parseAmount(_taxController.text);
+return _parseAmount(
+_taxController.text,
+);
 }
 
 double get _total {
-final double value = _subtotal - _discount + _tax;
+final double value =
+_subtotal - _discount + _tax;
 
-
+    
 return value < 0 ? 0 : value;
-
+    
 
 }
 
 double get _paidAmount {
-return _parseAmount(_paidController.text);
+return _parseAmount(
+_paidController.text,
+);
 }
 
 double get _outstanding {
-final double value = _total - _paidAmount;
+final double value =
+_total - _paidAmount;
 
-
+    
 return value < 0 ? 0 : value;
-
+    
 
 }
 
@@ -191,7 +221,7 @@ if (_total <= 0) {
 return 'unpaid';
 }
 
-
+    
 if (_paidAmount <= 0) {
   return 'unpaid';
 }
@@ -201,20 +231,23 @@ if (_paidAmount >= _total) {
 }
 
 return 'partial';
-
+    
 
 }
 
 double _parseAmount(String value) {
-return double.tryParse(value.trim()) ?? 0;
+return double.tryParse(
+value.trim(),
+) ??
+0;
 }
 
 void _refreshTotals() {
 if (!mounted) return;
 
-
+    
 setState(() {});
-
+    
 
 }
 
@@ -231,7 +264,7 @@ isError: true,
 return;
 }
 
-
+    
 final ProductModel? product =
     await showModalBottomSheet<ProductModel>(
   context: context,
@@ -274,7 +307,7 @@ setState(() {
     ),
   );
 });
-
+    
 
 }
 
@@ -285,7 +318,7 @@ setState(() {
 Future<void> _selectCustomer() async {
 final BusinessModel? business = _business;
 
-
+    
 if (business == null) {
   return;
 }
@@ -325,7 +358,7 @@ try {
     isError: true,
   );
 }
-
+    
 
 }
 
@@ -342,7 +375,7 @@ _selectedCustomer = null;
 Future<void> _saveSale() async {
 if (_saving) return;
 
-
+    
 final BusinessModel? business = _business;
 
 if (business == null) {
@@ -408,7 +441,8 @@ for (final _SaleDraftItem item in _items) {
     return;
   }
 
-  if (item.quantity > item.product.currentStock) {
+  if (item.quantity >
+      item.product.currentStock) {
     _showMessage(
       'Insufficient stock for ${item.product.name}. '
       'Available: ${_formatNumber(item.product.currentStock)} '
@@ -422,6 +456,9 @@ for (final _SaleDraftItem item in _items) {
 setState(() {
   _saving = true;
 });
+
+SaleModel? savedSale;
+bool stockProcessed = false;
 
 try {
   // -----------------------------------------------------------------------
@@ -439,7 +476,8 @@ try {
   // CREATE SALE ITEMS
   // -----------------------------------------------------------------------
 
-  final List<SaleItemModel> saleItems = _items.map(
+  final List<SaleItemModel> saleItems =
+      _items.map(
     (item) {
       return SaleItemModel(
         productId: item.product.id,
@@ -450,7 +488,8 @@ try {
         discount: 0,
         tax: 0,
         total: item.total,
-        costPrice: item.product.purchasePrice,
+        costPrice:
+            item.product.purchasePrice,
       );
     },
   ).toList();
@@ -462,8 +501,10 @@ try {
   final SaleModel sale = SaleModel(
     id: '',
     businessId: business.id,
-    customerId: _selectedCustomer?.id ?? '',
-    customerName: _selectedCustomer?.name ?? '',
+    customerId:
+        _selectedCustomer?.id ?? '',
+    customerName:
+        _selectedCustomer?.name ?? '',
     items: saleItems,
     subtotal: _subtotal,
     discount: _discount,
@@ -482,27 +523,74 @@ try {
   // SAVE SALE
   // -----------------------------------------------------------------------
 
-  final SaleModel savedSale =
-      await _saleRepository.createSale(sale);
+  savedSale =
+      await _saleRepository.createSale(
+    sale,
+  );
 
   // -----------------------------------------------------------------------
   // UPDATE STOCK
-  //
-  // Sale successfully save hone ke baad:
-  // Product stock automatically OUT hoga.
-  // Stock transaction referenceId = saved sale id.
   // -----------------------------------------------------------------------
 
   await _saleStockService.processSaleStock(
     sale: savedSale,
   );
 
+  stockProcessed = true;
+
+  // -----------------------------------------------------------------------
+  // LEDGER
+  //
+  // Walk-in customer:
+  // No ledger transaction.
+  //
+  // Selected customer:
+  // Only outstanding amount increases
+  // customer receivable balance.
+  //
+  // Fully paid sale:
+  // No ledger transaction because outstanding = 0.
+  // -----------------------------------------------------------------------
+
+  final CustomerModel? customer =
+      _selectedCustomer;
+
+  if (customer != null &&
+      customer.id.trim().isNotEmpty &&
+      _outstanding > 0) {
+    final double currentBalance =
+        await _ledgerService.getCustomerBalance(
+      businessId: business.id,
+      customerId: customer.id,
+    );
+
+    final double newBalance =
+        currentBalance + _outstanding;
+
+    await _ledgerService.createTransaction(
+      businessId: business.id,
+      customerId: customer.id,
+      customerName: customer.name,
+      transactionType: 'SALE',
+      amount: _outstanding,
+      balanceBefore: currentBalance,
+      balanceAfter: newBalance,
+      referenceId: savedSale.id,
+      date: now,
+      notes: 'Sale $invoiceNumber',
+    );
+  }
+
   if (!mounted) return;
 
-  _showMessage(
-    'Sale $invoiceNumber created successfully. '
-    'Stock updated.',
-  );
+  final String successMessage =
+      customer != null && _outstanding > 0
+          ? 'Sale $invoiceNumber created successfully. '
+              'Stock and ledger updated.'
+          : 'Sale $invoiceNumber created successfully. '
+              'Stock updated.';
+
+  _showMessage(successMessage);
 
   await Future<void>.delayed(
     const Duration(
@@ -517,6 +605,35 @@ try {
     true,
   );
 } catch (e) {
+  // -----------------------------------------------------------------------
+  // ROLLBACK
+  //
+  // Agar stock update ho chuka hai aur baad mein
+  // ledger/sale flow fail hua, stock ko reverse
+  // karne ki koshish karte hain.
+  // -----------------------------------------------------------------------
+
+  if (savedSale != null) {
+    if (stockProcessed) {
+      try {
+        await _saleStockService.reverseSaleStock(
+          sale: savedSale,
+        );
+      } catch (_) {
+        // Original error ko hide nahi karna.
+      }
+    }
+
+    try {
+      await _saleRepository.deleteSale(
+        businessId: business.id,
+        saleId: savedSale.id,
+      );
+    } catch (_) {
+      // Original error ko hide nahi karna.
+    }
+  }
+
   if (!mounted) return;
 
   setState(() {
@@ -528,20 +645,22 @@ try {
     isError: true,
   );
 }
-
+    
 
 }
 
 String _cleanError(Object error) {
 final String message = error.toString();
 
-
+    
 if (message.startsWith('Exception: ')) {
-  return message.substring('Exception: '.length);
+  return message.substring(
+    'Exception: '.length,
+  );
 }
 
 return message;
-
+    
 
 }
 
@@ -557,8 +676,9 @@ TextEditingController(
 text: _formatNumber(item.quantity),
 );
 
-
-final double? quantity = await showDialog<double>(
+    
+final double? quantity =
+    await showDialog<double>(
   context: context,
   builder: (dialogContext) {
     return AlertDialog(
@@ -575,13 +695,16 @@ final double? quantity = await showDialog<double>(
         decoration: InputDecoration(
           labelText: 'Quantity',
           suffixText: item.product.unit,
-          border: const OutlineInputBorder(),
+          border:
+              const OutlineInputBorder(),
         ),
       ),
       actions: [
         TextButton(
           onPressed: () {
-            Navigator.pop(dialogContext);
+            Navigator.pop(
+              dialogContext,
+            );
           },
           child: const Text(
             'Cancel',
@@ -622,7 +745,8 @@ if (quantity <= 0) {
   return;
 }
 
-if (quantity > item.product.currentStock) {
+if (quantity >
+    item.product.currentStock) {
   _showMessage(
     'Only ${_formatNumber(item.product.currentStock)} '
     '${item.product.unit} available in stock.',
@@ -634,7 +758,7 @@ if (quantity > item.product.currentStock) {
 setState(() {
   item.quantity = quantity;
 });
-
+    
 
 }
 
@@ -647,11 +771,14 @@ _SaleDraftItem item,
 ) async {
 final TextEditingController controller =
 TextEditingController(
-text: item.sellingRate.toStringAsFixed(2),
+text: item.sellingRate.toStringAsFixed(
+2,
+),
 );
 
-
-final double? rate = await showDialog<double>(
+    
+final double? rate =
+    await showDialog<double>(
   context: context,
   builder: (dialogContext) {
     return AlertDialog(
@@ -665,16 +792,20 @@ final double? rate = await showDialog<double>(
             const TextInputType.numberWithOptions(
           decimal: true,
         ),
-        decoration: const InputDecoration(
+        decoration:
+            const InputDecoration(
           labelText: 'Rate',
           prefixText: '₹ ',
-          border: OutlineInputBorder(),
+          border:
+              OutlineInputBorder(),
         ),
       ),
       actions: [
         TextButton(
           onPressed: () {
-            Navigator.pop(dialogContext);
+            Navigator.pop(
+              dialogContext,
+            );
           },
           child: const Text(
             'Cancel',
@@ -718,7 +849,7 @@ if (rate < 0) {
 setState(() {
   item.sellingRate = rate;
 });
-
+    
 
 }
 
@@ -744,18 +875,20 @@ bool isError = false,
 }) {
 if (!mounted) return;
 
-
+    
 ScaffoldMessenger.of(context)
   ..hideCurrentSnackBar()
   ..showSnackBar(
     SnackBar(
       content: Text(message),
-      behavior: SnackBarBehavior.floating,
-      backgroundColor:
-          isError ? AppColors.danger : null,
+      behavior:
+          SnackBarBehavior.floating,
+      backgroundColor: isError
+          ? AppColors.danger
+          : null,
     ),
   );
-
+    
 
 }
 
@@ -764,9 +897,7 @@ ScaffoldMessenger.of(context)
 // ===========================================================================
 
 @override
-Widget build(
-BuildContext context,
-) {
+Widget build(BuildContext context) {
 if (_loading) {
 return Scaffold(
 appBar: AppBar(
@@ -775,12 +906,13 @@ title: const Text(
 ),
 ),
 body: const Center(
-child: CircularProgressIndicator(),
+child:
+CircularProgressIndicator(),
 ),
 );
 }
 
-
+    
 if (_errorMessage != null) {
   return Scaffold(
     appBar: AppBar(
@@ -816,7 +948,8 @@ return Scaffold(
         context,
         constraints,
       ) {
-        if (constraints.maxWidth >= 1000) {
+        if (constraints.maxWidth >=
+            1000) {
           return _buildDesktopLayout();
         }
 
@@ -825,7 +958,7 @@ return Scaffold(
     ),
   ),
 );
-
+    
 
 }
 
@@ -837,8 +970,10 @@ Widget _buildMobileLayout() {
 return Column(
 children: [
 Expanded(
-child: SingleChildScrollView(
-padding: const EdgeInsets.fromLTRB(
+child:
+SingleChildScrollView(
+padding:
+const EdgeInsets.fromLTRB(
 16,
 16,
 16,
@@ -881,8 +1016,10 @@ CrossAxisAlignment.start,
 children: [
 Expanded(
 flex: 7,
-child: SingleChildScrollView(
-padding: const EdgeInsets.fromLTRB(
+child:
+SingleChildScrollView(
+padding:
+const EdgeInsets.fromLTRB(
 24,
 24,
 12,
@@ -907,14 +1044,17 @@ _buildNotesSection(),
 ),
 Expanded(
 flex: 4,
-child: SingleChildScrollView(
-padding: const EdgeInsets.fromLTRB(
+child:
+SingleChildScrollView(
+padding:
+const EdgeInsets.fromLTRB(
 12,
 24,
 24,
 120,
 ),
-child: _buildPaymentSection(),
+child:
+_buildPaymentSection(),
 ),
 ),
 ],
@@ -928,9 +1068,11 @@ child: _buildPaymentSection(),
 Widget _buildErrorState() {
 return Center(
 child: Padding(
-padding: const EdgeInsets.all(24),
+padding:
+const EdgeInsets.all(24),
 child: Column(
-mainAxisSize: MainAxisSize.min,
+mainAxisSize:
+MainAxisSize.min,
 children: [
 Icon(
 Icons.error_outline_rounded,
@@ -945,7 +1087,8 @@ height: 16,
 Text(
 _errorMessage ??
 'Something went wrong.',
-textAlign: TextAlign.center,
+textAlign:
+TextAlign.center,
 style: Theme.of(context)
 .textTheme
 .titleMedium,
@@ -975,27 +1118,34 @@ label: const Text(
 Widget _buildCustomerSection() {
 return _SectionCard(
 title: 'Customer',
-icon: Icons.person_outline_rounded,
+icon:
+Icons.person_outline_rounded,
 child: _selectedCustomer == null
 ? InkWell(
 onTap: _selectCustomer,
-borderRadius: BorderRadius.circular(12),
+borderRadius:
+BorderRadius.circular(12),
 child: Container(
 width: double.infinity,
-padding: const EdgeInsets.all(14),
-decoration: BoxDecoration(
+padding:
+const EdgeInsets.all(14),
+decoration:
+BoxDecoration(
 border: Border.all(
 color: Theme.of(context)
 .colorScheme
 .outline,
 ),
 borderRadius:
-BorderRadius.circular(12),
+BorderRadius.circular(
+12,
+),
 ),
 child: const Row(
 children: [
 Icon(
-Icons.person_add_alt_1_rounded,
+Icons
+.person_add_alt_1_rounded,
 ),
 SizedBox(
 width: 12,
@@ -1003,13 +1153,15 @@ width: 12,
 Expanded(
 child: Column(
 crossAxisAlignment:
-CrossAxisAlignment.start,
+CrossAxisAlignment
+.start,
 children: [
 Text(
 'Select Customer',
 style: TextStyle(
 fontWeight:
-FontWeight.w600,
+FontWeight
+.w600,
 ),
 ),
 SizedBox(
@@ -1022,31 +1174,39 @@ Text(
 ),
 ),
 Icon(
-Icons.chevron_right_rounded,
+Icons
+.chevron_right_rounded,
 ),
 ],
 ),
 ),
 )
 : Container(
-padding: const EdgeInsets.all(14),
-decoration: BoxDecoration(
-color: AppColors.primary.withValues(
+padding:
+const EdgeInsets.all(14),
+decoration:
+BoxDecoration(
+color: AppColors.primary
+.withValues(
 alpha: 0.06,
 ),
 borderRadius:
-BorderRadius.circular(12),
+BorderRadius.circular(
+12,
+),
 ),
 child: Row(
 children: [
 CircleAvatar(
 backgroundColor:
-AppColors.primary.withValues(
+AppColors.primary
+.withValues(
 alpha: 0.12,
 ),
 child: const Icon(
 Icons.person_rounded,
-color: AppColors.primary,
+color:
+AppColors.primary,
 ),
 ),
 const SizedBox(
@@ -1055,21 +1215,29 @@ width: 12,
 Expanded(
 child: Column(
 crossAxisAlignment:
-CrossAxisAlignment.start,
+CrossAxisAlignment
+.start,
 children: [
 Text(
-_selectedCustomer!.name,
-style: const TextStyle(
+_selectedCustomer!
+.name,
+style:
+const TextStyle(
 fontWeight:
-FontWeight.bold,
+FontWeight
+.bold,
 ),
 ),
 if (_selectedCustomer!
 .mobile
 .isNotEmpty)
 Text(
-_selectedCustomer!.mobile,
-style: Theme.of(context)
+_selectedCustomer!
+.mobile,
+style:
+Theme.of(
+context,
+)
 .textTheme
 .bodySmall,
 ),
@@ -1077,8 +1245,10 @@ style: Theme.of(context)
 ),
 ),
 IconButton(
-tooltip: 'Remove customer',
-onPressed: _removeCustomer,
+tooltip:
+'Remove customer',
+onPressed:
+_removeCustomer,
 icon: const Icon(
 Icons.close_rounded,
 ),
@@ -1096,8 +1266,10 @@ Icons.close_rounded,
 Widget _buildItemsSection() {
 return _SectionCard(
 title: 'Products',
-icon: Icons.inventory_2_outlined,
-trailing: FilledButton.icon(
+icon:
+Icons.inventory_2_outlined,
+trailing:
+FilledButton.icon(
 onPressed: _selectProduct,
 icon: const Icon(
 Icons.add_rounded,
@@ -1135,14 +1307,16 @@ _removeItem(item);
 Widget _buildNoItemsState() {
 return Container(
 width: double.infinity,
-padding: const EdgeInsets.symmetric(
+padding:
+const EdgeInsets.symmetric(
 vertical: 30,
 horizontal: 20,
 ),
 child: Column(
 children: [
 Icon(
-Icons.shopping_cart_outlined,
+Icons
+.shopping_cart_outlined,
 size: 44,
 color: Theme.of(context)
 .colorScheme
@@ -1166,12 +1340,14 @@ height: 5,
 ),
 Text(
 'Add products to create this sale.',
-textAlign: TextAlign.center,
+textAlign:
+TextAlign.center,
 style: Theme.of(context)
 .textTheme
 .bodySmall
 ?.copyWith(
-color: Theme.of(context)
+color:
+Theme.of(context)
 .colorScheme
 .onSurfaceVariant,
 ),
@@ -1200,26 +1376,32 @@ label: const Text(
 Widget _buildPaymentSection() {
 return _SectionCard(
 title: 'Payment & Total',
-icon: Icons.payments_outlined,
+icon:
+Icons.payments_outlined,
 child: Column(
 children: [
 _AmountRow(
 label: 'Subtotal',
-value: _formatCurrency(_subtotal),
+value:
+_formatCurrency(_subtotal),
 ),
 const SizedBox(
 height: 12,
 ),
 TextField(
-controller: _discountController,
+controller:
+_discountController,
 keyboardType:
-const TextInputType.numberWithOptions(
+const TextInputType
+.numberWithOptions(
 decimal: true,
 ),
-decoration: const InputDecoration(
+decoration:
+const InputDecoration(
 labelText: 'Discount',
 prefixText: '₹ ',
-border: OutlineInputBorder(),
+border:
+OutlineInputBorder(),
 isDense: true,
 ),
 ),
@@ -1229,13 +1411,16 @@ height: 12,
 TextField(
 controller: _taxController,
 keyboardType:
-const TextInputType.numberWithOptions(
+const TextInputType
+.numberWithOptions(
 decimal: true,
 ),
-decoration: const InputDecoration(
+decoration:
+const InputDecoration(
 labelText: 'Tax',
 prefixText: '₹ ',
-border: OutlineInputBorder(),
+border:
+OutlineInputBorder(),
 isDense: true,
 ),
 ),
@@ -1243,17 +1428,23 @@ const SizedBox(
 height: 16,
 ),
 Container(
-padding: const EdgeInsets.all(14),
-decoration: BoxDecoration(
-color: AppColors.primary.withValues(
+padding:
+const EdgeInsets.all(14),
+decoration:
+BoxDecoration(
+color: AppColors.primary
+.withValues(
 alpha: 0.07,
 ),
 borderRadius:
-BorderRadius.circular(12),
+BorderRadius.circular(
+12,
+),
 ),
 child: _AmountRow(
 label: 'Grand Total',
-value: _formatCurrency(_total),
+value:
+_formatCurrency(_total),
 large: true,
 ),
 ),
@@ -1263,13 +1454,16 @@ height: 16,
 TextField(
 controller: _paidController,
 keyboardType:
-const TextInputType.numberWithOptions(
+const TextInputType
+.numberWithOptions(
 decimal: true,
 ),
-decoration: const InputDecoration(
+decoration:
+const InputDecoration(
 labelText: 'Paid Amount',
 prefixText: '₹ ',
-border: OutlineInputBorder(),
+border:
+OutlineInputBorder(),
 isDense: true,
 ),
 ),
@@ -1278,8 +1472,12 @@ height: 12,
 ),
 _AmountRow(
 label: 'Outstanding',
-value: _formatCurrency(_outstanding),
-valueColor: _outstanding > 0
+value:
+_formatCurrency(
+_outstanding,
+),
+valueColor:
+_outstanding > 0
 ? AppColors.danger
 : AppColors.success,
 ),
@@ -1287,10 +1485,14 @@ const SizedBox(
 height: 16,
 ),
 DropdownButtonFormField<String>(
-initialValue: _paymentMethod,
-decoration: const InputDecoration(
-labelText: 'Payment Method',
-border: OutlineInputBorder(),
+initialValue:
+_paymentMethod,
+decoration:
+const InputDecoration(
+labelText:
+'Payment Method',
+border:
+OutlineInputBorder(),
 isDense: true,
 ),
 items: const [
@@ -1308,7 +1510,8 @@ child: Text('Card'),
 ),
 DropdownMenuItem(
 value: 'Bank Transfer',
-child: Text('Bank Transfer'),
+child:
+Text('Bank Transfer'),
 ),
 DropdownMenuItem(
 value: 'Credit',
@@ -1316,9 +1519,11 @@ child: Text('Credit'),
 ),
 ],
 onChanged: (value) {
-if (value == null) return;
+if (value == null) {
+return;
+}
 
-
+    
           setState(() {
             _paymentMethod = value;
           });
@@ -1368,7 +1573,7 @@ if (value == null) return;
     ],
   ),
 );
-
+    
 
 }
 
@@ -1386,10 +1591,12 @@ minLines: 3,
 maxLines: 5,
 textCapitalization:
 TextCapitalization.sentences,
-decoration: const InputDecoration(
+decoration:
+const InputDecoration(
 hintText:
 'Add optional notes for this sale...',
-border: OutlineInputBorder(),
+border:
+OutlineInputBorder(),
 alignLabelWithHint: true,
 ),
 ),
@@ -1409,7 +1616,8 @@ color: Theme.of(context)
 child: SafeArea(
 top: false,
 child: Padding(
-padding: const EdgeInsets.fromLTRB(
+padding:
+const EdgeInsets.fromLTRB(
 16,
 12,
 16,
@@ -1420,24 +1628,30 @@ children: [
 Expanded(
 child: Column(
 crossAxisAlignment:
-CrossAxisAlignment.start,
+CrossAxisAlignment
+.start,
 mainAxisSize:
 MainAxisSize.min,
 children: [
 Text(
 'Grand Total',
-style: Theme.of(context)
+style:
+Theme.of(context)
 .textTheme
 .bodySmall,
 ),
 Text(
-_formatCurrency(_total),
-style: Theme.of(context)
+_formatCurrency(
+_total,
+),
+style:
+Theme.of(context)
 .textTheme
 .titleLarge
 ?.copyWith(
 fontWeight:
-FontWeight.bold,
+FontWeight
+.bold,
 ),
 ),
 ],
@@ -1463,18 +1677,23 @@ _saving
 // FORMATTERS
 // ===========================================================================
 
-String _formatCurrency(double value) {
+String _formatCurrency(
+double value,
+) {
 return '₹${value.toStringAsFixed(2)}';
 }
 
-String _formatNumber(double value) {
-if (value == value.roundToDouble()) {
+String _formatNumber(
+double value,
+) {
+if (value ==
+value.roundToDouble()) {
 return value.toInt().toString();
 }
 
-
+    
 return value.toStringAsFixed(2);
-
+    
 
 }
 }
@@ -1504,7 +1723,8 @@ return quantity * sellingRate;
 // SECTION CARD
 // =============================================================================
 
-class _SectionCard extends StatelessWidget {
+class _SectionCard
+extends StatelessWidget {
 final String title;
 final IconData icon;
 final Widget child;
@@ -1518,11 +1738,15 @@ this.trailing,
 });
 
 @override
-Widget build(BuildContext context) {
+Widget build(
+BuildContext context,
+) {
 return Card(
-clipBehavior: Clip.antiAlias,
+clipBehavior:
+Clip.antiAlias,
 child: Padding(
-padding: const EdgeInsets.all(16),
+padding:
+const EdgeInsets.all(16),
 child: Column(
 crossAxisAlignment:
 CrossAxisAlignment.start,
@@ -1532,17 +1756,23 @@ children: [
 Container(
 width: 36,
 height: 36,
-decoration: BoxDecoration(
-color: AppColors.primary.withValues(
+decoration:
+BoxDecoration(
+color: AppColors
+.primary
+.withValues(
 alpha: 0.10,
 ),
 borderRadius:
-BorderRadius.circular(10),
+BorderRadius.circular(
+10,
+),
 ),
 child: Icon(
 icon,
 size: 20,
-color: AppColors.primary,
+color:
+AppColors.primary,
 ),
 ),
 const SizedBox(
@@ -1551,16 +1781,19 @@ width: 10,
 Expanded(
 child: Text(
 title,
-style: Theme.of(context)
+style:
+Theme.of(context)
 .textTheme
 .titleMedium
 ?.copyWith(
 fontWeight:
-FontWeight.bold,
+FontWeight
+.bold,
 ),
 ),
 ),
-if (trailing != null) trailing!,
+if (trailing != null)
+trailing!,
 ],
 ),
 const SizedBox(
@@ -1578,7 +1811,8 @@ child,
 // SALE ITEM CARD
 // =============================================================================
 
-class _SaleItemCard extends StatelessWidget {
+class _SaleItemCard
+extends StatelessWidget {
 final _SaleDraftItem item;
 final VoidCallback onQuantityTap;
 final VoidCallback onRateTap;
@@ -1592,20 +1826,27 @@ required this.onRemove,
 });
 
 @override
-Widget build(BuildContext context) {
+Widget build(
+BuildContext context,
+) {
 return Container(
-margin: const EdgeInsets.only(
+margin:
+const EdgeInsets.only(
 bottom: 10,
 ),
-padding: const EdgeInsets.all(12),
-decoration: BoxDecoration(
+padding:
+const EdgeInsets.all(12),
+decoration:
+BoxDecoration(
 border: Border.all(
 color: Theme.of(context)
 .colorScheme
 .outlineVariant,
 ),
 borderRadius:
-BorderRadius.circular(12),
+BorderRadius.circular(
+12,
+),
 ),
 child: Column(
 children: [
@@ -1614,16 +1855,23 @@ children: [
 Container(
 width: 42,
 height: 42,
-decoration: BoxDecoration(
-color: AppColors.primary.withValues(
+decoration:
+BoxDecoration(
+color: AppColors
+.primary
+.withValues(
 alpha: 0.08,
 ),
 borderRadius:
-BorderRadius.circular(10),
+BorderRadius.circular(
+10,
+),
 ),
 child: const Icon(
-Icons.inventory_2_outlined,
-color: AppColors.primary,
+Icons
+.inventory_2_outlined,
+color:
+AppColors.primary,
 ),
 ),
 const SizedBox(
@@ -1632,14 +1880,16 @@ width: 10,
 Expanded(
 child: Column(
 crossAxisAlignment:
-CrossAxisAlignment.start,
+CrossAxisAlignment
+.start,
 children: [
 Text(
 item.product.name,
 maxLines: 1,
 overflow:
 TextOverflow.ellipsis,
-style: const TextStyle(
+style:
+const TextStyle(
 fontWeight:
 FontWeight.w600,
 ),
@@ -1650,7 +1900,8 @@ height: 3,
 Text(
 'Stock: ${_formatNumber(item.product.currentStock)} '
 '${item.product.unit}',
-style: Theme.of(context)
+style:
+Theme.of(context)
 .textTheme
 .bodySmall
 ?.copyWith(
@@ -1665,11 +1916,14 @@ context,
 ),
 ),
 IconButton(
-tooltip: 'Remove product',
+tooltip:
+'Remove product',
 onPressed: onRemove,
 icon: const Icon(
-Icons.delete_outline_rounded,
-color: AppColors.danger,
+Icons
+.delete_outline_rounded,
+color:
+AppColors.danger,
 ),
 ),
 ],
@@ -1681,10 +1935,14 @@ Row(
 children: [
 Expanded(
 child: InkWell(
-onTap: onQuantityTap,
+onTap:
+onQuantityTap,
 borderRadius:
-BorderRadius.circular(10),
-child: _EditableValue(
+BorderRadius.circular(
+10,
+),
+child:
+_EditableValue(
 label: 'Quantity',
 value:
 '${_formatNumber(item.quantity)} '
@@ -1699,10 +1957,15 @@ Expanded(
 child: InkWell(
 onTap: onRateTap,
 borderRadius:
-BorderRadius.circular(10),
-child: _EditableValue(
-label: 'Selling Rate',
-value: _formatCurrency(
+BorderRadius.circular(
+10,
+),
+child:
+_EditableValue(
+label:
+'Selling Rate',
+value:
+_formatCurrency(
 item.sellingRate,
 ),
 ),
@@ -1712,9 +1975,11 @@ const SizedBox(
 width: 10,
 ),
 Expanded(
-child: _EditableValue(
+child:
+_EditableValue(
 label: 'Amount',
-value: _formatCurrency(
+value:
+_formatCurrency(
 item.total,
 ),
 highlight: true,
@@ -1727,18 +1992,23 @@ highlight: true,
 );
 }
 
-static String _formatCurrency(double value) {
+static String _formatCurrency(
+double value,
+) {
 return '₹${value.toStringAsFixed(2)}';
 }
 
-static String _formatNumber(double value) {
-if (value == value.roundToDouble()) {
+static String _formatNumber(
+double value,
+) {
+if (value ==
+value.roundToDouble()) {
 return value.toInt().toString();
 }
 
-
+    
 return value.toStringAsFixed(2);
-
+    
 
 }
 }
@@ -1747,7 +2017,8 @@ return value.toStringAsFixed(2);
 // EDITABLE VALUE
 // =============================================================================
 
-class _EditableValue extends StatelessWidget {
+class _EditableValue
+extends StatelessWidget {
 final String label;
 final String value;
 final bool highlight;
@@ -1759,15 +2030,20 @@ this.highlight = false,
 });
 
 @override
-Widget build(BuildContext context) {
+Widget build(
+BuildContext context,
+) {
 return Container(
-padding: const EdgeInsets.symmetric(
+padding:
+const EdgeInsets.symmetric(
 horizontal: 10,
 vertical: 9,
 ),
-decoration: BoxDecoration(
+decoration:
+BoxDecoration(
 color: highlight
-? AppColors.primary.withValues(
+? AppColors.primary
+.withValues(
 alpha: 0.07,
 )
 : Theme.of(context)
@@ -1777,7 +2053,9 @@ alpha: 0.07,
 alpha: 0.45,
 ),
 borderRadius:
-BorderRadius.circular(10),
+BorderRadius.circular(
+10,
+),
 ),
 child: Column(
 crossAxisAlignment:
@@ -1786,12 +2064,15 @@ children: [
 Text(
 label,
 maxLines: 1,
-overflow: TextOverflow.ellipsis,
+overflow:
+TextOverflow.ellipsis,
 style: Theme.of(context)
 .textTheme
 .bodySmall
 ?.copyWith(
-color: Theme.of(context)
+color: Theme.of(
+context,
+)
 .colorScheme
 .onSurfaceVariant,
 ),
@@ -1802,9 +2083,11 @@ height: 3,
 Text(
 value,
 maxLines: 1,
-overflow: TextOverflow.ellipsis,
+overflow:
+TextOverflow.ellipsis,
 style: TextStyle(
-fontWeight: FontWeight.w700,
+fontWeight:
+FontWeight.w700,
 color: highlight
 ? AppColors.primary
 : null,
@@ -1820,7 +2103,8 @@ color: highlight
 // AMOUNT ROW
 // =============================================================================
 
-class _AmountRow extends StatelessWidget {
+class _AmountRow
+extends StatelessWidget {
 final String label;
 final String value;
 final bool large;
@@ -1834,14 +2118,17 @@ this.valueColor,
 });
 
 @override
-Widget build(BuildContext context) {
+Widget build(
+BuildContext context,
+) {
 return Row(
 children: [
 Expanded(
 child: Text(
 label,
 style: TextStyle(
-fontSize: large ? 15 : 14,
+fontSize:
+large ? 15 : 14,
 fontWeight: large
 ? FontWeight.w600
 : FontWeight.normal,
@@ -1851,8 +2138,10 @@ fontWeight: large
 Text(
 value,
 style: TextStyle(
-fontSize: large ? 20 : 14,
-fontWeight: FontWeight.bold,
+fontSize:
+large ? 20 : 14,
+fontWeight:
+FontWeight.bold,
 color: valueColor,
 ),
 ),
@@ -1865,7 +2154,8 @@ color: valueColor,
 // PAYMENT STATUS
 // =============================================================================
 
-class _PaymentStatusChip extends StatelessWidget {
+class _PaymentStatusChip
+extends StatelessWidget {
 final String status;
 
 const _PaymentStatusChip({
@@ -1873,45 +2163,55 @@ required this.status,
 });
 
 @override
-Widget build(BuildContext context) {
+Widget build(
+BuildContext context,
+) {
 late final Color color;
 late final String label;
 late final IconData icon;
 
-
+    
 switch (status) {
   case 'paid':
     color = AppColors.success;
     label = 'Paid';
-    icon = Icons.check_circle_outline_rounded;
+    icon = Icons
+        .check_circle_outline_rounded;
     break;
 
   case 'partial':
     color = AppColors.warning;
     label = 'Partial';
-    icon = Icons.timelapse_rounded;
+    icon = Icons
+        .timelapse_rounded;
     break;
 
   default:
     color = AppColors.danger;
     label = 'Unpaid';
-    icon = Icons.pending_outlined;
+    icon = Icons
+        .pending_outlined;
 }
 
 return Container(
-  padding: const EdgeInsets.symmetric(
+  padding:
+      const EdgeInsets.symmetric(
     horizontal: 10,
     vertical: 6,
   ),
-  decoration: BoxDecoration(
+  decoration:
+      BoxDecoration(
     color: color.withValues(
       alpha: 0.10,
     ),
     borderRadius:
-        BorderRadius.circular(20),
+        BorderRadius.circular(
+      20,
+    ),
   ),
   child: Row(
-    mainAxisSize: MainAxisSize.min,
+    mainAxisSize:
+        MainAxisSize.min,
     children: [
       Icon(
         icon,
@@ -1925,14 +2225,15 @@ return Container(
         label,
         style: TextStyle(
           color: color,
-          fontWeight: FontWeight.w600,
+          fontWeight:
+              FontWeight.w600,
           fontSize: 12,
         ),
       ),
     ],
   ),
 );
-
+    
 
 }
 }
@@ -1941,9 +2242,11 @@ return Container(
 // PRODUCT PICKER
 // =============================================================================
 
-class _ProductPicker extends StatefulWidget {
+class _ProductPicker
+extends StatefulWidget {
 final List<ProductModel> products;
-final Set<String> existingProductIds;
+final Set<String>
+existingProductIds;
 
 const _ProductPicker({
 required this.products,
@@ -1957,7 +2260,8 @@ _ProductPickerState();
 
 class _ProductPickerState
 extends State<_ProductPicker> {
-final TextEditingController _searchController =
+final TextEditingController
+_searchController =
 TextEditingController();
 
 String _query = '';
@@ -1966,17 +2270,20 @@ String _query = '';
 void initState() {
 super.initState();
 
+    
 _searchController.addListener(
   () {
     if (!mounted) return;
 
     setState(() {
-      _query = _searchController.text
-          .trim()
-          .toLowerCase();
+      _query =
+          _searchController.text
+              .trim()
+              .toLowerCase();
     });
   },
 );
+    
 
 }
 
@@ -1987,14 +2294,18 @@ super.dispose();
 }
 
 @override
-Widget build(BuildContext context) {
+Widget build(
+BuildContext context,
+) {
 final List<ProductModel> products =
 widget.products.where(
 (product) {
-if (product.currentStock <= 0) {
+if (product.currentStock <=
+0) {
 return false;
 }
 
+    
     if (widget.existingProductIds
         .contains(product.id)) {
       return false;
@@ -2018,7 +2329,8 @@ return false;
 
 return SafeArea(
   child: Padding(
-    padding: const EdgeInsets.fromLTRB(
+    padding:
+        const EdgeInsets.fromLTRB(
       16,
       4,
       16,
@@ -2040,23 +2352,31 @@ return SafeArea(
           height: 14,
         ),
         TextField(
-          controller: _searchController,
+          controller:
+              _searchController,
           autofocus: true,
-          decoration: InputDecoration(
-            hintText: 'Search product...',
-            prefixIcon: const Icon(
+          decoration:
+              InputDecoration(
+            hintText:
+                'Search product...',
+            prefixIcon:
+                const Icon(
               Icons.search_rounded,
             ),
-            suffixIcon: _query.isEmpty
-                ? null
-                : IconButton(
-                    onPressed: () {
-                      _searchController.clear();
-                    },
-                    icon: const Icon(
-                      Icons.clear_rounded,
-                    ),
-                  ),
+            suffixIcon:
+                _query.isEmpty
+                    ? null
+                    : IconButton(
+                        onPressed: () {
+                          _searchController
+                              .clear();
+                        },
+                        icon:
+                            const Icon(
+                          Icons
+                              .clear_rounded,
+                        ),
+                      ),
             border:
                 const OutlineInputBorder(),
           ),
@@ -2071,18 +2391,27 @@ return SafeArea(
                     'No products available.',
                   ),
                 )
-              : ListView.separated(
+              : ListView
+                  .separated(
                   itemCount:
                       products.length,
                   separatorBuilder:
-                      (context, index) =>
+                      (
+                    context,
+                    index,
+                  ) =>
                           const Divider(
                     height: 1,
                   ),
                   itemBuilder:
-                      (context, index) {
-                    final ProductModel product =
-                        products[index];
+                      (
+                    context,
+                    index,
+                  ) {
+                    final ProductModel
+                        product =
+                        products[
+                            index];
 
                     return ListTile(
                       contentPadding:
@@ -2090,28 +2419,35 @@ return SafeArea(
                               .symmetric(
                         vertical: 5,
                       ),
-                      leading: CircleAvatar(
+                      leading:
+                          CircleAvatar(
                         backgroundColor:
-                            AppColors.primary
+                            AppColors
+                                .primary
                                 .withValues(
                           alpha: 0.10,
                         ),
-                        child: const Icon(
+                        child:
+                            const Icon(
                           Icons
                               .inventory_2_outlined,
                           color:
-                              AppColors.primary,
+                              AppColors
+                                  .primary,
                         ),
                       ),
-                      title: Text(
+                      title:
+                          Text(
                         product.name,
                       ),
-                      subtitle: Text(
+                      subtitle:
+                          Text(
                         '₹${product.sellingPrice.toStringAsFixed(2)} • '
                         'Stock ${_formatNumber(product.currentStock)} '
                         '${product.unit}',
                       ),
-                      trailing: const Icon(
+                      trailing:
+                          const Icon(
                         Icons
                             .add_circle_outline_rounded,
                       ),
@@ -2129,17 +2465,21 @@ return SafeArea(
     ),
   ),
 );
+    
 
 }
 
-String _formatNumber(double value) {
-if (value == value.roundToDouble()) {
+String _formatNumber(
+double value,
+) {
+if (value ==
+value.roundToDouble()) {
 return value.toInt().toString();
 }
 
-
+    
 return value.toStringAsFixed(2);
-
+    
 
 }
 }
@@ -2148,7 +2488,8 @@ return value.toStringAsFixed(2);
 // CUSTOMER PICKER
 // =============================================================================
 
-class _CustomerPicker extends StatefulWidget {
+class _CustomerPicker
+extends StatefulWidget {
 final List<CustomerModel> customers;
 
 const _CustomerPicker({
@@ -2162,7 +2503,8 @@ _CustomerPickerState();
 
 class _CustomerPickerState
 extends State<_CustomerPicker> {
-final TextEditingController _searchController =
+final TextEditingController
+_searchController =
 TextEditingController();
 
 String _query = '';
@@ -2171,18 +2513,20 @@ String _query = '';
 void initState() {
 super.initState();
 
+    
 _searchController.addListener(
   () {
     if (!mounted) return;
 
     setState(() {
-      _query = _searchController.text
-          .trim()
-          .toLowerCase();
+      _query =
+          _searchController.text
+              .trim()
+              .toLowerCase();
     });
   },
 );
-
+    
 
 }
 
@@ -2193,7 +2537,9 @@ super.dispose();
 }
 
 @override
-Widget build(BuildContext context) {
+Widget build(
+BuildContext context,
+) {
 final List<CustomerModel> customers =
 widget.customers.where(
 (customer) {
@@ -2201,7 +2547,7 @@ if (_query.isEmpty) {
 return true;
 }
 
-
+    
     return customer.name
             .toLowerCase()
             .contains(_query) ||
@@ -2216,7 +2562,8 @@ return true;
 
 return SafeArea(
   child: Padding(
-    padding: const EdgeInsets.fromLTRB(
+    padding:
+        const EdgeInsets.fromLTRB(
       16,
       4,
       16,
@@ -2238,23 +2585,31 @@ return SafeArea(
           height: 14,
         ),
         TextField(
-          controller: _searchController,
+          controller:
+              _searchController,
           autofocus: true,
-          decoration: InputDecoration(
-            hintText: 'Search customer...',
-            prefixIcon: const Icon(
+          decoration:
+              InputDecoration(
+            hintText:
+                'Search customer...',
+            prefixIcon:
+                const Icon(
               Icons.search_rounded,
             ),
-            suffixIcon: _query.isEmpty
-                ? null
-                : IconButton(
-                    onPressed: () {
-                      _searchController.clear();
-                    },
-                    icon: const Icon(
-                      Icons.clear_rounded,
-                    ),
-                  ),
+            suffixIcon:
+                _query.isEmpty
+                    ? null
+                    : IconButton(
+                        onPressed: () {
+                          _searchController
+                              .clear();
+                        },
+                        icon:
+                            const Icon(
+                          Icons
+                              .clear_rounded,
+                        ),
+                      ),
             border:
                 const OutlineInputBorder(),
           ),
@@ -2269,18 +2624,27 @@ return SafeArea(
                     'No customers found.',
                   ),
                 )
-              : ListView.separated(
+              : ListView
+                  .separated(
                   itemCount:
                       customers.length,
                   separatorBuilder:
-                      (context, index) =>
+                      (
+                    context,
+                    index,
+                  ) =>
                           const Divider(
                     height: 1,
                   ),
                   itemBuilder:
-                      (context, index) {
-                    final CustomerModel customer =
-                        customers[index];
+                      (
+                    context,
+                    index,
+                  ) {
+                    final CustomerModel
+                        customer =
+                        customers[
+                            index];
 
                     return ListTile(
                       contentPadding:
@@ -2288,28 +2652,37 @@ return SafeArea(
                               .symmetric(
                         vertical: 5,
                       ),
-                      leading: CircleAvatar(
+                      leading:
+                          CircleAvatar(
                         backgroundColor:
-                            AppColors.secondary
+                            AppColors
+                                .secondary
                                 .withValues(
                           alpha: 0.10,
                         ),
-                        child: const Icon(
+                        child:
+                            const Icon(
                           Icons
                               .person_outline_rounded,
                           color:
-                              AppColors.secondary,
+                              AppColors
+                                  .secondary,
                         ),
                       ),
-                      title: Text(
+                      title:
+                          Text(
                         customer.name,
                       ),
-                      subtitle: Text(
-                        customer.mobile.isEmpty
+                      subtitle:
+                          Text(
+                        customer.mobile
+                                .isEmpty
                             ? 'No mobile number'
-                            : customer.mobile,
+                            : customer
+                                .mobile,
                       ),
-                      trailing: const Icon(
+                      trailing:
+                          const Icon(
                         Icons
                             .chevron_right_rounded,
                       ),
@@ -2327,6 +2700,7 @@ return SafeArea(
     ),
   ),
 );
+    
 
 }
 }
