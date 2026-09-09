@@ -1,8 +1,20 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import 'package:business_management_app/core/theme/app_theme.dart';
 import 'package:business_management_app/firebase_options.dart';
+
+import 'package:business_management_app/providers/business_provider.dart';
+import 'package:business_management_app/providers/product_provider.dart';
+import 'package:business_management_app/providers/customer_provider.dart';
+import 'package:business_management_app/providers/supplier_provider.dart';
+import 'package:business_management_app/providers/purchase_provider.dart';
+import 'package:business_management_app/providers/sale_provider.dart';
+import 'package:business_management_app/providers/payment_provider.dart';
+import 'package:business_management_app/providers/expense_provider.dart';
+import 'package:business_management_app/providers/ledger_provider.dart';
+
 import 'package:business_management_app/screens/splash/splash_screen.dart';
 
 Future<void> main() async {
@@ -24,13 +36,57 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Business Management App',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.system,
-      home: const SplashScreen(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider<BusinessProvider>(
+          create: (_) => BusinessProvider(),
+        ),
+
+        ChangeNotifierProvider<ProductProvider>(
+          create: (_) => ProductProvider(),
+        ),
+
+        ChangeNotifierProvider<CustomerProvider>(
+          create: (_) => CustomerProvider(),
+        ),
+
+        ChangeNotifierProvider<SupplierProvider>(
+          create: (_) => SupplierProvider(),
+        ),
+
+        ChangeNotifierProvider<PurchaseProvider>(
+          create: (_) => PurchaseProvider(),
+        ),
+
+        ChangeNotifierProvider<SaleProvider>(
+          create: (_) => SaleProvider(),
+        ),
+
+        ChangeNotifierProvider<PaymentProvider>(
+          create: (_) => PaymentProvider(),
+        ),
+
+        ChangeNotifierProvider<ExpenseProvider>(
+          create: (_) => ExpenseProvider(),
+        ),
+
+        ChangeNotifierProvider<LedgerProvider>(
+          create: (_) => LedgerProvider(),
+        ),
+      ],
+      child: MaterialApp(
+        title: 'Business Management App',
+
+        debugShowCheckedModeBanner: false,
+
+        theme: AppTheme.lightTheme,
+
+        darkTheme: AppTheme.darkTheme,
+
+        themeMode: ThemeMode.system,
+
+        home: const SplashScreen(),
+      ),
     );
   }
 }

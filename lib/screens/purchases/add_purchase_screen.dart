@@ -686,13 +686,6 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
     );
   }
 
-  String _currency(double value) {
-    return NumberFormat.currency(
-      locale: 'en_IN',
-      symbol: '₹',
-      decimalDigits: 2,
-    ).format(value);
-  }
 
   String _formatNumber(double value) {
     if (value == value.roundToDouble()) {

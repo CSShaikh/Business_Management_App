@@ -1,4 +1,3 @@
-    dart
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -21,8 +20,7 @@ class AddPaymentScreen extends StatefulWidget {
       _AddPaymentScreenState();
 }
 
-class _AddPaymentScreenState
-    extends State<AddPaymentScreen> {
+class _AddPaymentScreenState extends State<AddPaymentScreen> {
   final GlobalKey<FormState> _formKey =
       GlobalKey<FormState>();
 
@@ -59,7 +57,7 @@ class _AddPaymentScreenState
 
   BusinessModel? _business;
 
-  List<CustomerModel> _customers = [];
+  List<CustomerModel> _customers = <CustomerModel>[];
 
   CustomerModel? _selectedCustomer;
 
@@ -72,7 +70,7 @@ class _AddPaymentScreenState
 
   String? _errorMessage;
 
-  static const List<String> _paymentMethods = [
+  static const List<String> _paymentMethods = <String>[
     'Cash',
     'UPI',
     'Bank Transfer',
@@ -105,8 +103,8 @@ class _AddPaymentScreenState
     });
 
     try {
-      final business =
-          await _businessRepository.getCurrentBusiness();
+      final BusinessModel? business =
+          await _businessRepository.getBusinessForCurrentUser();
 
       if (business == null ||
           business.id.trim().isEmpty) {
@@ -115,7 +113,7 @@ class _AddPaymentScreenState
         );
       }
 
-      final customers =
+      final List<CustomerModel> customers =
           await _customerRepository.getCustomers(
         businessId: business.id.trim(),
       );
@@ -129,6 +127,22 @@ class _AddPaymentScreenState
         _customers = customers;
         _isLoading = false;
         _errorMessage = null;
+
+        if (_selectedCustomer != null) {
+          final String selectedId =
+              _selectedCustomer!.id.trim();
+
+          CustomerModel? matchingCustomer;
+
+          for (final customer in customers) {
+            if (customer.id.trim() == selectedId) {
+              matchingCustomer = customer;
+              break;
+            }
+          }
+
+          _selectedCustomer = matchingCustomer;
+        }
       });
     } catch (e) {
       if (!mounted) {
@@ -143,9 +157,10 @@ class _AddPaymentScreenState
   }
 
   Future<void> _selectPaymentDate() async {
-    final now = DateTime.now();
+    final DateTime now = DateTime.now();
 
-    final selected = await showDatePicker(
+    final DateTime? selected =
+        await showDatePicker(
       context: context,
       initialDate: _paymentDate,
       firstDate: DateTime(2020),
@@ -173,14 +188,15 @@ class _AddPaymentScreenState
 
     FocusScope.of(context).unfocus();
 
-    final formState = _formKey.currentState;
+    final FormState? formState =
+        _formKey.currentState;
 
     if (formState == null ||
         !formState.validate()) {
       return;
     }
 
-    final business = _business;
+    final BusinessModel? business = _business;
 
     if (business == null ||
         business.id.trim().isEmpty) {
@@ -191,7 +207,8 @@ class _AddPaymentScreenState
       return;
     }
 
-    final customer = _selectedCustomer;
+    final CustomerModel? customer =
+        _selectedCustomer;
 
     if (customer == null ||
         customer.id.trim().isEmpty) {
@@ -202,7 +219,8 @@ class _AddPaymentScreenState
       return;
     }
 
-    final amount = double.tryParse(
+    final double? amount =
+        double.tryParse(
       _amountController.text
           .trim()
           .replaceAll(',', ''),
@@ -218,7 +236,7 @@ class _AddPaymentScreenState
       return;
     }
 
-    final paymentMethod =
+    final String paymentMethod =
         _paymentMethod.trim();
 
     if (paymentMethod.isEmpty) {
@@ -236,16 +254,14 @@ class _AddPaymentScreenState
     PaymentModel? savedPayment;
 
     try {
-      final now = DateTime.now();
+      final DateTime now = DateTime.now();
 
-      final payment = PaymentModel(
+      final PaymentModel payment =
+          PaymentModel(
         id: '',
-        businessId:
-            business.id.trim(),
-        customerId:
-            customer.id.trim(),
-        customerName:
-            customer.name.trim(),
+        businessId: business.id.trim(),
+        customerId: customer.id.trim(),
+        customerName: customer.name.trim(),
         amount: amount,
         date: _paymentDate,
         paymentMethod: paymentMethod,
@@ -261,13 +277,13 @@ class _AddPaymentScreenState
         payment,
       );
 
-      final balanceBefore =
+      final double balanceBefore =
           await _ledgerService.getCustomerBalance(
         businessId: business.id.trim(),
         customerId: customer.id.trim(),
       );
 
-      final balanceAfter =
+      final double balanceAfter =
           balanceBefore - amount;
 
       await _ledgerService.createTransaction(
@@ -306,10 +322,10 @@ class _AddPaymentScreenState
         try {
           await _paymentRepository.deletePayment(
             businessId: business.id.trim(),
-            paymentId: savedPayment!.id,
+            paymentId: savedPayment.id,
           );
         } catch (_) {
-          // Keep the original error message if rollback also fails.
+          // Keep the original error message.
         }
       }
 
@@ -335,7 +351,8 @@ class _AddPaymentScreenState
     required String reference,
     required String notes,
   }) {
-    final List<String> parts = <String>[];
+    final List<String> parts =
+        <String>[];
 
     if (paymentMethod.trim().isNotEmpty) {
       parts.add(
@@ -359,7 +376,8 @@ class _AddPaymentScreenState
   }
 
   String _cleanError(Object error) {
-    final message = error.toString();
+    final String message =
+        error.toString();
 
     if (message.startsWith('Exception: ')) {
       return message.substring(
@@ -397,10 +415,59 @@ class _AddPaymentScreenState
     required IconData icon,
     String? hint,
   }) {
+    final ThemeData theme =
+        Theme.of(context);
+
     return InputDecoration(
       labelText: label,
       hintText: hint,
       prefixIcon: Icon(icon),
+      filled: true,
+      fillColor:
+          theme.colorScheme.surface,
+      border: OutlineInputBorder(
+        borderRadius:
+            BorderRadius.circular(12),
+        borderSide: BorderSide(
+          color: theme.colorScheme.outline
+              .withValues(alpha: 0.20),
+        ),
+      ),
+      enabledBorder:
+          OutlineInputBorder(
+        borderRadius:
+            BorderRadius.circular(12),
+        borderSide: BorderSide(
+          color: theme.colorScheme.outline
+              .withValues(alpha: 0.20),
+        ),
+      ),
+      focusedBorder:
+          OutlineInputBorder(
+        borderRadius:
+            BorderRadius.circular(12),
+        borderSide: const BorderSide(
+          color: AppColors.primary,
+          width: 1.5,
+        ),
+      ),
+      errorBorder:
+          OutlineInputBorder(
+        borderRadius:
+            BorderRadius.circular(12),
+        borderSide: const BorderSide(
+          color: AppColors.danger,
+        ),
+      ),
+      focusedErrorBorder:
+          OutlineInputBorder(
+        borderRadius:
+            BorderRadius.circular(12),
+        borderSide: const BorderSide(
+          color: AppColors.danger,
+          width: 1.5,
+        ),
+      ),
     );
   }
 
@@ -415,12 +482,14 @@ class _AddPaymentScreenState
         hint: 'Select customer',
       ),
       items: _customers.map(
-        (customer) {
+        (CustomerModel customer) {
           return DropdownMenuItem<
               CustomerModel>(
             value: customer,
             child: Text(
-              customer.name,
+              customer.name.trim().isEmpty
+                  ? 'Unnamed Customer'
+                  : customer.name.trim(),
               overflow:
                   TextOverflow.ellipsis,
             ),
@@ -429,13 +498,13 @@ class _AddPaymentScreenState
       ).toList(),
       onChanged: _isSaving
           ? null
-          : (customer) {
+          : (CustomerModel? customer) {
               setState(() {
                 _selectedCustomer =
                     customer;
               });
             },
-      validator: (value) {
+      validator: (CustomerModel? value) {
         if (value == null) {
           return 'Please select a customer';
         }
@@ -459,7 +528,7 @@ class _AddPaymentScreenState
             .account_balance_wallet_rounded,
       ),
       items: _paymentMethods.map(
-        (method) {
+        (String method) {
           return DropdownMenuItem<String>(
             value: method,
             child: Text(method),
@@ -468,7 +537,7 @@ class _AddPaymentScreenState
       ).toList(),
       onChanged: _isSaving
           ? null
-          : (value) {
+          : (String? value) {
               if (value == null) {
                 return;
               }
@@ -477,7 +546,7 @@ class _AddPaymentScreenState
                 _paymentMethod = value;
               });
             },
-      validator: (value) {
+      validator: (String? value) {
         if (value == null ||
             value.trim().isEmpty) {
           return 'Please select payment method';
@@ -491,7 +560,9 @@ class _AddPaymentScreenState
   Widget _buildDateSelector() {
     return InkWell(
       onTap:
-          _isSaving ? null : _selectPaymentDate,
+          _isSaving
+              ? null
+              : _selectPaymentDate,
       borderRadius:
           BorderRadius.circular(12),
       child: InputDecorator(
@@ -500,10 +571,24 @@ class _AddPaymentScreenState
           icon:
               Icons.calendar_today_rounded,
         ),
-        child: Text(
-          _dateFormat.format(
-            _paymentDate,
-          ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                _dateFormat.format(
+                  _paymentDate,
+                ),
+              ),
+            ),
+            Icon(
+              Icons
+                  .calendar_month_rounded,
+              size: 20,
+              color: Theme.of(context)
+                  .colorScheme
+                  .onSurfaceVariant,
+            ),
+          ],
         ),
       ),
     );
@@ -517,14 +602,17 @@ class _AddPaymentScreenState
           const TextInputType.numberWithOptions(
         decimal: true,
       ),
+      textInputAction:
+          TextInputAction.next,
       decoration: _inputDecoration(
         label: 'Payment Amount',
         icon:
             Icons.currency_rupee_rounded,
         hint: 'Enter amount',
       ),
-      validator: (value) {
-        final amount = double.tryParse(
+      validator: (String? value) {
+        final double? amount =
+            double.tryParse(
           (value ?? '')
               .trim()
               .replaceAll(',', ''),
@@ -538,6 +626,9 @@ class _AddPaymentScreenState
 
         return null;
       },
+      onChanged: (_) {
+        setState(() {});
+      },
     );
   }
 
@@ -549,7 +640,8 @@ class _AddPaymentScreenState
           TextInputAction.next,
       decoration: _inputDecoration(
         label: 'Transaction Reference',
-        icon: Icons.receipt_long_rounded,
+        icon:
+            Icons.receipt_long_rounded,
         hint:
             'Optional reference / transaction ID',
       ),
@@ -563,6 +655,8 @@ class _AddPaymentScreenState
       enabled: !_isSaving,
       maxLines: 4,
       maxLength: 500,
+      textCapitalization:
+          TextCapitalization.sentences,
       decoration: _inputDecoration(
         label: 'Notes',
         icon: Icons.notes_rounded,
@@ -573,12 +667,16 @@ class _AddPaymentScreenState
   }
 
   Widget _buildSummaryCard() {
-    final amount = double.tryParse(
+    final double amount =
+        double.tryParse(
           _amountController.text
               .trim()
               .replaceAll(',', ''),
         ) ??
         0;
+
+    final ThemeData theme =
+        Theme.of(context);
 
     return Card(
       child: Padding(
@@ -593,9 +691,10 @@ class _AddPaymentScreenState
                 Container(
                   width: 42,
                   height: 42,
-                  decoration: BoxDecoration(
+                  decoration:
+                      BoxDecoration(
                     color: AppColors.success
-                        .withOpacity(0.12),
+                        .withValues(alpha: 0.12),
                     borderRadius:
                         BorderRadius.circular(
                       12,
@@ -615,20 +714,27 @@ class _AddPaymentScreenState
                     children: [
                       Text(
                         'Payment Summary',
-                        style: Theme.of(context)
+                        style: theme
                             .textTheme
                             .titleMedium
                             ?.copyWith(
-                              fontWeight:
-                                  FontWeight.w800,
-                            ),
+                          fontWeight:
+                              FontWeight.w800,
+                        ),
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(
+                        height: 2,
+                      ),
                       Text(
                         'Review payment details before saving',
-                        style: Theme.of(context)
+                        style: theme
                             .textTheme
-                            .bodySmall,
+                            .bodySmall
+                            ?.copyWith(
+                          color: theme
+                              .colorScheme
+                              .onSurfaceVariant,
+                        ),
                       ),
                     ],
                   ),
@@ -642,7 +748,8 @@ class _AddPaymentScreenState
                   child: _summaryItem(
                     label: 'Amount',
                     value:
-                        _currencyFormat.format(
+                        _currencyFormat
+                            .format(
                       amount,
                     ),
                   ),
@@ -699,15 +806,19 @@ class _AddPaymentScreenState
     required String label,
     required String value,
   }) {
+    final ThemeData theme =
+        Theme.of(context);
+
     return Container(
       padding:
           const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: theme.colorScheme.surface,
         borderRadius:
             BorderRadius.circular(12),
         border: Border.all(
-          color: AppColors.border,
+          color: theme.colorScheme.outline
+              .withValues(alpha: 0.18),
         ),
       ),
       child: Column(
@@ -716,23 +827,30 @@ class _AddPaymentScreenState
         children: [
           Text(
             label,
-            style: Theme.of(context)
+            style: theme
                 .textTheme
-                .bodySmall,
+                .bodySmall
+                ?.copyWith(
+              color: theme
+                  .colorScheme
+                  .onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 5),
           Text(
-            value,
+            value.isEmpty
+                ? '-'
+                : value,
             maxLines: 2,
             overflow:
                 TextOverflow.ellipsis,
-            style: Theme.of(context)
+            style: theme
                 .textTheme
                 .titleSmall
                 ?.copyWith(
-                  fontWeight:
-                      FontWeight.w800,
-                ),
+              fontWeight:
+                  FontWeight.w800,
+            ),
           ),
         ],
       ),
@@ -748,6 +866,7 @@ class _AddPaymentScreenState
               : () => Navigator.pop(
                     context,
                   ),
+          tooltip: 'Back',
           icon: const Icon(
             Icons.arrow_back_rounded,
           ),
@@ -758,7 +877,7 @@ class _AddPaymentScreenState
           height: 46,
           decoration: BoxDecoration(
             color: AppColors.success
-                .withOpacity(0.12),
+                .withValues(alpha: 0.12),
             borderRadius:
                 BorderRadius.circular(14),
           ),
@@ -779,16 +898,21 @@ class _AddPaymentScreenState
                     .textTheme
                     .headlineSmall
                     ?.copyWith(
-                      fontWeight:
-                          FontWeight.w900,
-                    ),
+                  fontWeight:
+                      FontWeight.w900,
+                ),
               ),
               const SizedBox(height: 3),
               Text(
                 'Record customer payment',
                 style: Theme.of(context)
                     .textTheme
-                    .bodySmall,
+                    .bodySmall
+                    ?.copyWith(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurfaceVariant,
+                ),
               ),
             ],
           ),
@@ -801,9 +925,11 @@ class _AddPaymentScreenState
     return SizedBox(
       width: double.infinity,
       height: 54,
-      child: ElevatedButton.icon(
+      child: FilledButton.icon(
         onPressed:
-            _isSaving ? null : _savePayment,
+            _isSaving
+                ? null
+                : _savePayment,
         icon: _isSaving
             ? const SizedBox(
                 width: 20,
@@ -811,6 +937,7 @@ class _AddPaymentScreenState
                 child:
                     CircularProgressIndicator(
                   strokeWidth: 2.5,
+                  color: Colors.white,
                 ),
               )
             : const Icon(
@@ -837,9 +964,10 @@ class _AddPaymentScreenState
             Container(
               width: 72,
               height: 72,
-              decoration: BoxDecoration(
+              decoration:
+                  BoxDecoration(
                 color: AppColors.danger
-                    .withOpacity(0.12),
+                    .withValues(alpha: 0.12),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -856,9 +984,9 @@ class _AddPaymentScreenState
                   .textTheme
                   .titleLarge
                   ?.copyWith(
-                    fontWeight:
-                        FontWeight.w800,
-                  ),
+                fontWeight:
+                    FontWeight.w800,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
@@ -867,11 +995,19 @@ class _AddPaymentScreenState
               textAlign: TextAlign.center,
               style: Theme.of(context)
                   .textTheme
-                  .bodyMedium,
+                  .bodyMedium
+                  ?.copyWith(
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurfaceVariant,
+              ),
             ),
             const SizedBox(height: 20),
-            ElevatedButton.icon(
-              onPressed: _loadData,
+            FilledButton.icon(
+              onPressed:
+                  _isSaving
+                      ? null
+                      : _loadData,
               icon: const Icon(
                 Icons.refresh_rounded,
               ),
@@ -885,44 +1021,104 @@ class _AddPaymentScreenState
     );
   }
 
+  Widget _buildEmptyCustomerState() {
+    final ThemeData theme =
+        Theme.of(context);
+
+    return Container(
+      padding:
+          const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.warning
+            .withValues(alpha: 0.08),
+        borderRadius:
+            BorderRadius.circular(14),
+        border: Border.all(
+          color: AppColors.warning
+              .withValues(alpha: 0.25),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.info_outline_rounded,
+            color: AppColors.warning,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'No customers or hotels are available. Add a customer first, then record the payment.',
+              style: theme
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(
+                color: theme
+                    .colorScheme
+                    .onSurface,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildForm() {
     return Form(
       key: _formKey,
       child: LayoutBuilder(
         builder: (
-          context,
-          constraints,
+          BuildContext context,
+          BoxConstraints constraints,
         ) {
-          final isWide =
+          final bool isWide =
               constraints.maxWidth >= 900;
 
-          final formContent = Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.stretch,
-            children: [
+          final List<Widget> fields =
+              <Widget>[
+            if (_customers.isEmpty)
+              _buildEmptyCustomerState()
+            else
               _buildCustomerSelector(),
+            const SizedBox(height: 16),
+          ];
+
+          if (isWide) {
+            fields.add(
+              Row(
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child:
+                        _buildAmountField(),
+                  ),
+                  const SizedBox(
+                    width: 16,
+                  ),
+                  Expanded(
+                    child:
+                        _buildPaymentMethodSelector(),
+                  ),
+                ],
+              ),
+            );
+          } else {
+            fields.add(
+              _buildAmountField(),
+            );
+            fields.add(
               const SizedBox(height: 16),
-              if (isWide)
-                Row(
-                  children: [
-                    Expanded(
-                      child:
-                          _buildAmountField(),
-                    ),
-                    const SizedBox(
-                      width: 16,
-                    ),
-                    Expanded(
-                      child:
-                          _buildPaymentMethodSelector(),
-                    ),
-                  ],
-                )
-              else ...[
-                _buildAmountField(),
-                const SizedBox(height: 16),
-                _buildPaymentMethodSelector(),
-              ],
+            );
+            fields.add(
+              _buildPaymentMethodSelector(),
+            );
+          }
+
+          fields.addAll(
+            <Widget>[
               const SizedBox(height: 16),
               _buildDateSelector(),
               const SizedBox(height: 16),
@@ -940,7 +1136,11 @@ class _AddPaymentScreenState
             child: Padding(
               padding:
                   const EdgeInsets.all(20),
-              child: formContent,
+              child: Column(
+                crossAxisAlignment:
+                    CrossAxisAlignment.stretch,
+                children: fields,
+              ),
             ),
           );
         },
@@ -990,4 +1190,3 @@ class _AddPaymentScreenState
     );
   }
 }
-    
