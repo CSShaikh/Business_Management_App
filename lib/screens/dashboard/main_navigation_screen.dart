@@ -1,8 +1,18 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
-import '../profile/profile_screen.dart';
+import '../../models/business_model.dart';
+import '../../repositories/business_repository.dart';
+import '../customers/add_customer_screen.dart';
+import '../expenses/add_expense_screen.dart';
+import '../payments/add_payment_screen.dart';
+import '../products/add_product_screen.dart';
 import '../products/product_screen.dart';
+import '../profile/profile_screen.dart';
+import '../purchases/add_purchase_screen.dart';
+import '../sales/add_sale_screen.dart';
+import '../sales/sales_screen.dart';
 import 'dashboard_home_screen.dart';
 
 class MainNavigationScreen extends StatefulWidget {
@@ -21,6 +31,9 @@ class _MainNavigationScreenState
 
   late final List<Widget> _screens;
 
+  final BusinessRepository _businessRepository =
+      BusinessRepository();
+
   @override
   void initState() {
     super.initState();
@@ -28,21 +41,109 @@ class _MainNavigationScreenState
     _screens = const [
       DashboardHomeScreen(),
       ProductsScreen(),
+      SalesScreen(),
       _ReportsPlaceholderScreen(),
       ProfileScreen(),
     ];
   }
 
   // ============================================================
-  // NAVIGATION
+  // BOTTOM NAVIGATION
   // ============================================================
 
-  void _onNavigationItemTapped(
-    int index,
-  ) {
+  void _onNavigationItemTapped(int index) {
+    if (index < 0 || index >= _screens.length) {
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+
     setState(() {
       _currentIndex = index;
     });
+  }
+
+  void _openHome() {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _currentIndex = 0;
+    });
+  }
+
+  void _openProducts() {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _currentIndex = 1;
+    });
+  }
+
+  void _openSales() {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _currentIndex = 2;
+    });
+  }
+
+  // ============================================================
+  // BUSINESS
+  // ============================================================
+
+  Future<BusinessModel?> _getCurrentBusiness() async {
+    final User? user =
+        FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      _showMessage(
+        'Please login first.',
+        isError: true,
+      );
+      return null;
+    }
+
+    try {
+      final BusinessModel? business =
+          await _businessRepository.getBusinessForOwner(
+        user.uid,
+      );
+
+      if (business == null) {
+        _showMessage(
+          'Business profile not found. Please complete business setup.',
+          isError: true,
+        );
+        return null;
+      }
+
+      final String businessId =
+          business.id.trim();
+
+      if (businessId.isEmpty) {
+        _showMessage(
+          'Business ID is missing.',
+          isError: true,
+        );
+        return null;
+      }
+
+      return business;
+    } catch (e) {
+      _showMessage(
+        'Unable to load business details.',
+        isError: true,
+      );
+      return null;
+    }
   }
 
   // ============================================================
@@ -55,11 +156,10 @@ class _MainNavigationScreenState
       showDragHandle: true,
       backgroundColor:
           Theme.of(context).colorScheme.surface,
-      builder: (context) {
+      builder: (bottomSheetContext) {
         return SafeArea(
           child: Padding(
-            padding:
-                const EdgeInsets.fromLTRB(
+            padding: const EdgeInsets.fromLTRB(
               20,
               8,
               20,
@@ -67,8 +167,7 @@ class _MainNavigationScreenState
             ),
             child: SingleChildScrollView(
               child: Column(
-                mainAxisSize:
-                    MainAxisSize.min,
+                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment:
                     CrossAxisAlignment.start,
                 children: [
@@ -78,14 +177,12 @@ class _MainNavigationScreenState
                         .textTheme
                         .titleLarge
                         ?.copyWith(
-                      fontWeight:
-                          FontWeight.bold,
-                    ),
+                          fontWeight:
+                              FontWeight.bold,
+                        ),
                   ),
 
-                  const SizedBox(
-                    height: 6,
-                  ),
+                  const SizedBox(height: 6),
 
                   Text(
                     'Choose what you want to add.',
@@ -93,15 +190,17 @@ class _MainNavigationScreenState
                         .textTheme
                         .bodyMedium
                         ?.copyWith(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurfaceVariant,
-                    ),
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurfaceVariant,
+                        ),
                   ),
 
-                  const SizedBox(
-                    height: 18,
-                  ),
+                  const SizedBox(height: 18),
+
+                  // --------------------------------------------------------
+                  // ADD SALE
+                  // --------------------------------------------------------
 
                   _AddOptionTile(
                     icon:
@@ -109,18 +208,19 @@ class _MainNavigationScreenState
                     title: 'Add Sale',
                     subtitle:
                         'Create a new customer sale',
-                    color:
-                        AppColors.success,
+                    color: AppColors.success,
                     onTap: () {
                       Navigator.pop(
-                        context,
+                        bottomSheetContext,
                       );
 
-                      _showComingSoon(
-                        'Sale',
-                      );
+                      _openAddSale();
                     },
                   ),
+
+                  // --------------------------------------------------------
+                  // ADD PURCHASE
+                  // --------------------------------------------------------
 
                   _AddOptionTile(
                     icon:
@@ -128,18 +228,19 @@ class _MainNavigationScreenState
                     title: 'Add Purchase',
                     subtitle:
                         'Record a new purchase',
-                    color:
-                        AppColors.info,
+                    color: AppColors.info,
                     onTap: () {
                       Navigator.pop(
-                        context,
+                        bottomSheetContext,
                       );
 
-                      _showComingSoon(
-                        'Purchase',
-                      );
+                      _openAddPurchase();
                     },
                   ),
+
+                  // --------------------------------------------------------
+                  // ADD PAYMENT
+                  // --------------------------------------------------------
 
                   _AddOptionTile(
                     icon:
@@ -147,18 +248,19 @@ class _MainNavigationScreenState
                     title: 'Add Payment',
                     subtitle:
                         'Record customer payment',
-                    color:
-                        AppColors.primary,
+                    color: AppColors.primary,
                     onTap: () {
                       Navigator.pop(
-                        context,
+                        bottomSheetContext,
                       );
 
-                      _showComingSoon(
-                        'Payment',
-                      );
+                      _openAddPayment();
                     },
                   ),
+
+                  // --------------------------------------------------------
+                  // ADD EXPENSE
+                  // --------------------------------------------------------
 
                   _AddOptionTile(
                     icon:
@@ -166,18 +268,19 @@ class _MainNavigationScreenState
                     title: 'Add Expense',
                     subtitle:
                         'Record business expense',
-                    color:
-                        AppColors.warning,
+                    color: AppColors.warning,
                     onTap: () {
                       Navigator.pop(
-                        context,
+                        bottomSheetContext,
                       );
 
-                      _showComingSoon(
-                        'Expense',
-                      );
+                      _openAddExpense();
                     },
                   ),
+
+                  // --------------------------------------------------------
+                  // ADD CUSTOMER
+                  // --------------------------------------------------------
 
                   _AddOptionTile(
                     icon:
@@ -186,18 +289,19 @@ class _MainNavigationScreenState
                         'Add Hotel / Customer',
                     subtitle:
                         'Create a customer profile',
-                    color:
-                        AppColors.secondary,
+                    color: AppColors.secondary,
                     onTap: () {
                       Navigator.pop(
-                        context,
+                        bottomSheetContext,
                       );
 
-                      _showComingSoon(
-                        'Hotel / Customer',
-                      );
+                      _openAddCustomer();
                     },
                   ),
+
+                  // --------------------------------------------------------
+                  // ADD PRODUCT
+                  // --------------------------------------------------------
 
                   _AddOptionTile(
                     icon:
@@ -205,11 +309,10 @@ class _MainNavigationScreenState
                     title: 'Add Product',
                     subtitle:
                         'Create a new product',
-                    color:
-                        AppColors.primaryDark,
+                    color: AppColors.primaryDark,
                     onTap: () {
                       Navigator.pop(
-                        context,
+                        bottomSheetContext,
                       );
 
                       _openAddProduct();
@@ -225,33 +328,202 @@ class _MainNavigationScreenState
   }
 
   // ============================================================
-  // ADD PRODUCT
+  // ADD SALE
   // ============================================================
 
-  void _openAddProduct() {
-    setState(() {
-      _currentIndex = 1;
-    });
+  Future<void> _openAddSale() async {
+    if (!mounted) {
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const AddSaleScreen(),
+      ),
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    _openSales();
   }
 
   // ============================================================
-  // COMING SOON
+  // ADD PURCHASE
   // ============================================================
 
-  void _showComingSoon(
-    String feature,
-  ) {
-    if (!mounted) return;
+  Future<void> _openAddPurchase() async {
+    if (!mounted) {
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const AddPurchaseScreen(),
+      ),
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    _openHome();
+  }
+
+  // ============================================================
+  // ADD PAYMENT
+  // ============================================================
+
+  Future<void> _openAddPayment() async {
+    if (!mounted) {
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const AddPaymentScreen(),
+      ),
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    _openHome();
+  }
+
+  // ============================================================
+  // ADD EXPENSE
+  // ============================================================
+
+  Future<void> _openAddExpense() async {
+    if (!mounted) {
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const AddExpenseScreen(),
+      ),
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    _openHome();
+  }
+
+  // ============================================================
+  // ADD CUSTOMER
+  // ============================================================
+
+  Future<void> _openAddCustomer() async {
+    if (!mounted) {
+      return;
+    }
+
+    final BusinessModel? business =
+        await _getCurrentBusiness();
+
+    if (!mounted || business == null) {
+      return;
+    }
+
+    final String businessId =
+        business.id.trim();
+
+    if (businessId.isEmpty) {
+      _showMessage(
+        'Business ID is missing.',
+        isError: true,
+      );
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AddCustomerScreen(
+          businessId: businessId,
+        ),
+      ),
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    _openHome();
+  }
+
+  // ============================================================
+  // ADD PRODUCT
+  // ============================================================
+
+  Future<void> _openAddProduct() async {
+    if (!mounted) {
+      return;
+    }
+
+    final BusinessModel? business =
+        await _getCurrentBusiness();
+
+    if (!mounted || business == null) {
+      return;
+    }
+
+    final String businessId =
+        business.id.trim();
+
+    if (businessId.isEmpty) {
+      _showMessage(
+        'Business ID is missing.',
+        isError: true,
+      );
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AddProductScreen(
+          businessId: businessId,
+        ),
+      ),
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    _openProducts();
+  }
+
+  // ============================================================
+  // MESSAGE
+  // ============================================================
+
+  void _showMessage(
+    String message, {
+    bool isError = false,
+  }) {
+    if (!mounted) {
+      return;
+    }
 
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(
-            '$feature screen will be added in the next steps.',
-          ),
+          content: Text(message),
           behavior:
               SnackBarBehavior.floating,
+          backgroundColor:
+              isError
+                  ? Theme.of(context)
+                      .colorScheme
+                      .error
+                  : null,
         ),
       );
   }
@@ -295,6 +567,10 @@ class _MainNavigationScreenState
         onDestinationSelected:
             _onNavigationItemTapped,
         destinations: const [
+          // ----------------------------------------------------
+          // HOME
+          // ----------------------------------------------------
+
           NavigationDestination(
             icon: Icon(
               Icons.home_outlined,
@@ -304,6 +580,10 @@ class _MainNavigationScreenState
             ),
             label: 'Home',
           ),
+
+          // ----------------------------------------------------
+          // PRODUCTS
+          // ----------------------------------------------------
 
           NavigationDestination(
             icon: Icon(
@@ -315,6 +595,24 @@ class _MainNavigationScreenState
             label: 'Products',
           ),
 
+          // ----------------------------------------------------
+          // SALES
+          // ----------------------------------------------------
+
+          NavigationDestination(
+            icon: Icon(
+              Icons.point_of_sale_outlined,
+            ),
+            selectedIcon: Icon(
+              Icons.point_of_sale_rounded,
+            ),
+            label: 'Sales',
+          ),
+
+          // ----------------------------------------------------
+          // REPORTS
+          // ----------------------------------------------------
+
           NavigationDestination(
             icon: Icon(
               Icons.bar_chart_outlined,
@@ -324,6 +622,10 @@ class _MainNavigationScreenState
             ),
             label: 'Reports',
           ),
+
+          // ----------------------------------------------------
+          // PROFILE
+          // ----------------------------------------------------
 
           NavigationDestination(
             icon: Icon(
@@ -371,8 +673,7 @@ class _AddOptionTile
       leading: Container(
         width: 44,
         height: 44,
-        decoration:
-            BoxDecoration(
+        decoration: BoxDecoration(
           color: color.withValues(
             alpha: 0.10,
           ),
@@ -418,8 +719,7 @@ class _ReportsPlaceholderScreen
           'Reports',
         ),
       ),
-      body:
-          const _PlaceholderContent(
+      body: const _PlaceholderContent(
         icon:
             Icons.bar_chart_rounded,
         title:

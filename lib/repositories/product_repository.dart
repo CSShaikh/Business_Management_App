@@ -28,20 +28,43 @@ class ProductRepository extends BaseRepository {
   Future<ProductModel> createProduct(
     ProductModel product,
   ) async {
+    final String businessId = product.businessId.trim();
+
+    if (businessId.isEmpty) {
+      throw ArgumentError(
+        'Business ID cannot be empty.',
+      );
+    }
+
+    final String name = product.name.trim();
+
+    if (name.isEmpty) {
+      throw ArgumentError(
+        'Product name cannot be empty.',
+      );
+    }
+
+    _validateNumericValues(
+      purchasePrice: product.purchasePrice,
+      sellingPrice: product.sellingPrice,
+      currentStock: product.currentStock,
+      minimumStock: product.minimumStock,
+    );
+
     final CollectionReference<Map<String, dynamic>> products =
-        _products(product.businessId);
+        _products(businessId);
 
     final DocumentReference<Map<String, dynamic>> document =
         product.id.trim().isEmpty
             ? products.doc()
-            : products.doc(product.id);
+            : products.doc(product.id.trim());
 
     final DateTime now = DateTime.now();
 
     final ProductModel productToSave = ProductModel(
       id: document.id,
-      businessId: product.businessId,
-      name: product.name.trim(),
+      businessId: businessId,
+      name: name,
       category: product.category.trim(),
       unit: product.unit.trim(),
       purchasePrice: product.purchasePrice,
@@ -68,9 +91,17 @@ class ProductRepository extends BaseRepository {
     String businessId,
     String productId,
   ) async {
+    final String normalizedBusinessId = businessId.trim();
+    final String normalizedProductId = productId.trim();
+
+    if (normalizedBusinessId.isEmpty ||
+        normalizedProductId.isEmpty) {
+      return null;
+    }
+
     final DocumentSnapshot<Map<String, dynamic>> snapshot =
-        await _products(businessId)
-            .doc(productId)
+        await _products(normalizedBusinessId)
+            .doc(normalizedProductId)
             .get();
 
     if (!snapshot.exists || snapshot.data() == null) {
@@ -80,7 +111,7 @@ class ProductRepository extends BaseRepository {
     return _fromMap(
       snapshot.data()!,
       snapshot.id,
-      businessId,
+      normalizedBusinessId,
     );
   }
 
@@ -91,8 +122,14 @@ class ProductRepository extends BaseRepository {
   Future<List<ProductModel>> getProducts(
     String businessId,
   ) async {
+    final String normalizedBusinessId = businessId.trim();
+
+    if (normalizedBusinessId.isEmpty) {
+      return [];
+    }
+
     final QuerySnapshot<Map<String, dynamic>> snapshot =
-        await _products(businessId)
+        await _products(normalizedBusinessId)
             .orderBy('name')
             .get();
 
@@ -101,7 +138,7 @@ class ProductRepository extends BaseRepository {
           (document) => _fromMap(
             document.data(),
             document.id,
-            businessId,
+            normalizedBusinessId,
           ),
         )
         .toList();
@@ -114,7 +151,13 @@ class ProductRepository extends BaseRepository {
   Stream<List<ProductModel>> watchProducts(
     String businessId,
   ) {
-    return _products(businessId)
+    final String normalizedBusinessId = businessId.trim();
+
+    if (normalizedBusinessId.isEmpty) {
+      return const Stream<List<ProductModel>>.empty();
+    }
+
+    return _products(normalizedBusinessId)
         .orderBy('name')
         .snapshots()
         .map(
@@ -124,7 +167,7 @@ class ProductRepository extends BaseRepository {
                   (document) => _fromMap(
                     document.data(),
                     document.id,
-                    businessId,
+                    normalizedBusinessId,
                   ),
                 )
                 .toList();
@@ -134,38 +177,94 @@ class ProductRepository extends BaseRepository {
 
   // ---------------------------------------------------------------------------
   // Update Product
+  //
+  // IMPORTANT:
+  // currentStock is intentionally NOT taken from the incoming ProductModel.
+  //
+  // Product editing should update product information such as:
+  // - name
+  // - category
+  // - unit
+  // - purchase price
+  // - selling price
+  // - minimum stock
+  // - active status
+  //
+  // Stock must continue to be changed through purchase, sale, or inventory
+  // stock-adjustment operations.
   // ---------------------------------------------------------------------------
 
   Future<void> updateProduct(
     ProductModel product,
   ) async {
-    if (product.id.trim().isEmpty) {
+    final String businessId = product.businessId.trim();
+    final String productId = product.id.trim();
+    final String name = product.name.trim();
+
+    if (businessId.isEmpty) {
+      throw ArgumentError(
+        'Business ID cannot be empty.',
+      );
+    }
+
+    if (productId.isEmpty) {
       throw ArgumentError(
         'Product ID cannot be empty.',
       );
     }
 
-    final ProductModel productToUpdate =
-        ProductModel(
-      id: product.id,
-      businessId: product.businessId,
-      name: product.name.trim(),
-      category: product.category.trim(),
-      unit: product.unit.trim(),
+    if (name.isEmpty) {
+      throw ArgumentError(
+        'Product name cannot be empty.',
+      );
+    }
+
+    _validateNumericValues(
       purchasePrice: product.purchasePrice,
       sellingPrice: product.sellingPrice,
       currentStock: product.currentStock,
       minimumStock: product.minimumStock,
+    );
+
+    final DocumentReference<Map<String, dynamic>> document =
+        _products(businessId).doc(productId);
+
+    final DocumentSnapshot<Map<String, dynamic>> snapshot =
+        await document.get();
+
+    if (!snapshot.exists || snapshot.data() == null) {
+      throw StateError(
+        'Product not found.',
+      );
+    }
+
+    final ProductModel existingProduct = _fromMap(
+      snapshot.data()!,
+      snapshot.id,
+      businessId,
+    );
+
+    final ProductModel productToUpdate = ProductModel(
+      id: existingProduct.id,
+      businessId: existingProduct.businessId,
+      name: name,
+      category: product.category.trim(),
+      unit: product.unit.trim(),
+      purchasePrice: product.purchasePrice,
+      sellingPrice: product.sellingPrice,
+
+      // Preserve the actual stock stored in Firestore.
+      currentStock: existingProduct.currentStock,
+
+      minimumStock: product.minimumStock,
       isActive: product.isActive,
-      createdAt: product.createdAt,
+      createdAt: existingProduct.createdAt,
       updatedAt: DateTime.now(),
     );
 
-    await _products(product.businessId)
-        .doc(product.id)
-        .update(
-          _toMap(productToUpdate),
-        );
+    await document.update(
+      _toMap(productToUpdate),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -176,14 +275,23 @@ class ProductRepository extends BaseRepository {
     String businessId,
     String productId,
   ) async {
-    if (productId.trim().isEmpty) {
+    final String normalizedBusinessId = businessId.trim();
+    final String normalizedProductId = productId.trim();
+
+    if (normalizedBusinessId.isEmpty) {
+      throw ArgumentError(
+        'Business ID cannot be empty.',
+      );
+    }
+
+    if (normalizedProductId.isEmpty) {
       throw ArgumentError(
         'Product ID cannot be empty.',
       );
     }
 
-    await _products(businessId)
-        .doc(productId)
+    await _products(normalizedBusinessId)
+        .doc(normalizedProductId)
         .delete();
   }
 
@@ -196,8 +304,23 @@ class ProductRepository extends BaseRepository {
     String productId,
     bool isActive,
   ) async {
-    await _products(businessId)
-        .doc(productId)
+    final String normalizedBusinessId = businessId.trim();
+    final String normalizedProductId = productId.trim();
+
+    if (normalizedBusinessId.isEmpty) {
+      throw ArgumentError(
+        'Business ID cannot be empty.',
+      );
+    }
+
+    if (normalizedProductId.isEmpty) {
+      throw ArgumentError(
+        'Product ID cannot be empty.',
+      );
+    }
+
+    await _products(normalizedBusinessId)
+        .doc(normalizedProductId)
         .update({
       'isActive': isActive,
       'updatedAt': Timestamp.fromDate(
@@ -208,6 +331,10 @@ class ProductRepository extends BaseRepository {
 
   // ---------------------------------------------------------------------------
   // Update Stock
+  //
+  // This method is kept for direct stock updates where required.
+  // Normal stock movement should preferably go through StockRepository so
+  // that the corresponding stock transaction is also recorded.
   // ---------------------------------------------------------------------------
 
   Future<void> updateStock(
@@ -215,14 +342,29 @@ class ProductRepository extends BaseRepository {
     String productId,
     double newStock,
   ) async {
-    if (newStock < 0) {
+    final String normalizedBusinessId = businessId.trim();
+    final String normalizedProductId = productId.trim();
+
+    if (normalizedBusinessId.isEmpty) {
       throw ArgumentError(
-        'Stock cannot be negative.',
+        'Business ID cannot be empty.',
       );
     }
 
-    await _products(businessId)
-        .doc(productId)
+    if (normalizedProductId.isEmpty) {
+      throw ArgumentError(
+        'Product ID cannot be empty.',
+      );
+    }
+
+    if (!newStock.isFinite || newStock < 0) {
+      throw ArgumentError(
+        'Stock must be a finite number greater than or equal to zero.',
+      );
+    }
+
+    await _products(normalizedBusinessId)
+        .doc(normalizedProductId)
         .update({
       'currentStock': newStock,
       'updatedAt': Timestamp.fromDate(
@@ -365,16 +507,69 @@ class ProductRepository extends BaseRepository {
   }
 
   // ---------------------------------------------------------------------------
+  // Validate Numeric Product Values
+  // ---------------------------------------------------------------------------
+
+  void _validateNumericValues({
+    required double purchasePrice,
+    required double sellingPrice,
+    required double currentStock,
+    required double minimumStock,
+  }) {
+    if (!purchasePrice.isFinite ||
+        purchasePrice < 0) {
+      throw ArgumentError(
+        'Purchase price must be a finite number greater than or equal to zero.',
+      );
+    }
+
+    if (!sellingPrice.isFinite ||
+        sellingPrice < 0) {
+      throw ArgumentError(
+        'Selling price must be a finite number greater than or equal to zero.',
+      );
+    }
+
+    if (!currentStock.isFinite ||
+        currentStock < 0) {
+      throw ArgumentError(
+        'Current stock must be a finite number greater than or equal to zero.',
+      );
+    }
+
+    if (!minimumStock.isFinite ||
+        minimumStock < 0) {
+      throw ArgumentError(
+        'Minimum stock must be a finite number greater than or equal to zero.',
+      );
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Safe Number Conversion
   // ---------------------------------------------------------------------------
 
-  double _toDouble(dynamic value) {
+  double _toDouble(
+    dynamic value,
+  ) {
     if (value is num) {
-      return value.toDouble();
+      final double result = value.toDouble();
+
+      if (result.isFinite) {
+        return result;
+      }
+
+      return 0;
     }
 
     if (value is String) {
-      return double.tryParse(value) ?? 0;
+      final double? result =
+          double.tryParse(value);
+
+      if (result != null &&
+          result.isFinite) {
+        return result;
+      }
     }
 
     return 0;

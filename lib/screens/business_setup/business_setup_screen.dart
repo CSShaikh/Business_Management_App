@@ -98,11 +98,16 @@ class _BusinessSetupScreenState
     super.dispose();
   }
 
+  // ---------------------------------------------------------------------------
+  // SAVE BUSINESS
+  // ---------------------------------------------------------------------------
+
   Future<void> _saveBusiness() async {
-    // Prevent multiple calls from double tap / submit.
     if (_isLoading) {
       return;
     }
+
+    FocusScope.of(context).unfocus();
 
     if (!_formKey.currentState!.validate()) {
       return;
@@ -114,6 +119,7 @@ class _BusinessSetupScreenState
     if (user == null) {
       _showMessage(
         'User session not found. Please login again.',
+        isError: true,
       );
       return;
     }
@@ -123,8 +129,10 @@ class _BusinessSetupScreenState
     });
 
     try {
-      // First check whether this user already
-      // has a business.
+      // -----------------------------------------------------------------------
+      // Check if business already exists
+      // -----------------------------------------------------------------------
+
       final BusinessModel? existingBusiness =
           await _businessRepository
               .getBusinessForOwner(user.uid);
@@ -138,53 +146,45 @@ class _BusinessSetupScreenState
           'Business profile already exists.',
         );
 
-        setState(() {
-          _isLoading = false;
-        });
-
         return;
       }
 
-      final DateTime now =
-          DateTime.now();
+      // -----------------------------------------------------------------------
+      // Create business model
+      // -----------------------------------------------------------------------
 
-      final String businessId =
-          _businessRepository.firestore
-              .collection('businesses')
-              .doc()
-              .id;
+      final DateTime now = DateTime.now();
 
       final BusinessModel business =
           BusinessModel(
-        id: businessId,
+        id: '',
         ownerId: user.uid,
         businessName:
-            _businessNameController.text
-                .trim(),
+            _businessNameController.text.trim(),
         mobile:
-            _mobileController.text
-                .trim(),
+            _mobileController.text.trim(),
         email:
-            _emailController.text
-                .trim(),
+            _emailController.text.trim(),
         address:
-            _addressController.text
-                .trim(),
+            _addressController.text.trim(),
         gstNumber:
-            _gstController.text
-                .trim(),
+            _gstController.text.trim(),
         ownerName:
-            _ownerNameController.text
-                .trim(),
+            _ownerNameController.text.trim(),
         businessType:
             _businessType,
         createdAt: now,
         updatedAt: now,
       );
 
-      final BusinessModel savedBusiness =
-          await _businessRepository
-              .createBusiness(
+      // -----------------------------------------------------------------------
+      // Save business
+      //
+      // Repository automatically generates the Firestore document ID.
+      // -----------------------------------------------------------------------
+
+      final String savedBusinessId =
+          await _businessRepository.createBusiness(
         business,
       );
 
@@ -192,18 +192,35 @@ class _BusinessSetupScreenState
         return;
       }
 
-      // If another request created the business
-      // at almost the same time, repository returns
-      // the existing business.
-      if (savedBusiness.id != business.id) {
-        _showMessage(
-          'Business profile already exists.',
-        );
-      } else {
-        _showMessage(
-          'Business profile saved successfully.',
-        );
+      // -----------------------------------------------------------------------
+      // Success
+      // -----------------------------------------------------------------------
+
+      _showMessage(
+        'Business profile saved successfully.',
+      );
+
+      // Give SnackBar a short time to appear.
+      await Future.delayed(
+        const Duration(milliseconds: 500),
+      );
+
+      if (!mounted) {
+        return;
       }
+
+      // -----------------------------------------------------------------------
+      // IMPORTANT:
+      //
+      // We don't directly open Dashboard here by importing it.
+      // Instead, return the saved business ID to the previous navigation
+      // flow. This keeps BusinessSetupScreen reusable.
+      // -----------------------------------------------------------------------
+
+      Navigator.pop(
+        context,
+        savedBusinessId,
+      );
     } on FirebaseException catch (e) {
       if (!mounted) {
         return;
@@ -212,6 +229,7 @@ class _BusinessSetupScreenState
       _showMessage(
         e.message ??
             'Could not save business profile.',
+        isError: true,
       );
     } catch (error) {
       if (!mounted) {
@@ -220,6 +238,7 @@ class _BusinessSetupScreenState
 
       _showMessage(
         _getBusinessErrorMessage(error),
+        isError: true,
       );
     } finally {
       if (mounted) {
@@ -230,15 +249,17 @@ class _BusinessSetupScreenState
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // ERROR MESSAGE
+  // ---------------------------------------------------------------------------
+
   String _getBusinessErrorMessage(
     Object error,
   ) {
     final String message =
-        error.toString();
+        error.toString().toLowerCase();
 
-    if (message.contains(
-      'permission-denied',
-    )) {
+    if (message.contains('permission-denied')) {
       return 'You do not have permission to save this business.';
     }
 
@@ -246,18 +267,25 @@ class _BusinessSetupScreenState
       return 'Internet connection check karo.';
     }
 
-    if (message.contains(
-      'unauthenticated',
-    )) {
+    if (message.contains('unauthenticated')) {
       return 'Session expired. Please login again.';
+    }
+
+    if (message.contains('already exists')) {
+      return 'Business profile already exists.';
     }
 
     return 'Something went wrong. Please try again.';
   }
 
+  // ---------------------------------------------------------------------------
+  // SNACKBAR
+  // ---------------------------------------------------------------------------
+
   void _showMessage(
-    String message,
-  ) {
+    String message, {
+    bool isError = false,
+  }) {
     if (!mounted) {
       return;
     }
@@ -267,11 +295,17 @@ class _BusinessSetupScreenState
       ..showSnackBar(
         SnackBar(
           content: Text(message),
-          behavior:
-              SnackBarBehavior.floating,
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: isError
+              ? Colors.red
+              : Colors.green,
         ),
       );
   }
+
+  // ---------------------------------------------------------------------------
+  // UI
+  // ---------------------------------------------------------------------------
 
   @override
   Widget build(
@@ -300,25 +334,30 @@ class _BusinessSetupScreenState
                 key: _formKey,
                 child: Column(
                   crossAxisAlignment:
-                      CrossAxisAlignment
-                          .stretch,
+                      CrossAxisAlignment.stretch,
                   children: [
                     const SizedBox(
                       height: 12,
                     ),
 
+                    // ----------------------------------------------------------------
+                    // ICON
+                    // ----------------------------------------------------------------
+
                     Icon(
-                      Icons
-                          .storefront_rounded,
+                      Icons.storefront_rounded,
                       size: 54,
-                      color: theme
-                          .colorScheme
-                          .primary,
+                      color:
+                          theme.colorScheme.primary,
                     ),
 
                     const SizedBox(
                       height: 18,
                     ),
+
+                    // ----------------------------------------------------------------
+                    // TITLE
+                    // ----------------------------------------------------------------
 
                     Text(
                       'Set up your business',
@@ -355,13 +394,16 @@ class _BusinessSetupScreenState
                       height: 32,
                     ),
 
+                    // ----------------------------------------------------------------
+                    // BUSINESS NAME
+                    // ----------------------------------------------------------------
+
                     TextFormField(
                       controller:
                           _businessNameController,
                       textInputAction:
                           TextInputAction.next,
-                      enabled:
-                          !_isLoading,
+                      enabled: !_isLoading,
                       decoration:
                           const InputDecoration(
                         labelText:
@@ -369,12 +411,10 @@ class _BusinessSetupScreenState
                         hintText:
                             'Enter business name',
                         prefixIcon: Icon(
-                          Icons
-                              .business_outlined,
+                          Icons.business_outlined,
                         ),
                       ),
-                      validator:
-                          (value) {
+                      validator: (value) {
                         if ((value ?? '')
                             .trim()
                             .isEmpty) {
@@ -389,13 +429,16 @@ class _BusinessSetupScreenState
                       height: 18,
                     ),
 
+                    // ----------------------------------------------------------------
+                    // OWNER NAME
+                    // ----------------------------------------------------------------
+
                     TextFormField(
                       controller:
                           _ownerNameController,
                       textInputAction:
                           TextInputAction.next,
-                      enabled:
-                          !_isLoading,
+                      enabled: !_isLoading,
                       decoration:
                           const InputDecoration(
                         labelText:
@@ -403,8 +446,7 @@ class _BusinessSetupScreenState
                         hintText:
                             'Enter owner name',
                         prefixIcon: Icon(
-                          Icons
-                              .person_outline,
+                          Icons.person_outline,
                         ),
                       ),
                     ),
@@ -413,6 +455,10 @@ class _BusinessSetupScreenState
                       height: 18,
                     ),
 
+                    // ----------------------------------------------------------------
+                    // MOBILE
+                    // ----------------------------------------------------------------
+
                     TextFormField(
                       controller:
                           _mobileController,
@@ -420,8 +466,7 @@ class _BusinessSetupScreenState
                           TextInputType.phone,
                       textInputAction:
                           TextInputAction.next,
-                      enabled:
-                          !_isLoading,
+                      enabled: !_isLoading,
                       decoration:
                           const InputDecoration(
                         labelText:
@@ -429,23 +474,24 @@ class _BusinessSetupScreenState
                         hintText:
                             'Enter mobile number',
                         prefixIcon: Icon(
-                          Icons
-                              .phone_outlined,
+                          Icons.phone_outlined,
                         ),
                       ),
-                      validator:
-                          (value) {
-                        final String
-                            mobile =
-                            value?.trim() ??
-                                '';
+                      validator: (value) {
+                        final String mobile =
+                            value?.trim() ?? '';
 
                         if (mobile.isEmpty) {
                           return 'Mobile number is required';
                         }
 
-                        if (mobile.length <
-                            10) {
+                        final String digits =
+                            mobile.replaceAll(
+                          RegExp(r'\D'),
+                          '',
+                        );
+
+                        if (digits.length < 10) {
                           return 'Enter a valid mobile number';
                         }
 
@@ -457,6 +503,10 @@ class _BusinessSetupScreenState
                       height: 18,
                     ),
 
+                    // ----------------------------------------------------------------
+                    // BUSINESS TYPE
+                    // ----------------------------------------------------------------
+
                     DropdownButtonFormField<
                         String>(
                       initialValue:
@@ -466,58 +516,49 @@ class _BusinessSetupScreenState
                         labelText:
                             'Business Type',
                         prefixIcon: Icon(
-                          Icons
-                              .category_outlined,
+                          Icons.category_outlined,
                         ),
                       ),
                       items:
-                          _businessTypes
-                              .map(
-                        (
-                          String type,
-                        ) =>
-                            DropdownMenuItem<
-                                String>(
-                          value: type,
-                          child:
-                              Text(type),
-                        ),
+                          _businessTypes.map(
+                        (String type) {
+                          return DropdownMenuItem<
+                              String>(
+                            value: type,
+                            child: Text(type),
+                          );
+                        },
                       ).toList(),
-                      onChanged:
-                          _isLoading
-                              ? null
-                              : (
-                                  String?
-                                      value,
-                                ) {
-                                  if (value ==
-                                      null) {
-                                    return;
-                                  }
+                      onChanged: _isLoading
+                          ? null
+                          : (String? value) {
+                              if (value == null) {
+                                return;
+                              }
 
-                                  setState(
-                                    () {
-                                      _businessType =
-                                          value;
-                                    },
-                                  );
-                                },
+                              setState(() {
+                                _businessType =
+                                    value;
+                              });
+                            },
                     ),
 
                     const SizedBox(
                       height: 18,
                     ),
 
+                    // ----------------------------------------------------------------
+                    // EMAIL
+                    // ----------------------------------------------------------------
+
                     TextFormField(
                       controller:
                           _emailController,
                       keyboardType:
-                          TextInputType
-                              .emailAddress,
+                          TextInputType.emailAddress,
                       textInputAction:
                           TextInputAction.next,
-                      enabled:
-                          !_isLoading,
+                      enabled: !_isLoading,
                       decoration:
                           const InputDecoration(
                         labelText:
@@ -525,23 +566,17 @@ class _BusinessSetupScreenState
                         hintText:
                             'Optional email',
                         prefixIcon: Icon(
-                          Icons
-                              .email_outlined,
+                          Icons.email_outlined,
                         ),
                       ),
-                      validator:
-                          (value) {
-                        final String
-                            email =
-                            value?.trim() ??
-                                '';
+                      validator: (value) {
+                        final String email =
+                            value?.trim() ?? '';
 
-                        if (email
-                                .isNotEmpty &&
-                            !email
-                                .contains(
-                              '@',
-                            )) {
+                        if (email.isNotEmpty &&
+                            !RegExp(
+                              r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                            ).hasMatch(email)) {
                           return 'Enter a valid email';
                         }
 
@@ -553,16 +588,19 @@ class _BusinessSetupScreenState
                       height: 18,
                     ),
 
+                    // ----------------------------------------------------------------
+                    // GST
+                    // ----------------------------------------------------------------
+
                     TextFormField(
                       controller:
                           _gstController,
                       textInputAction:
                           TextInputAction.next,
                       textCapitalization:
-                          TextCapitalization
-                              .characters,
-                      enabled:
-                          !_isLoading,
+                          TextCapitalization.characters,
+                      enabled: !_isLoading,
+                      maxLength: 15,
                       decoration:
                           const InputDecoration(
                         labelText:
@@ -570,8 +608,7 @@ class _BusinessSetupScreenState
                         hintText:
                             'Optional GST number',
                         prefixIcon: Icon(
-                          Icons
-                              .receipt_long_outlined,
+                          Icons.receipt_long_outlined,
                         ),
                       ),
                     ),
@@ -580,15 +617,17 @@ class _BusinessSetupScreenState
                       height: 18,
                     ),
 
+                    // ----------------------------------------------------------------
+                    // ADDRESS
+                    // ----------------------------------------------------------------
+
                     TextFormField(
                       controller:
                           _addressController,
                       maxLines: 3,
                       textInputAction:
-                          TextInputAction
-                              .newline,
-                      enabled:
-                          !_isLoading,
+                          TextInputAction.newline,
+                      enabled: !_isLoading,
                       decoration:
                           const InputDecoration(
                         labelText:
@@ -596,11 +635,9 @@ class _BusinessSetupScreenState
                         hintText:
                             'Enter complete address',
                         prefixIcon: Icon(
-                          Icons
-                              .location_on_outlined,
+                          Icons.location_on_outlined,
                         ),
-                        alignLabelWithHint:
-                            true,
+                        alignLabelWithHint: true,
                       ),
                     ),
 
@@ -608,29 +645,30 @@ class _BusinessSetupScreenState
                       height: 30,
                     ),
 
+                    // ----------------------------------------------------------------
+                    // SAVE BUTTON
+                    // ----------------------------------------------------------------
+
                     SizedBox(
                       height: 54,
                       child:
                           FilledButton.icon(
-                        onPressed:
-                            _isLoading
-                                ? null
-                                : _saveBusiness,
+                        onPressed: _isLoading
+                            ? null
+                            : _saveBusiness,
                         icon: _isLoading
                             ? const SizedBox(
                                 width: 20,
                                 height: 20,
                                 child:
                                     CircularProgressIndicator(
-                                  strokeWidth:
-                                      2,
+                                  strokeWidth: 2,
                                   color:
                                       Colors.white,
                                 ),
                               )
                             : const Icon(
-                                Icons
-                                    .check_rounded,
+                                Icons.check_rounded,
                               ),
                         label: Text(
                           _isLoading

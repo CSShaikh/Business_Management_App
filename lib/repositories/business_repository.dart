@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/business_model.dart';
 import 'base_repository.dart';
@@ -8,62 +9,75 @@ class BusinessRepository extends BaseRepository {
     super.firestore,
   });
 
-  CollectionReference<Map<String, dynamic>> get _businesses =>
-      firestore.collection('businesses');
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  DocumentReference<Map<String, dynamic>> _businessDocument(
-    String businessId,
-  ) {
-    return _businesses.doc(businessId);
+  CollectionReference<Map<String, dynamic>> get _businesses {
+    return firestore.collection('businesses');
   }
 
-  /// Creates a new business.
-  ///
-  /// This method first checks whether the owner already has a business.
-  /// If a business already exists, it returns that existing business
-  /// instead of creating another duplicate business.
-  Future<BusinessModel> createBusiness(
-    BusinessModel business,
-  ) async {
-    final BusinessModel? existingBusiness =
-        await getBusinessForOwner(business.ownerId);
+  // ---------------------------------------------------------------------------
+  // CREATE BUSINESS
+  // ---------------------------------------------------------------------------
+
+  Future<String> createBusiness(BusinessModel business) async {
+    final existingBusiness = await getBusinessForOwner(
+      business.ownerId,
+    );
 
     if (existingBusiness != null) {
-      return existingBusiness;
+      throw Exception(
+        'A business profile already exists for this account.',
+      );
     }
 
-    await _businessDocument(business.id).set({
-      'id': business.id,
-      'ownerId': business.ownerId,
-      'businessName': business.businessName,
-      'mobile': business.mobile,
-      'email': business.email,
-      'address': business.address,
-      'gstNumber': business.gstNumber,
-      'ownerName': business.ownerName,
-      'businessType': business.businessType,
-      'logoUrl': business.logoUrl,
-      'createdAt': Timestamp.fromDate(business.createdAt),
-      'updatedAt': Timestamp.fromDate(business.updatedAt),
-    });
+    final document = _businesses.doc();
 
-    return business;
+    final businessWithId = BusinessModel(
+      id: document.id,
+      ownerId: business.ownerId,
+      businessName: business.businessName,
+      mobile: business.mobile,
+      email: business.email,
+      address: business.address,
+      gstNumber: business.gstNumber,
+      ownerName: business.ownerName,
+      businessType: business.businessType,
+      logoUrl: business.logoUrl,
+      createdAt: business.createdAt,
+      updatedAt: business.updatedAt,
+    );
+
+    await document.set(
+      _toMap(businessWithId),
+    );
+
+    return document.id;
   }
+
+  // ---------------------------------------------------------------------------
+  // GET BUSINESS BY ID
+  // ---------------------------------------------------------------------------
 
   Future<BusinessModel?> getBusiness(
     String businessId,
   ) async {
-    final snapshot = await _businessDocument(businessId).get();
+    final snapshot = await _businesses
+        .doc(businessId)
+        .get();
 
     if (!snapshot.exists || snapshot.data() == null) {
       return null;
     }
 
     return _fromMap(
-      snapshot.data()!,
       snapshot.id,
+      snapshot.data()!,
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // GET BUSINESS FOR OWNER
+  // ---------------------------------------------------------------------------
 
   Future<BusinessModel?> getBusinessForOwner(
     String ownerId,
@@ -83,15 +97,113 @@ class BusinessRepository extends BaseRepository {
     final document = snapshot.docs.first;
 
     return _fromMap(
-      document.data(),
       document.id,
+      document.data(),
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // GET BUSINESS FOR CURRENT LOGGED-IN USER
+  // ---------------------------------------------------------------------------
+
+  Future<BusinessModel?> getBusinessForCurrentUser() async {
+    final User? user = _auth.currentUser;
+
+    if (user == null) {
+      return null;
+    }
+
+    return getBusinessForOwner(
+      user.uid,
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // WATCH BUSINESS
+  // ---------------------------------------------------------------------------
+
+  Stream<BusinessModel?> watchBusiness(
+    String businessId,
+  ) {
+    return _businesses
+        .doc(businessId)
+        .snapshots()
+        .map((snapshot) {
+      if (!snapshot.exists || snapshot.data() == null) {
+        return null;
+      }
+
+      return _fromMap(
+        snapshot.id,
+        snapshot.data()!,
+      );
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // UPDATE BUSINESS
+  // ---------------------------------------------------------------------------
 
   Future<void> updateBusiness(
     BusinessModel business,
   ) async {
-    await _businessDocument(business.id).update({
+    final updatedBusiness = BusinessModel(
+      id: business.id,
+      ownerId: business.ownerId,
+      businessName: business.businessName,
+      mobile: business.mobile,
+      email: business.email,
+      address: business.address,
+      gstNumber: business.gstNumber,
+      ownerName: business.ownerName,
+      businessType: business.businessType,
+      logoUrl: business.logoUrl,
+      createdAt: business.createdAt,
+      updatedAt: DateTime.now(),
+    );
+
+    await _businesses
+        .doc(business.id)
+        .update(
+          _toMap(updatedBusiness),
+        );
+  }
+
+  // ---------------------------------------------------------------------------
+  // DELETE BUSINESS
+  // ---------------------------------------------------------------------------
+
+  Future<void> deleteBusiness(
+    String businessId,
+  ) async {
+    await _businesses
+        .doc(businessId)
+        .delete();
+  }
+
+  // ---------------------------------------------------------------------------
+  // CHECK BUSINESS EXISTS
+  // ---------------------------------------------------------------------------
+
+  Future<bool> hasBusiness(
+    String ownerId,
+  ) async {
+    final business = await getBusinessForOwner(
+      ownerId,
+    );
+
+    return business != null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // FIRESTORE MAP
+  // ---------------------------------------------------------------------------
+
+  Map<String, dynamic> _toMap(
+    BusinessModel business,
+  ) {
+    return {
+      'ownerId': business.ownerId,
       'businessName': business.businessName,
       'mobile': business.mobile,
       'email': business.email,
@@ -100,50 +212,42 @@ class BusinessRepository extends BaseRepository {
       'ownerName': business.ownerName,
       'businessType': business.businessType,
       'logoUrl': business.logoUrl,
-      'updatedAt': Timestamp.fromDate(
-        DateTime.now(),
+      'createdAt': Timestamp.fromDate(
+        business.createdAt,
       ),
-    });
+      'updatedAt': Timestamp.fromDate(
+        business.updatedAt,
+      ),
+    };
   }
 
-  Future<void> deleteBusiness(
-    String businessId,
-  ) async {
-    await _businessDocument(businessId).delete();
-  }
-
-  Stream<BusinessModel?> watchBusiness(
-    String businessId,
-  ) {
-    return _businessDocument(businessId)
-        .snapshots()
-        .map((snapshot) {
-      if (!snapshot.exists || snapshot.data() == null) {
-        return null;
-      }
-
-      return _fromMap(
-        snapshot.data()!,
-        snapshot.id,
-      );
-    });
-  }
+  // ---------------------------------------------------------------------------
+  // FIRESTORE -> MODEL
+  // ---------------------------------------------------------------------------
 
   BusinessModel _fromMap(
+    String id,
     Map<String, dynamic> data,
-    String documentId,
   ) {
     return BusinessModel(
-      id: data['id'] as String? ?? documentId,
-      ownerId: data['ownerId'] as String? ?? '',
-      businessName: data['businessName'] as String? ?? '',
-      mobile: data['mobile'] as String? ?? '',
-      email: data['email'] as String? ?? '',
-      address: data['address'] as String? ?? '',
-      gstNumber: data['gstNumber'] as String? ?? '',
-      ownerName: data['ownerName'] as String? ?? '',
-      businessType: data['businessType'] as String? ?? '',
-      logoUrl: data['logoUrl'] as String? ?? '',
+      id: id,
+      ownerId: data['ownerId']?.toString() ?? '',
+      businessName:
+          data['businessName']?.toString() ?? '',
+      mobile:
+          data['mobile']?.toString() ?? '',
+      email:
+          data['email']?.toString() ?? '',
+      address:
+          data['address']?.toString() ?? '',
+      gstNumber:
+          data['gstNumber']?.toString() ?? '',
+      ownerName:
+          data['ownerName']?.toString() ?? '',
+      businessType:
+          data['businessType']?.toString() ?? '',
+      logoUrl:
+          data['logoUrl']?.toString() ?? '',
       createdAt: dateFromFirestore(
         data['createdAt'],
       ),
