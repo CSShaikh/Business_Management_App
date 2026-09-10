@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/business_model.dart';
 import '../../repositories/business_repository.dart';
+import '../dashboard/dashboard_screen.dart';
 
 class BusinessSetupScreen extends StatefulWidget {
   const BusinessSetupScreen({
@@ -14,8 +15,7 @@ class BusinessSetupScreen extends StatefulWidget {
       _BusinessSetupScreenState();
 }
 
-class _BusinessSetupScreenState
-    extends State<BusinessSetupScreen> {
+class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
   final GlobalKey<FormState> _formKey =
       GlobalKey<FormState>();
 
@@ -57,7 +57,6 @@ class _BusinessSetupScreenState
   @override
   void initState() {
     super.initState();
-
     _loadCurrentUserData();
   }
 
@@ -98,9 +97,9 @@ class _BusinessSetupScreenState
     super.dispose();
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // SAVE BUSINESS
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   Future<void> _saveBusiness() async {
     if (_isLoading) {
@@ -130,12 +129,13 @@ class _BusinessSetupScreenState
 
     try {
       // -----------------------------------------------------------------------
-      // Check if business already exists
+      // Check whether a business already exists for this account.
       // -----------------------------------------------------------------------
 
       final BusinessModel? existingBusiness =
-          await _businessRepository
-              .getBusinessForOwner(user.uid);
+          await _businessRepository.getBusinessForOwner(
+        user.uid,
+      );
 
       if (!mounted) {
         return;
@@ -146,11 +146,30 @@ class _BusinessSetupScreenState
           'Business profile already exists.',
         );
 
+        await Future.delayed(
+          const Duration(milliseconds: 500),
+        );
+
+        if (!mounted) {
+          return;
+        }
+
+        // The user already has a business, so continue to Dashboard.
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const DashboardScreen(),
+          ),
+          (route) => false,
+        );
+
         return;
       }
 
       // -----------------------------------------------------------------------
-      // Create business model
+      // Create business model.
+      //
+      // The repository generates the actual Firestore document ID.
       // -----------------------------------------------------------------------
 
       final DateTime now = DateTime.now();
@@ -178,9 +197,7 @@ class _BusinessSetupScreenState
       );
 
       // -----------------------------------------------------------------------
-      // Save business
-      //
-      // Repository automatically generates the Firestore document ID.
+      // Save business.
       // -----------------------------------------------------------------------
 
       final String savedBusinessId =
@@ -192,15 +209,23 @@ class _BusinessSetupScreenState
         return;
       }
 
+      if (savedBusinessId.trim().isEmpty) {
+        _showMessage(
+          'Business was not created correctly.',
+          isError: true,
+        );
+        return;
+      }
+
       // -----------------------------------------------------------------------
-      // Success
+      // Success message.
       // -----------------------------------------------------------------------
 
       _showMessage(
         'Business profile saved successfully.',
       );
 
-      // Give SnackBar a short time to appear.
+      // Give the success message a short time to appear.
       await Future.delayed(
         const Duration(milliseconds: 500),
       );
@@ -212,14 +237,18 @@ class _BusinessSetupScreenState
       // -----------------------------------------------------------------------
       // IMPORTANT:
       //
-      // We don't directly open Dashboard here by importing it.
-      // Instead, return the saved business ID to the previous navigation
-      // flow. This keeps BusinessSetupScreen reusable.
+      // Login/Register -> Business Setup -> Dashboard
+      //
+      // Remove the complete authentication/setup stack so pressing back
+      // from Dashboard does not return the user to Business Setup/Login.
       // -----------------------------------------------------------------------
 
-      Navigator.pop(
+      Navigator.pushAndRemoveUntil(
         context,
-        savedBusinessId,
+        MaterialPageRoute(
+          builder: (_) => const DashboardScreen(),
+        ),
+        (route) => false,
       );
     } on FirebaseException catch (e) {
       if (!mounted) {
@@ -227,8 +256,7 @@ class _BusinessSetupScreenState
       }
 
       _showMessage(
-        e.message ??
-            'Could not save business profile.',
+        _getFirebaseErrorMessage(e),
         isError: true,
       );
     } catch (error) {
@@ -249,9 +277,38 @@ class _BusinessSetupScreenState
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // ERROR MESSAGE
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // FIREBASE ERROR MESSAGE
+  // ===========================================================================
+
+  String _getFirebaseErrorMessage(
+    FirebaseException error,
+  ) {
+    switch (error.code) {
+      case 'permission-denied':
+        return 'You do not have permission to save this business.';
+
+      case 'unauthenticated':
+        return 'Session expired. Please login again.';
+
+      case 'network-request-failed':
+        return 'Internet connection check karo.';
+
+      case 'unavailable':
+        return 'Server temporarily unavailable. Please try again.';
+
+      case 'already-exists':
+        return 'Business profile already exists.';
+
+      default:
+        return error.message ??
+            'Could not save business profile.';
+    }
+  }
+
+  // ===========================================================================
+  // GENERAL ERROR MESSAGE
+  // ===========================================================================
 
   String _getBusinessErrorMessage(
     Object error,
@@ -278,9 +335,9 @@ class _BusinessSetupScreenState
     return 'Something went wrong. Please try again.';
   }
 
-  // ---------------------------------------------------------------------------
-  // SNACKBAR
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // MESSAGE
+  // ===========================================================================
 
   void _showMessage(
     String message, {
@@ -297,20 +354,18 @@ class _BusinessSetupScreenState
           content: Text(message),
           behavior: SnackBarBehavior.floating,
           backgroundColor: isError
-              ? Colors.red
-              : Colors.green,
+              ? Theme.of(context).colorScheme.error
+              : null,
         ),
       );
   }
 
-  // ---------------------------------------------------------------------------
-  // UI
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // BUILD
+  // ===========================================================================
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     final ThemeData theme =
         Theme.of(context);
 
@@ -340,9 +395,9 @@ class _BusinessSetupScreenState
                       height: 12,
                     ),
 
-                    // ----------------------------------------------------------------
+                    // -----------------------------------------------------------------
                     // ICON
-                    // ----------------------------------------------------------------
+                    // -----------------------------------------------------------------
 
                     Icon(
                       Icons.storefront_rounded,
@@ -355,9 +410,9 @@ class _BusinessSetupScreenState
                       height: 18,
                     ),
 
-                    // ----------------------------------------------------------------
+                    // -----------------------------------------------------------------
                     // TITLE
-                    // ----------------------------------------------------------------
+                    // -----------------------------------------------------------------
 
                     Text(
                       'Set up your business',
@@ -394,9 +449,9 @@ class _BusinessSetupScreenState
                       height: 32,
                     ),
 
-                    // ----------------------------------------------------------------
+                    // -----------------------------------------------------------------
                     // BUSINESS NAME
-                    // ----------------------------------------------------------------
+                    // -----------------------------------------------------------------
 
                     TextFormField(
                       controller:
@@ -411,7 +466,8 @@ class _BusinessSetupScreenState
                         hintText:
                             'Enter business name',
                         prefixIcon: Icon(
-                          Icons.business_outlined,
+                          Icons
+                              .business_outlined,
                         ),
                       ),
                       validator: (value) {
@@ -429,9 +485,9 @@ class _BusinessSetupScreenState
                       height: 18,
                     ),
 
-                    // ----------------------------------------------------------------
+                    // -----------------------------------------------------------------
                     // OWNER NAME
-                    // ----------------------------------------------------------------
+                    // -----------------------------------------------------------------
 
                     TextFormField(
                       controller:
@@ -446,7 +502,8 @@ class _BusinessSetupScreenState
                         hintText:
                             'Enter owner name',
                         prefixIcon: Icon(
-                          Icons.person_outline,
+                          Icons
+                              .person_outline,
                         ),
                       ),
                     ),
@@ -455,9 +512,9 @@ class _BusinessSetupScreenState
                       height: 18,
                     ),
 
-                    // ----------------------------------------------------------------
+                    // -----------------------------------------------------------------
                     // MOBILE
-                    // ----------------------------------------------------------------
+                    // -----------------------------------------------------------------
 
                     TextFormField(
                       controller:
@@ -485,13 +542,8 @@ class _BusinessSetupScreenState
                           return 'Mobile number is required';
                         }
 
-                        final String digits =
-                            mobile.replaceAll(
-                          RegExp(r'\D'),
-                          '',
-                        );
-
-                        if (digits.length < 10) {
+                        if (mobile.length <
+                            10) {
                           return 'Enter a valid mobile number';
                         }
 
@@ -503,9 +555,9 @@ class _BusinessSetupScreenState
                       height: 18,
                     ),
 
-                    // ----------------------------------------------------------------
+                    // -----------------------------------------------------------------
                     // BUSINESS TYPE
-                    // ----------------------------------------------------------------
+                    // -----------------------------------------------------------------
 
                     DropdownButtonFormField<
                         String>(
@@ -516,23 +568,29 @@ class _BusinessSetupScreenState
                         labelText:
                             'Business Type',
                         prefixIcon: Icon(
-                          Icons.category_outlined,
+                          Icons
+                              .category_outlined,
                         ),
                       ),
                       items:
-                          _businessTypes.map(
-                        (String type) {
-                          return DropdownMenuItem<
-                              String>(
-                            value: type,
-                            child: Text(type),
-                          );
-                        },
+                          _businessTypes
+                              .map(
+                        (
+                          String type,
+                        ) =>
+                            DropdownMenuItem<
+                                String>(
+                          value: type,
+                          child: Text(type),
+                        ),
                       ).toList(),
                       onChanged: _isLoading
                           ? null
-                          : (String? value) {
-                              if (value == null) {
+                          : (
+                              String? value,
+                            ) {
+                              if (value ==
+                                  null) {
                                 return;
                               }
 
@@ -547,15 +605,16 @@ class _BusinessSetupScreenState
                       height: 18,
                     ),
 
-                    // ----------------------------------------------------------------
+                    // -----------------------------------------------------------------
                     // EMAIL
-                    // ----------------------------------------------------------------
+                    // -----------------------------------------------------------------
 
                     TextFormField(
                       controller:
                           _emailController,
                       keyboardType:
-                          TextInputType.emailAddress,
+                          TextInputType
+                              .emailAddress,
                       textInputAction:
                           TextInputAction.next,
                       enabled: !_isLoading,
@@ -573,10 +632,16 @@ class _BusinessSetupScreenState
                         final String email =
                             value?.trim() ?? '';
 
-                        if (email.isNotEmpty &&
-                            !RegExp(
-                              r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
-                            ).hasMatch(email)) {
+                        if (email.isEmpty) {
+                          return null;
+                        }
+
+                        final bool validEmail =
+                            RegExp(
+                          r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                        ).hasMatch(email);
+
+                        if (!validEmail) {
                           return 'Enter a valid email';
                         }
 
@@ -588,9 +653,9 @@ class _BusinessSetupScreenState
                       height: 18,
                     ),
 
-                    // ----------------------------------------------------------------
+                    // -----------------------------------------------------------------
                     // GST
-                    // ----------------------------------------------------------------
+                    // -----------------------------------------------------------------
 
                     TextFormField(
                       controller:
@@ -598,9 +663,9 @@ class _BusinessSetupScreenState
                       textInputAction:
                           TextInputAction.next,
                       textCapitalization:
-                          TextCapitalization.characters,
+                          TextCapitalization
+                              .characters,
                       enabled: !_isLoading,
-                      maxLength: 15,
                       decoration:
                           const InputDecoration(
                         labelText:
@@ -608,7 +673,8 @@ class _BusinessSetupScreenState
                         hintText:
                             'Optional GST number',
                         prefixIcon: Icon(
-                          Icons.receipt_long_outlined,
+                          Icons
+                              .receipt_long_outlined,
                         ),
                       ),
                     ),
@@ -617,9 +683,9 @@ class _BusinessSetupScreenState
                       height: 18,
                     ),
 
-                    // ----------------------------------------------------------------
+                    // -----------------------------------------------------------------
                     // ADDRESS
-                    // ----------------------------------------------------------------
+                    // -----------------------------------------------------------------
 
                     TextFormField(
                       controller:
@@ -635,9 +701,11 @@ class _BusinessSetupScreenState
                         hintText:
                             'Enter complete address',
                         prefixIcon: Icon(
-                          Icons.location_on_outlined,
+                          Icons
+                              .location_on_outlined,
                         ),
-                        alignLabelWithHint: true,
+                        alignLabelWithHint:
+                            true,
                       ),
                     ),
 
@@ -645,17 +713,18 @@ class _BusinessSetupScreenState
                       height: 30,
                     ),
 
-                    // ----------------------------------------------------------------
+                    // -----------------------------------------------------------------
                     // SAVE BUTTON
-                    // ----------------------------------------------------------------
+                    // -----------------------------------------------------------------
 
                     SizedBox(
                       height: 54,
                       child:
                           FilledButton.icon(
-                        onPressed: _isLoading
-                            ? null
-                            : _saveBusiness,
+                        onPressed:
+                            _isLoading
+                                ? null
+                                : _saveBusiness,
                         icon: _isLoading
                             ? const SizedBox(
                                 width: 20,
@@ -668,7 +737,8 @@ class _BusinessSetupScreenState
                                 ),
                               )
                             : const Icon(
-                                Icons.check_rounded,
+                                Icons
+                                    .check_rounded,
                               ),
                         label: Text(
                           _isLoading
@@ -681,6 +751,10 @@ class _BusinessSetupScreenState
                     const SizedBox(
                       height: 16,
                     ),
+
+                    // -----------------------------------------------------------------
+                    // REQUIRED NOTE
+                    // -----------------------------------------------------------------
 
                     Text(
                       '* Required fields',

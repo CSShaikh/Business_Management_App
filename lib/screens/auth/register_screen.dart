@@ -1,8 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-import '../business_setup/business_setup_screen.dart';
 import '../../repositories/auth_repository.dart';
+import '../business_setup/business_setup_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({
@@ -14,28 +14,22 @@ class RegisterScreen extends StatefulWidget {
       _RegisterScreenState();
 }
 
-class _RegisterScreenState
-    extends State<RegisterScreen> {
-  final AuthRepository _authRepository =
-      AuthRepository();
+class _RegisterScreenState extends State<RegisterScreen> {
+  final AuthRepository _authRepository = AuthRepository();
 
   final GlobalKey<FormState> _formKey =
       GlobalKey<FormState>();
 
-  final TextEditingController
-      _businessNameController =
+  final TextEditingController _businessNameController =
       TextEditingController();
 
-  final TextEditingController
-      _emailController =
+  final TextEditingController _emailController =
       TextEditingController();
 
-  final TextEditingController
-      _passwordController =
+  final TextEditingController _passwordController =
       TextEditingController();
 
-  final TextEditingController
-      _confirmPasswordController =
+  final TextEditingController _confirmPasswordController =
       TextEditingController();
 
   bool _obscurePassword = true;
@@ -53,15 +47,17 @@ class _RegisterScreenState
   }
 
   Future<void> _register() async {
-    // Prevent double tap / multiple registration requests.
     if (_isLoading) {
       return;
     }
 
-    // Validate form first.
-    if (!_formKey.currentState!.validate()) {
+    final FormState? form = _formKey.currentState;
+
+    if (form == null || !form.validate()) {
       return;
     }
+
+    FocusScope.of(context).unfocus();
 
     final String businessName =
         _businessNameController.text.trim();
@@ -77,7 +73,6 @@ class _RegisterScreenState
     });
 
     try {
-      // Create Firebase Authentication account.
       final UserCredential credential =
           await _authRepository.register(
         email: email,
@@ -92,13 +87,12 @@ class _RegisterScreenState
         );
       }
 
-      // Store business name as Firebase display name.
-      await user.updateDisplayName(
+      // Keep the business name available in the
+      // Firebase user profile until BusinessSetup
+      // saves the complete business document.
+      await _authRepository.updateDisplayName(
         businessName,
       );
-
-      // Refresh Firebase user data.
-      await user.reload();
 
       if (!mounted) {
         return;
@@ -111,16 +105,13 @@ class _RegisterScreenState
             content: Text(
               'Account created successfully.',
             ),
-            behavior:
-                SnackBarBehavior.floating,
+            behavior: SnackBarBehavior.floating,
             duration: Duration(
               milliseconds: 900,
             ),
           ),
         );
 
-      // Give Firebase a moment to finish
-      // updating the user session.
       await Future.delayed(
         const Duration(
           milliseconds: 400,
@@ -131,8 +122,10 @@ class _RegisterScreenState
         return;
       }
 
-      // Registration is complete.
-      // Business details will be saved only
+      // Registration only creates the Firebase
+      // Authentication account.
+      //
+      // Complete business information is created
       // from BusinessSetupScreen.
       Navigator.pushAndRemoveUntil(
         context,
@@ -190,6 +183,9 @@ class _RegisterScreenState
         case 'too-many-requests':
           return 'Bahut zyada attempts ho gaye. Thodi der baad try karo.';
 
+        case 'user-disabled':
+          return 'Ye account disabled hai.';
+
         default:
           return error.message ??
               'Registration failed. Please try again.';
@@ -226,10 +222,65 @@ class _RegisterScreenState
       ..showSnackBar(
         SnackBar(
           content: Text(message),
-          behavior:
-              SnackBarBehavior.floating,
+          behavior: SnackBarBehavior.floating,
         ),
       );
+  }
+
+  String? _validateEmail(
+    String? value,
+  ) {
+    final String email =
+        value?.trim() ?? '';
+
+    if (email.isEmpty) {
+      return 'Email is required';
+    }
+
+    final RegExp emailRegex = RegExp(
+      r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+    );
+
+    if (!emailRegex.hasMatch(email)) {
+      return 'Enter a valid email';
+    }
+
+    return null;
+  }
+
+  String? _validatePassword(
+    String? value,
+  ) {
+    final String password =
+        value ?? '';
+
+    if (password.isEmpty) {
+      return 'Password is required';
+    }
+
+    if (password.length < 6) {
+      return 'Minimum 6 characters required';
+    }
+
+    return null;
+  }
+
+  String? _validateConfirmPassword(
+    String? value,
+  ) {
+    final String confirmPassword =
+        value ?? '';
+
+    if (confirmPassword.isEmpty) {
+      return 'Please confirm password';
+    }
+
+    if (confirmPassword !=
+        _passwordController.text) {
+      return 'Passwords do not match';
+    }
+
+    return null;
   }
 
   @override
@@ -248,26 +299,37 @@ class _RegisterScreenState
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding:
-                const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(24),
             child: ConstrainedBox(
-              constraints:
-                  const BoxConstraints(
+              constraints: const BoxConstraints(
                 maxWidth: 430,
               ),
               child: Form(
                 key: _formKey,
                 child: Column(
                   crossAxisAlignment:
-                      CrossAxisAlignment
-                          .stretch,
+                      CrossAxisAlignment.stretch,
                   children: [
                     const SizedBox(
                       height: 12,
                     ),
 
+                    Icon(
+                      Icons
+                          .person_add_alt_1_rounded,
+                      size: 54,
+                      color:
+                          theme.colorScheme.primary,
+                    ),
+
+                    const SizedBox(
+                      height: 18,
+                    ),
+
                     Text(
                       'Create your account',
+                      textAlign:
+                          TextAlign.center,
                       style: theme
                           .textTheme
                           .headlineSmall
@@ -283,6 +345,8 @@ class _RegisterScreenState
 
                     Text(
                       'Start managing your business easily.',
+                      textAlign:
+                          TextAlign.center,
                       style: theme
                           .textTheme
                           .bodyLarge
@@ -304,10 +368,12 @@ class _RegisterScreenState
                           TextInputAction.next,
                       enabled:
                           !_isLoading,
+                      textCapitalization:
+                          TextCapitalization.words,
                       decoration:
                           const InputDecoration(
                         labelText:
-                            'Business Name',
+                            'Business Name *',
                         hintText:
                             'Enter business name',
                         prefixIcon: Icon(
@@ -315,8 +381,7 @@ class _RegisterScreenState
                               .business_outlined,
                         ),
                       ),
-                      validator:
-                          (value) {
+                      validator: (value) {
                         if ((value ?? '')
                             .trim()
                             .isEmpty) {
@@ -335,16 +400,18 @@ class _RegisterScreenState
                       controller:
                           _emailController,
                       keyboardType:
-                          TextInputType
-                              .emailAddress,
+                          TextInputType.emailAddress,
                       textInputAction:
                           TextInputAction.next,
                       enabled:
                           !_isLoading,
                       autocorrect: false,
+                      autofillHints: const [
+                        AutofillHints.email,
+                      ],
                       decoration:
                           const InputDecoration(
-                        labelText: 'Email',
+                        labelText: 'Email *',
                         hintText:
                             'Enter email address',
                         prefixIcon: Icon(
@@ -353,27 +420,7 @@ class _RegisterScreenState
                         ),
                       ),
                       validator:
-                          (value) {
-                        final String
-                            email =
-                            value?.trim() ??
-                                '';
-
-                        if (email.isEmpty) {
-                          return 'Email is required';
-                        }
-
-                        if (!email.contains(
-                              '@',
-                            ) ||
-                            !email.contains(
-                              '.',
-                            )) {
-                          return 'Enter a valid email';
-                        }
-
-                        return null;
-                      },
+                          _validateEmail,
                     ),
 
                     const SizedBox(
@@ -389,19 +436,25 @@ class _RegisterScreenState
                           TextInputAction.next,
                       enabled:
                           !_isLoading,
+                      autofillHints: const [
+                        AutofillHints.newPassword,
+                      ],
                       decoration:
                           InputDecoration(
                         labelText:
-                            'Password',
+                            'Password *',
                         hintText:
                             'Minimum 6 characters',
                         prefixIcon:
                             const Icon(
-                          Icons
-                              .lock_outline,
+                          Icons.lock_outline,
                         ),
                         suffixIcon:
                             IconButton(
+                          tooltip:
+                              _obscurePassword
+                                  ? 'Show password'
+                                  : 'Hide password',
                           onPressed:
                               _isLoading
                                   ? null
@@ -423,20 +476,7 @@ class _RegisterScreenState
                         ),
                       ),
                       validator:
-                          (value) {
-                        if ((value ?? '')
-                            .isEmpty) {
-                          return 'Password is required';
-                        }
-
-                        if ((value ?? '')
-                                .length <
-                            6) {
-                          return 'Minimum 6 characters required';
-                        }
-
-                        return null;
-                      },
+                          _validatePassword,
                     ),
 
                     const SizedBox(
@@ -452,8 +492,10 @@ class _RegisterScreenState
                           TextInputAction.done,
                       enabled:
                           !_isLoading,
-                      onFieldSubmitted:
-                          (_) {
+                      autofillHints: const [
+                        AutofillHints.newPassword,
+                      ],
+                      onFieldSubmitted: (_) {
                         if (!_isLoading) {
                           _register();
                         }
@@ -461,7 +503,7 @@ class _RegisterScreenState
                       decoration:
                           InputDecoration(
                         labelText:
-                            'Confirm Password',
+                            'Confirm Password *',
                         hintText:
                             'Enter password again',
                         prefixIcon:
@@ -471,6 +513,10 @@ class _RegisterScreenState
                         ),
                         suffixIcon:
                             IconButton(
+                          tooltip:
+                              _obscureConfirmPassword
+                                  ? 'Show password'
+                                  : 'Hide password',
                           onPressed:
                               _isLoading
                                   ? null
@@ -492,20 +538,7 @@ class _RegisterScreenState
                         ),
                       ),
                       validator:
-                          (value) {
-                        if ((value ?? '')
-                            .isEmpty) {
-                          return 'Please confirm password';
-                        }
-
-                        if (value !=
-                            _passwordController
-                                .text) {
-                          return 'Passwords do not match';
-                        }
-
-                        return null;
-                      },
+                          _validateConfirmPassword,
                     ),
 
                     const SizedBox(
@@ -525,8 +558,7 @@ class _RegisterScreenState
                                 height: 22,
                                 child:
                                     CircularProgressIndicator(
-                                  strokeWidth:
-                                      2.5,
+                                  strokeWidth: 2.5,
                                   color:
                                       Colors.white,
                                 ),
@@ -543,8 +575,7 @@ class _RegisterScreenState
 
                     Row(
                       mainAxisAlignment:
-                          MainAxisAlignment
-                              .center,
+                          MainAxisAlignment.center,
                       children: [
                         const Text(
                           'Already have an account? ',
@@ -558,8 +589,7 @@ class _RegisterScreenState
                                         context,
                                       );
                                     },
-                          child:
-                              const Text(
+                          child: const Text(
                             'Login',
                           ),
                         ),

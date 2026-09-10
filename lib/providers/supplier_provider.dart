@@ -3,16 +3,23 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../models/supplier_model.dart';
+import '../repositories/purchase_repository.dart';
 import '../repositories/supplier_repository.dart';
 
 class SupplierProvider extends ChangeNotifier {
   SupplierProvider({
     SupplierRepository? repository,
-  }) : _repository = repository ?? SupplierRepository();
+    PurchaseRepository? purchaseRepository,
+  })  : _repository =
+            repository ?? SupplierRepository(),
+        _purchaseRepository =
+            purchaseRepository ?? PurchaseRepository();
 
   final SupplierRepository _repository;
+  final PurchaseRepository _purchaseRepository;
 
-  List<SupplierModel> _suppliers = [];
+  List<SupplierModel> _suppliers =
+      <SupplierModel>[];
 
   bool _isLoading = false;
   bool _isSaving = false;
@@ -21,35 +28,46 @@ class SupplierProvider extends ChangeNotifier {
 
   String _businessId = '';
 
-  StreamSubscription<List<SupplierModel>>? _suppliersSubscription;
+  StreamSubscription<List<SupplierModel>>?
+      _suppliersSubscription;
 
   // ---------------------------------------------------------------------------
   // GETTERS
   // ---------------------------------------------------------------------------
 
   List<SupplierModel> get suppliers =>
-      List<SupplierModel>.unmodifiable(_suppliers);
+      List<SupplierModel>.unmodifiable(
+        _suppliers,
+      );
 
   bool get isLoading => _isLoading;
 
   bool get isSaving => _isSaving;
 
-  bool get hasSuppliers => _suppliers.isNotEmpty;
+  bool get hasSuppliers =>
+      _suppliers.isNotEmpty;
 
-  bool get isEmpty => _suppliers.isEmpty;
+  bool get isEmpty =>
+      _suppliers.isEmpty;
 
-  String? get errorMessage => _errorMessage;
+  String? get errorMessage =>
+      _errorMessage;
 
-  String get businessId => _businessId;
+  String get businessId =>
+      _businessId;
 
-  int get supplierCount => _suppliers.length;
+  int get supplierCount =>
+      _suppliers.length;
 
   // ---------------------------------------------------------------------------
   // BUSINESS ID
   // ---------------------------------------------------------------------------
 
-  void setBusinessId(String businessId) {
-    final String id = businessId.trim();
+  void setBusinessId(
+    String businessId,
+  ) {
+    final String id =
+        businessId.trim();
 
     if (_businessId == id) {
       return;
@@ -66,14 +84,19 @@ class SupplierProvider extends ChangeNotifier {
   // LOAD SUPPLIERS
   // ---------------------------------------------------------------------------
 
-  Future<List<SupplierModel>> loadSuppliers({
+  Future<List<SupplierModel>>
+      loadSuppliers({
     String? businessId,
   }) async {
-    final String id = (businessId ?? _businessId).trim();
+    final String id =
+        (businessId ?? _businessId)
+            .trim();
 
     if (id.isEmpty) {
-      _setError('Business ID is required.');
-      return [];
+      _setError(
+        'Business ID is required.',
+      );
+      return <SupplierModel>[];
     }
 
     _businessId = id;
@@ -82,21 +105,30 @@ class SupplierProvider extends ChangeNotifier {
     _clearError();
 
     try {
-      final List<SupplierModel> suppliers =
-          await _repository.getSuppliers(id);
+      final List<SupplierModel>
+          suppliers =
+          await _repository.getSuppliers(
+        id,
+      );
 
-      _suppliers = suppliers;
+      _suppliers =
+          List<SupplierModel>.from(
+        suppliers,
+      );
 
-      return List<SupplierModel>.unmodifiable(_suppliers);
+      return List<SupplierModel>.unmodifiable(
+        _suppliers,
+      );
     } catch (error) {
       _setError(
         _formatError(
           error,
-          fallback: 'Unable to load suppliers.',
+          fallback:
+              'Unable to load suppliers.',
         ),
       );
 
-      return [];
+      return <SupplierModel>[];
     } finally {
       _setLoading(false);
     }
@@ -109,10 +141,14 @@ class SupplierProvider extends ChangeNotifier {
   void watchSuppliers({
     String? businessId,
   }) {
-    final String id = (businessId ?? _businessId).trim();
+    final String id =
+        (businessId ?? _businessId)
+            .trim();
 
     if (id.isEmpty) {
-      _setError('Business ID is required.');
+      _setError(
+        'Business ID is required.',
+      );
       return;
     }
 
@@ -122,18 +158,26 @@ class SupplierProvider extends ChangeNotifier {
 
     _clearError();
 
-    _suppliersSubscription = _repository
-        .watchSuppliers(id)
-        .listen(
-      (List<SupplierModel> suppliers) {
-        _suppliers = List<SupplierModel>.from(suppliers);
+    _suppliersSubscription =
+        _repository.watchSuppliers(
+      id,
+    ).listen(
+      (
+        List<SupplierModel> suppliers,
+      ) {
+        _suppliers =
+            List<SupplierModel>.from(
+          suppliers,
+        );
+
         notifyListeners();
       },
       onError: (Object error) {
         _setError(
           _formatError(
             error,
-            fallback: 'Unable to listen for supplier updates.',
+            fallback:
+                'Unable to listen for supplier updates.',
           ),
         );
       },
@@ -147,10 +191,14 @@ class SupplierProvider extends ChangeNotifier {
   Future<void> loadAndWatchSuppliers({
     String? businessId,
   }) async {
-    final String id = (businessId ?? _businessId).trim();
+    final String id =
+        (businessId ?? _businessId)
+            .trim();
 
     if (id.isEmpty) {
-      _setError('Business ID is required.');
+      _setError(
+        'Business ID is required.',
+      );
       return;
     }
 
@@ -171,18 +219,28 @@ class SupplierProvider extends ChangeNotifier {
     String? businessId,
     required String supplierId,
   }) async {
-    final String id = (businessId ?? _businessId).trim();
-    final String supplierIdValue = supplierId.trim();
+    final String id =
+        (businessId ?? _businessId)
+            .trim();
+
+    final String supplierIdValue =
+        supplierId.trim();
 
     if (id.isEmpty) {
-      _setError('Business ID is required.');
+      _setError(
+        'Business ID is required.',
+      );
       return null;
     }
 
     if (supplierIdValue.isEmpty) {
-      _setError('Supplier ID is required.');
+      _setError(
+        'Supplier ID is required.',
+      );
       return null;
     }
+
+    _clearError();
 
     try {
       return await _repository.getSupplier(
@@ -193,7 +251,8 @@ class SupplierProvider extends ChangeNotifier {
       _setError(
         _formatError(
           error,
-          fallback: 'Unable to load supplier.',
+          fallback:
+              'Unable to load supplier.',
         ),
       );
 
@@ -208,20 +267,27 @@ class SupplierProvider extends ChangeNotifier {
   Future<bool> createSupplier(
     SupplierModel supplier,
   ) async {
-    final String businessId = supplier.businessId.trim();
+    final String businessId =
+        supplier.businessId.trim();
 
     if (businessId.isEmpty) {
-      _setError('Business ID is required.');
+      _setError(
+        'Business ID is required.',
+      );
       return false;
     }
 
     if (supplier.id.trim().isEmpty) {
-      _setError('Supplier ID is required.');
+      _setError(
+        'Supplier ID is required.',
+      );
       return false;
     }
 
     if (supplier.name.trim().isEmpty) {
-      _setError('Supplier name is required.');
+      _setError(
+        'Supplier name is required.',
+      );
       return false;
     }
 
@@ -231,16 +297,21 @@ class SupplierProvider extends ChangeNotifier {
     _clearError();
 
     try {
-      await _repository.createSupplier(supplier);
+      await _repository.createSupplier(
+        supplier,
+      );
 
-      _upsertLocalSupplier(supplier);
+      _upsertLocalSupplier(
+        supplier,
+      );
 
       return true;
     } catch (error) {
       _setError(
         _formatError(
           error,
-          fallback: 'Unable to create supplier.',
+          fallback:
+              'Unable to create supplier.',
         ),
       );
 
@@ -257,21 +328,30 @@ class SupplierProvider extends ChangeNotifier {
   Future<bool> updateSupplier(
     SupplierModel supplier,
   ) async {
-    final String businessId = supplier.businessId.trim();
-    final String supplierId = supplier.id.trim();
+    final String businessId =
+        supplier.businessId.trim();
+
+    final String supplierId =
+        supplier.id.trim();
 
     if (businessId.isEmpty) {
-      _setError('Business ID is required.');
+      _setError(
+        'Business ID is required.',
+      );
       return false;
     }
 
     if (supplierId.isEmpty) {
-      _setError('Supplier ID is required.');
+      _setError(
+        'Supplier ID is required.',
+      );
       return false;
     }
 
     if (supplier.name.trim().isEmpty) {
-      _setError('Supplier name is required.');
+      _setError(
+        'Supplier name is required.',
+      );
       return false;
     }
 
@@ -281,16 +361,21 @@ class SupplierProvider extends ChangeNotifier {
     _clearError();
 
     try {
-      await _repository.updateSupplier(supplier);
+      await _repository.updateSupplier(
+        supplier,
+      );
 
-      _upsertLocalSupplier(supplier);
+      _upsertLocalSupplier(
+        supplier,
+      );
 
       return true;
     } catch (error) {
       _setError(
         _formatError(
           error,
-          fallback: 'Unable to update supplier.',
+          fallback:
+              'Unable to update supplier.',
         ),
       );
 
@@ -302,22 +387,34 @@ class SupplierProvider extends ChangeNotifier {
 
   // ---------------------------------------------------------------------------
   // DELETE SUPPLIER
+  //
+  // Financial/data-integrity protection:
+  // A supplier cannot be deleted when historical purchases
+  // are linked to that supplier.
   // ---------------------------------------------------------------------------
 
   Future<bool> deleteSupplier({
     String? businessId,
     required String supplierId,
   }) async {
-    final String id = (businessId ?? _businessId).trim();
-    final String supplierIdValue = supplierId.trim();
+    final String id =
+        (businessId ?? _businessId)
+            .trim();
+
+    final String supplierIdValue =
+        supplierId.trim();
 
     if (id.isEmpty) {
-      _setError('Business ID is required.');
+      _setError(
+        'Business ID is required.',
+      );
       return false;
     }
 
     if (supplierIdValue.isEmpty) {
-      _setError('Supplier ID is required.');
+      _setError(
+        'Supplier ID is required.',
+      );
       return false;
     }
 
@@ -327,6 +424,30 @@ class SupplierProvider extends ChangeNotifier {
     _clearError();
 
     try {
+      /*
+       * Before deleting a supplier, check whether
+       * any purchase records reference this supplier.
+       *
+       * Historical purchases must remain connected
+       * to their original supplier.
+       */
+      final List<dynamic> supplierPurchases =
+          await _purchaseRepository
+              .getSupplierPurchases(
+        businessId: id,
+        supplierId: supplierIdValue,
+      );
+
+      if (supplierPurchases.isNotEmpty) {
+        _setError(
+          'This supplier cannot be deleted because '
+          'purchase history is linked to this supplier. '
+          'Keep the supplier to preserve financial records.',
+        );
+
+        return false;
+      }
+
       await _repository.deleteSupplier(
         businessId: id,
         supplierId: supplierIdValue,
@@ -334,7 +455,8 @@ class SupplierProvider extends ChangeNotifier {
 
       _suppliers.removeWhere(
         (SupplierModel supplier) =>
-            supplier.id.trim() == supplierIdValue,
+            supplier.id.trim() ==
+            supplierIdValue,
       );
 
       notifyListeners();
@@ -344,7 +466,8 @@ class SupplierProvider extends ChangeNotifier {
       _setError(
         _formatError(
           error,
-          fallback: 'Unable to delete supplier.',
+          fallback:
+              'Unable to delete supplier.',
         ),
       );
 
@@ -376,7 +499,8 @@ class SupplierProvider extends ChangeNotifier {
             supplier.name.toLowerCase();
 
         final String contactPerson =
-            supplier.contactPerson.toLowerCase();
+            supplier.contactPerson
+                .toLowerCase();
 
         final String mobile =
             supplier.mobile.toLowerCase();
@@ -390,12 +514,24 @@ class SupplierProvider extends ChangeNotifier {
         final String gstNumber =
             supplier.gstNumber.toLowerCase();
 
-        return name.contains(normalizedQuery) ||
-            contactPerson.contains(normalizedQuery) ||
-            mobile.contains(normalizedQuery) ||
-            email.contains(normalizedQuery) ||
-            address.contains(normalizedQuery) ||
-            gstNumber.contains(normalizedQuery);
+        return name.contains(
+              normalizedQuery,
+            ) ||
+            contactPerson.contains(
+              normalizedQuery,
+            ) ||
+            mobile.contains(
+              normalizedQuery,
+            ) ||
+            email.contains(
+              normalizedQuery,
+            ) ||
+            address.contains(
+              normalizedQuery,
+            ) ||
+            gstNumber.contains(
+              normalizedQuery,
+            );
       },
     ).toList();
   }
@@ -407,13 +543,17 @@ class SupplierProvider extends ChangeNotifier {
   SupplierModel? findSupplierById(
     String supplierId,
   ) {
-    final String id = supplierId.trim();
+    final String id =
+        supplierId.trim();
 
     if (id.isEmpty) {
       return null;
     }
 
-    for (final SupplierModel supplier in _suppliers) {
+    for (
+      final SupplierModel supplier
+      in _suppliers
+    ) {
       if (supplier.id.trim() == id) {
         return supplier;
       }
@@ -436,8 +576,13 @@ class SupplierProvider extends ChangeNotifier {
       return null;
     }
 
-    for (final SupplierModel supplier in _suppliers) {
-      if (supplier.mobile.trim().toLowerCase() ==
+    for (
+      final SupplierModel supplier
+      in _suppliers
+    ) {
+      if (supplier.mobile
+              .trim()
+              .toLowerCase() ==
           normalizedMobile) {
         return supplier;
       }
@@ -460,8 +605,13 @@ class SupplierProvider extends ChangeNotifier {
       return null;
     }
 
-    for (final SupplierModel supplier in _suppliers) {
-      if (supplier.email.trim().toLowerCase() ==
+    for (
+      final SupplierModel supplier
+      in _suppliers
+    ) {
+      if (supplier.email
+              .trim()
+              .toLowerCase() ==
           normalizedEmail) {
         return supplier;
       }
@@ -475,7 +625,9 @@ class SupplierProvider extends ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   void clearSuppliers() {
-    _suppliers = [];
+    _suppliers =
+        <SupplierModel>[];
+
     notifyListeners();
   }
 
@@ -483,7 +635,8 @@ class SupplierProvider extends ChangeNotifier {
   // REFRESH
   // ---------------------------------------------------------------------------
 
-  Future<List<SupplierModel>> refresh() {
+  Future<List<SupplierModel>>
+      refresh() {
     return loadSuppliers();
   }
 
@@ -501,6 +654,7 @@ class SupplierProvider extends ChangeNotifier {
     }
 
     _errorMessage = null;
+
     notifyListeners();
   }
 
@@ -508,6 +662,7 @@ class SupplierProvider extends ChangeNotifier {
     String message,
   ) {
     _errorMessage = message;
+
     notifyListeners();
   }
 
@@ -523,6 +678,7 @@ class SupplierProvider extends ChangeNotifier {
     }
 
     _isLoading = value;
+
     notifyListeners();
   }
 
@@ -538,6 +694,7 @@ class SupplierProvider extends ChangeNotifier {
     }
 
     _isSaving = value;
+
     notifyListeners();
   }
 
@@ -558,11 +715,12 @@ class SupplierProvider extends ChangeNotifier {
     final int existingIndex =
         _suppliers.indexWhere(
       (SupplierModel item) =>
-          item.id.trim() == supplierId,
+          item.id.trim() ==
+          supplierId,
     );
 
     if (existingIndex == -1) {
-      _suppliers = [
+      _suppliers = <SupplierModel>[
         ..._suppliers,
         supplier,
       ];
@@ -572,14 +730,20 @@ class SupplierProvider extends ChangeNotifier {
         _suppliers,
       );
 
-      updated[existingIndex] = supplier;
+      updated[existingIndex] =
+          supplier;
 
       _suppliers = updated;
     }
 
     _suppliers.sort(
-      (SupplierModel a, SupplierModel b) =>
-          a.name.toLowerCase().compareTo(
+      (
+        SupplierModel a,
+        SupplierModel b,
+      ) =>
+          a.name
+              .toLowerCase()
+              .compareTo(
                 b.name.toLowerCase(),
               ),
     );
@@ -602,7 +766,9 @@ class SupplierProvider extends ChangeNotifier {
       return fallback;
     }
 
-    if (message.startsWith('Exception:')) {
+    if (message.startsWith(
+      'Exception:',
+    )) {
       final String cleaned =
           message.replaceFirst(
         'Exception:',

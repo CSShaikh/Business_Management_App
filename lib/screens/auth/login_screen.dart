@@ -3,11 +3,9 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../repositories/auth_repository.dart';
-import '../../repositories/business_repository.dart';
 import '../business_setup/business_setup_screen.dart';
 import 'forgot_password_screen.dart';
 import 'register_screen.dart';
-import '../dashboard/dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({
@@ -23,9 +21,6 @@ class _LoginScreenState
     extends State<LoginScreen> {
   final AuthRepository _authRepository =
       AuthRepository();
-
-  final BusinessRepository _businessRepository =
-      BusinessRepository();
 
   final GlobalKey<FormState> _formKey =
       GlobalKey<FormState>();
@@ -48,14 +43,22 @@ class _LoginScreenState
     super.dispose();
   }
 
+  // ===========================================================================
+  // LOGIN
+  // ===========================================================================
+
   Future<void> _login() async {
-    // Prevent double tap / multiple login requests.
     if (_isLoading) {
       return;
     }
 
-    // Validate form.
-    if (!_formKey.currentState!.validate()) {
+    FocusScope.of(context).unfocus();
+
+    final FormState? form =
+        _formKey.currentState;
+
+    if (form == null ||
+        !form.validate()) {
       return;
     }
 
@@ -70,10 +73,19 @@ class _LoginScreenState
     });
 
     try {
-      // --------------------------------------------------
-      // STEP 1:
-      // Firebase Authentication login
-      // --------------------------------------------------
+      // -----------------------------------------------------------------------
+      // Firebase Authentication only.
+      //
+      // IMPORTANT:
+      // Do NOT query Firestore here to decide whether a business exists.
+      //
+      // Earlier implementation was doing:
+      // getBusinessForOwner(user.uid)
+      //
+      // That could trigger Firestore permission-denied before the authenticated
+      // business flow was fully established.
+      // -----------------------------------------------------------------------
+
       await _authRepository.login(
         email: email,
         password: password,
@@ -88,41 +100,13 @@ class _LoginScreenState
         );
       }
 
-      // --------------------------------------------------
-      // STEP 2:
-      // Check whether this user already has
-      // a business profile.
-      // --------------------------------------------------
-      final business =
-          await _businessRepository
-              .getBusinessForOwner(
-        user.uid,
-      );
-
       if (!mounted) {
         return;
       }
 
-      // --------------------------------------------------
-      // STEP 3:
-      // Show success message
-      // --------------------------------------------------
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(
-            content: Text(
-              business == null
-                  ? 'Login successful. Please complete your business setup.'
-                  : 'Login successful.',
-            ),
-            behavior:
-                SnackBarBehavior.floating,
-            duration: const Duration(
-              milliseconds: 1000,
-            ),
-          ),
-        );
+      _showMessage(
+        'Login successful.',
+      );
 
       await Future.delayed(
         const Duration(
@@ -134,42 +118,35 @@ class _LoginScreenState
         return;
       }
 
-      // --------------------------------------------------
-      // STEP 4:
-      // Decide next screen.
-      // --------------------------------------------------
-      if (business == null) {
-  Navigator.pushAndRemoveUntil(
-    context,
-    MaterialPageRoute(
-      builder: (_) => const BusinessSetupScreen(),
-    ),
-    (route) => false,
-  );
-} else {
-  Navigator.pushAndRemoveUntil(
-    context,
-    MaterialPageRoute(
-      builder: (_) => const DashboardScreen(),
-    ),
-    (route) => false,
-  );
-}
-    } on FirebaseAuthException catch (e) {
-      if (!mounted) {
-        return;
-      }
+      // -----------------------------------------------------------------------
+      // Current intended authentication flow:
+      //
+      // Login
+      //   ↓
+      // Business Setup
+      //   ↓
+      // Dashboard routing will be connected after the auth/business flow
+      // is finalized.
+      // -----------------------------------------------------------------------
 
-      _showMessage(
-        _getAuthErrorMessage(e),
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+          builder: (_) =>
+              const BusinessSetupScreen(),
+        ),
+        (route) => false,
       );
-    } on FirebaseException catch (e) {
+    } on FirebaseAuthException catch (error) {
       if (!mounted) {
         return;
       }
 
       _showMessage(
-        _getFirestoreErrorMessage(e),
+        _getAuthErrorMessage(
+          error,
+        ),
+        isError: true,
       );
     } catch (error) {
       if (!mounted) {
@@ -177,7 +154,10 @@ class _LoginScreenState
       }
 
       _showMessage(
-        _getLoginErrorMessage(error),
+        _getLoginErrorMessage(
+          error,
+        ),
+        isError: true,
       );
     } finally {
       if (mounted) {
@@ -187,6 +167,10 @@ class _LoginScreenState
       }
     }
   }
+
+  // ===========================================================================
+  // AUTH ERROR HANDLING
+  // ===========================================================================
 
   String _getAuthErrorMessage(
     FirebaseAuthException error,
@@ -213,31 +197,12 @@ class _LoginScreenState
       case 'network-request-failed':
         return 'Internet connection check karo.';
 
+      case 'operation-not-allowed':
+        return 'Email/password authentication Firebase mein enabled nahi hai.';
+
       default:
         return error.message ??
             'Login failed. Please try again.';
-    }
-  }
-
-  String _getFirestoreErrorMessage(
-    FirebaseException error,
-  ) {
-    switch (error.code) {
-      case 'permission-denied':
-        return 'Business data access permission denied. Firestore Rules check karo.';
-
-      case 'unavailable':
-        return 'Firestore temporarily unavailable. Internet connection check karo.';
-
-      case 'failed-precondition':
-        return 'Firestore configuration problem hai.';
-
-      case 'unauthenticated':
-        return 'Session expired. Please login again.';
-
-      default:
-        return error.message ??
-            'Could not check business profile.';
     }
   }
 
@@ -254,17 +219,22 @@ class _LoginScreenState
     }
 
     if (message.contains(
-      'permission-denied',
+      'session',
     )) {
-      return 'You do not have permission to access this data.';
+      return 'User session create nahi ho paya. Please login again.';
     }
 
     return 'Something went wrong. Please try again.';
   }
 
+  // ===========================================================================
+  // MESSAGE
+  // ===========================================================================
+
   void _showMessage(
-    String message,
-  ) {
+    String message, {
+    bool isError = false,
+  }) {
     if (!mounted) {
       return;
     }
@@ -273,12 +243,21 @@ class _LoginScreenState
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(message),
+          content: Text(
+            message,
+          ),
           behavior:
               SnackBarBehavior.floating,
+          backgroundColor: isError
+              ? AppColors.danger
+              : AppColors.success,
         ),
       );
   }
+
+  // ===========================================================================
+  // BUILD
+  // ===========================================================================
 
   @override
   Widget build(
@@ -309,9 +288,10 @@ class _LoginScreenState
                       height: 20,
                     ),
 
-                    // --------------------------------------------------
+                    // ---------------------------------------------------------
                     // APP ICON
-                    // --------------------------------------------------
+                    // ---------------------------------------------------------
+
                     Container(
                       width: 78,
                       height: 78,
@@ -340,6 +320,10 @@ class _LoginScreenState
                     const SizedBox(
                       height: 24,
                     ),
+
+                    // ---------------------------------------------------------
+                    // TITLE
+                    // ---------------------------------------------------------
 
                     Text(
                       'Welcome Back',
@@ -376,9 +360,10 @@ class _LoginScreenState
                       height: 34,
                     ),
 
-                    // --------------------------------------------------
+                    // ---------------------------------------------------------
                     // EMAIL
-                    // --------------------------------------------------
+                    // ---------------------------------------------------------
+
                     TextFormField(
                       controller:
                           _emailController,
@@ -390,6 +375,8 @@ class _LoginScreenState
                       enabled:
                           !_isLoading,
                       autocorrect: false,
+                      textCapitalization:
+                          TextCapitalization.none,
                       decoration:
                           const InputDecoration(
                         labelText: 'Email',
@@ -401,7 +388,7 @@ class _LoginScreenState
                         ),
                       ),
                       validator:
-                          (value) {
+                          (String? value) {
                         final String
                             email =
                             value?.trim() ??
@@ -411,12 +398,16 @@ class _LoginScreenState
                           return 'Email is required';
                         }
 
-                        if (!email.contains(
-                              '@',
-                            ) ||
-                            !email.contains(
-                              '.',
-                            )) {
+                        final RegExp
+                            emailPattern =
+                            RegExp(
+                          r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                        );
+
+                        if (!emailPattern
+                            .hasMatch(
+                          email,
+                        )) {
                           return 'Enter a valid email';
                         }
 
@@ -428,9 +419,10 @@ class _LoginScreenState
                       height: 18,
                     ),
 
-                    // --------------------------------------------------
+                    // ---------------------------------------------------------
                     // PASSWORD
-                    // --------------------------------------------------
+                    // ---------------------------------------------------------
+
                     TextFormField(
                       controller:
                           _passwordController,
@@ -480,7 +472,7 @@ class _LoginScreenState
                         ),
                       ),
                       validator:
-                          (value) {
+                          (String? value) {
                         if ((value ?? '')
                             .isEmpty) {
                           return 'Password is required';
@@ -494,9 +486,10 @@ class _LoginScreenState
                       height: 10,
                     ),
 
-                    // --------------------------------------------------
+                    // ---------------------------------------------------------
                     // REMEMBER ME + FORGOT PASSWORD
-                    // --------------------------------------------------
+                    // ---------------------------------------------------------
+
                     Row(
                       children: [
                         Expanded(
@@ -531,7 +524,6 @@ class _LoginScreenState
                             dense: true,
                           ),
                         ),
-
                         TextButton(
                           onPressed:
                               _isLoading
@@ -559,9 +551,10 @@ class _LoginScreenState
                       height: 16,
                     ),
 
-                    // --------------------------------------------------
+                    // ---------------------------------------------------------
                     // LOGIN BUTTON
-                    // --------------------------------------------------
+                    // ---------------------------------------------------------
+
                     SizedBox(
                       height: 54,
                       child: FilledButton(
@@ -591,9 +584,10 @@ class _LoginScreenState
                       height: 24,
                     ),
 
-                    // --------------------------------------------------
+                    // ---------------------------------------------------------
                     // REGISTER
-                    // --------------------------------------------------
+                    // ---------------------------------------------------------
+
                     Row(
                       mainAxisAlignment:
                           MainAxisAlignment
@@ -632,18 +626,44 @@ class _LoginScreenState
                       height: 12,
                     ),
 
-                    Text(
-                      'Secure business management',
-                      textAlign:
-                          TextAlign.center,
-                      style: theme
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(
-                        color: theme
-                            .colorScheme
-                            .onSurfaceVariant,
-                      ),
+                    // ---------------------------------------------------------
+                    // SECURITY TEXT
+                    // ---------------------------------------------------------
+
+                    Row(
+                      mainAxisAlignment:
+                          MainAxisAlignment
+                              .center,
+                      children: [
+                        Icon(
+                          Icons
+                              .lock_rounded,
+                          size: 14,
+                          color: theme
+                              .colorScheme
+                              .onSurfaceVariant,
+                        ),
+                        const SizedBox(
+                          width: 5,
+                        ),
+                        Text(
+                          'Secure business management',
+                          textAlign:
+                              TextAlign.center,
+                          style: theme
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(
+                            color: theme
+                                .colorScheme
+                                .onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(
+                      height: 20,
                     ),
                   ],
                 ),

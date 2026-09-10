@@ -9,6 +9,7 @@ import '../../repositories/business_repository.dart';
 import '../../repositories/customer_repository.dart';
 import '../../repositories/payment_repository.dart';
 import '../../services/ledger/ledger_service.dart';
+import '../../services/payment/payment_ledger_service.dart';
 
 class AddPaymentScreen extends StatefulWidget {
   const AddPaymentScreen({
@@ -36,6 +37,9 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
   final LedgerService _ledgerService =
       LedgerService();
 
+  final PaymentLedgerService _paymentLedgerService =
+      PaymentLedgerService();
+
   final TextEditingController _amountController =
       TextEditingController();
 
@@ -57,7 +61,8 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
 
   BusinessModel? _business;
 
-  List<CustomerModel> _customers = <CustomerModel>[];
+  List<CustomerModel> _customers =
+      <CustomerModel>[];
 
   CustomerModel? _selectedCustomer;
 
@@ -70,7 +75,8 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
 
   String? _errorMessage;
 
-  static const List<String> _paymentMethods = <String>[
+  static const List<String> _paymentMethods =
+      <String>[
     'Cash',
     'UPI',
     'Bank Transfer',
@@ -104,7 +110,8 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
 
     try {
       final BusinessModel? business =
-          await _businessRepository.getBusinessForCurrentUser();
+          await _businessRepository
+              .getBusinessForCurrentUser();
 
       if (business == null ||
           business.id.trim().isEmpty) {
@@ -135,13 +142,15 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
           CustomerModel? matchingCustomer;
 
           for (final customer in customers) {
-            if (customer.id.trim() == selectedId) {
+            if (customer.id.trim() ==
+                selectedId) {
               matchingCustomer = customer;
               break;
             }
           }
 
-          _selectedCustomer = matchingCustomer;
+          _selectedCustomer =
+              matchingCustomer;
         }
       });
     } catch (e) {
@@ -196,7 +205,8 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
       return;
     }
 
-    final BusinessModel? business = _business;
+    final BusinessModel? business =
+        _business;
 
     if (business == null ||
         business.id.trim().isEmpty) {
@@ -254,55 +264,71 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
     PaymentModel? savedPayment;
 
     try {
-      final DateTime now = DateTime.now();
+      final DateTime now =
+          DateTime.now();
 
       final PaymentModel payment =
           PaymentModel(
         id: '',
-        businessId: business.id.trim(),
-        customerId: customer.id.trim(),
-        customerName: customer.name.trim(),
+        businessId:
+            business.id.trim(),
+        customerId:
+            customer.id.trim(),
+        customerName:
+            customer.name.trim(),
         amount: amount,
         date: _paymentDate,
-        paymentMethod: paymentMethod,
+        paymentMethod:
+            paymentMethod,
         transactionReference:
-            _referenceController.text.trim(),
+            _referenceController.text
+                .trim(),
         notes:
-            _notesController.text.trim(),
+            _notesController.text
+                .trim(),
         createdAt: now,
       );
 
-      savedPayment =
-          await _paymentRepository.createPayment(
+      /*
+       * Step 1:
+       * Save the actual payment record first.
+       */
+      final PaymentModel createdPayment =
+          await _paymentRepository
+              .createPayment(
         payment,
       );
 
+      savedPayment = createdPayment;
+
+      /*
+       * Step 2:
+       * Read the customer's current balance
+       * immediately before creating the ledger
+       * transaction.
+       */
       final double balanceBefore =
-          await _ledgerService.getCustomerBalance(
-        businessId: business.id.trim(),
-        customerId: customer.id.trim(),
+          await _ledgerService
+              .getCustomerBalance(
+        businessId:
+            business.id.trim(),
+        customerId:
+            customer.id.trim(),
       );
 
-      final double balanceAfter =
-          balanceBefore - amount;
-
-      await _ledgerService.createTransaction(
-        businessId: business.id.trim(),
-        customerId: customer.id.trim(),
-        customerName: customer.name.trim(),
-        transactionType: 'PAYMENT',
-        amount: amount,
-        balanceBefore: balanceBefore,
-        balanceAfter: balanceAfter,
-        referenceId: savedPayment.id,
-        date: _paymentDate,
-        notes: _buildLedgerNotes(
-          paymentMethod: paymentMethod,
-          reference:
-              _referenceController.text.trim(),
-          notes:
-              _notesController.text.trim(),
-        ),
+      /*
+       * Step 3:
+       * Create the payment ledger entry through
+       * the dedicated PaymentLedgerService.
+       *
+       * This keeps payment-specific ledger
+       * business rules in one place.
+       */
+      await _paymentLedgerService
+          .createPaymentLedgerEntry(
+        payment: createdPayment,
+        balanceBefore:
+            balanceBefore,
       );
 
       if (!mounted) {
@@ -318,11 +344,20 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
         true,
       );
     } catch (e) {
+      /*
+       * If payment was successfully created
+       * but ledger creation failed, remove the
+       * payment record so we do not leave an
+       * incomplete payment without its ledger entry.
+       */
       if (savedPayment != null) {
         try {
-          await _paymentRepository.deletePayment(
-            businessId: business.id.trim(),
-            paymentId: savedPayment.id,
+          await _paymentRepository
+              .deletePayment(
+            businessId:
+                business.id.trim(),
+            paymentId:
+                savedPayment.id,
           );
         } catch (_) {
           // Keep the original error message.
@@ -346,40 +381,13 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
     }
   }
 
-  String _buildLedgerNotes({
-    required String paymentMethod,
-    required String reference,
-    required String notes,
-  }) {
-    final List<String> parts =
-        <String>[];
-
-    if (paymentMethod.trim().isNotEmpty) {
-      parts.add(
-        'Method: ${paymentMethod.trim()}',
-      );
-    }
-
-    if (reference.trim().isNotEmpty) {
-      parts.add(
-        'Reference: ${reference.trim()}',
-      );
-    }
-
-    if (notes.trim().isNotEmpty) {
-      parts.add(
-        notes.trim(),
-      );
-    }
-
-    return parts.join(' | ');
-  }
-
   String _cleanError(Object error) {
     final String message =
         error.toString();
 
-    if (message.startsWith('Exception: ')) {
+    if (message.startsWith(
+      'Exception: ',
+    )) {
       return message.substring(
         'Exception: '.length,
       );
@@ -446,7 +454,8 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
           OutlineInputBorder(
         borderRadius:
             BorderRadius.circular(12),
-        borderSide: const BorderSide(
+        borderSide:
+            const BorderSide(
           color: AppColors.primary,
           width: 1.5,
         ),
@@ -455,7 +464,8 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
           OutlineInputBorder(
         borderRadius:
             BorderRadius.circular(12),
-        borderSide: const BorderSide(
+        borderSide:
+            const BorderSide(
           color: AppColors.danger,
         ),
       ),
@@ -463,7 +473,8 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
           OutlineInputBorder(
         borderRadius:
             BorderRadius.circular(12),
-        borderSide: const BorderSide(
+        borderSide:
+            const BorderSide(
           color: AppColors.danger,
           width: 1.5,
         ),
@@ -474,14 +485,20 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
   Widget _buildCustomerSelector() {
     return DropdownButtonFormField<
         CustomerModel>(
-      initialValue: _selectedCustomer,
+      initialValue:
+          _selectedCustomer,
       isExpanded: true,
-      decoration: _inputDecoration(
-        label: 'Customer / Hotel',
-        icon: Icons.person_rounded,
-        hint: 'Select customer',
+      decoration:
+          _inputDecoration(
+        label:
+            'Customer / Hotel',
+        icon:
+            Icons.person_rounded,
+        hint:
+            'Select customer',
       ),
-      items: _customers.map(
+      items:
+          _customers.map(
         (CustomerModel customer) {
           return DropdownMenuItem<
               CustomerModel>(
@@ -504,7 +521,8 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
                     customer;
               });
             },
-      validator: (CustomerModel? value) {
+      validator:
+          (CustomerModel? value) {
         if (value == null) {
           return 'Please select a customer';
         }
@@ -520,14 +538,18 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
 
   Widget _buildPaymentMethodSelector() {
     return DropdownButtonFormField<String>(
-      initialValue: _paymentMethod,
+      initialValue:
+          _paymentMethod,
       isExpanded: true,
-      decoration: _inputDecoration(
-        label: 'Payment Method',
+      decoration:
+          _inputDecoration(
+        label:
+            'Payment Method',
         icon: Icons
             .account_balance_wallet_rounded,
       ),
-      items: _paymentMethods.map(
+      items:
+          _paymentMethods.map(
         (String method) {
           return DropdownMenuItem<String>(
             value: method,
@@ -543,10 +565,12 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
               }
 
               setState(() {
-                _paymentMethod = value;
+                _paymentMethod =
+                    value;
               });
             },
-      validator: (String? value) {
+      validator:
+          (String? value) {
         if (value == null ||
             value.trim().isEmpty) {
           return 'Please select payment method';
@@ -559,17 +583,18 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
 
   Widget _buildDateSelector() {
     return InkWell(
-      onTap:
-          _isSaving
-              ? null
-              : _selectPaymentDate,
+      onTap: _isSaving
+          ? null
+          : _selectPaymentDate,
       borderRadius:
           BorderRadius.circular(12),
       child: InputDecorator(
-        decoration: _inputDecoration(
-          label: 'Payment Date',
-          icon:
-              Icons.calendar_today_rounded,
+        decoration:
+            _inputDecoration(
+          label:
+              'Payment Date',
+          icon: Icons
+              .calendar_today_rounded,
         ),
         child: Row(
           children: [
@@ -596,26 +621,35 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
 
   Widget _buildAmountField() {
     return TextFormField(
-      controller: _amountController,
+      controller:
+          _amountController,
       enabled: !_isSaving,
       keyboardType:
-          const TextInputType.numberWithOptions(
+          const TextInputType
+              .numberWithOptions(
         decimal: true,
       ),
       textInputAction:
           TextInputAction.next,
-      decoration: _inputDecoration(
-        label: 'Payment Amount',
-        icon:
-            Icons.currency_rupee_rounded,
-        hint: 'Enter amount',
+      decoration:
+          _inputDecoration(
+        label:
+            'Payment Amount',
+        icon: Icons
+            .currency_rupee_rounded,
+        hint:
+            'Enter amount',
       ),
-      validator: (String? value) {
+      validator:
+          (String? value) {
         final double? amount =
             double.tryParse(
           (value ?? '')
               .trim()
-              .replaceAll(',', ''),
+              .replaceAll(
+                ',',
+                '',
+              ),
         );
 
         if (amount == null ||
@@ -634,14 +668,17 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
 
   Widget _buildReferenceField() {
     return TextFormField(
-      controller: _referenceController,
+      controller:
+          _referenceController,
       enabled: !_isSaving,
       textInputAction:
           TextInputAction.next,
-      decoration: _inputDecoration(
-        label: 'Transaction Reference',
-        icon:
-            Icons.receipt_long_rounded,
+      decoration:
+          _inputDecoration(
+        label:
+            'Transaction Reference',
+        icon: Icons
+            .receipt_long_rounded,
         hint:
             'Optional reference / transaction ID',
       ),
@@ -651,15 +688,18 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
 
   Widget _buildNotesField() {
     return TextFormField(
-      controller: _notesController,
+      controller:
+          _notesController,
       enabled: !_isSaving,
       maxLines: 4,
       maxLength: 500,
       textCapitalization:
           TextCapitalization.sentences,
-      decoration: _inputDecoration(
+      decoration:
+          _inputDecoration(
         label: 'Notes',
-        icon: Icons.notes_rounded,
+        icon:
+            Icons.notes_rounded,
         hint:
             'Add optional payment notes',
       ),
@@ -671,7 +711,10 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
         double.tryParse(
           _amountController.text
               .trim()
-              .replaceAll(',', ''),
+              .replaceAll(
+                ',',
+                '',
+              ),
         ) ??
         0;
 
@@ -693,24 +736,32 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
                   height: 42,
                   decoration:
                       BoxDecoration(
-                    color: AppColors.success
-                        .withValues(alpha: 0.12),
+                    color: AppColors
+                        .success
+                        .withValues(
+                      alpha: 0.12,
+                    ),
                     borderRadius:
-                        BorderRadius.circular(
+                        BorderRadius
+                            .circular(
                       12,
                     ),
                   ),
                   child: const Icon(
-                    Icons.payments_rounded,
+                    Icons
+                        .payments_rounded,
                     color:
                         AppColors.success,
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(
+                  width: 12,
+                ),
                 Expanded(
                   child: Column(
                     crossAxisAlignment:
-                        CrossAxisAlignment.start,
+                        CrossAxisAlignment
+                            .start,
                     children: [
                       Text(
                         'Payment Summary',
@@ -719,7 +770,8 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
                             .titleMedium
                             ?.copyWith(
                           fontWeight:
-                              FontWeight.w800,
+                              FontWeight
+                                  .w800,
                         ),
                       ),
                       const SizedBox(
@@ -741,7 +793,9 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 18),
+            const SizedBox(
+              height: 18,
+            ),
             Row(
               children: [
                 Expanded(
@@ -754,7 +808,9 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(
+                  width: 12,
+                ),
                 Expanded(
                   child: _summaryItem(
                     label: 'Method',
@@ -764,7 +820,8 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
                 ),
               ],
             ),
-            if (_selectedCustomer != null)
+            if (_selectedCustomer !=
+                null)
               Padding(
                 padding:
                     const EdgeInsets.only(
@@ -772,23 +829,30 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
                 ),
                 child: Row(
                   crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                      CrossAxisAlignment
+                          .start,
                   children: [
                     Expanded(
-                      child: _summaryItem(
-                        label: 'Customer',
+                      child:
+                          _summaryItem(
+                        label:
+                            'Customer',
                         value:
                             _selectedCustomer!
                                 .name
                                 .trim(),
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(
+                      width: 12,
+                    ),
                     Expanded(
-                      child: _summaryItem(
+                      child:
+                          _summaryItem(
                         label: 'Date',
                         value:
-                            _dateFormat.format(
+                            _dateFormat
+                                .format(
                           _paymentDate,
                         ),
                       ),
@@ -812,13 +876,19 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
     return Container(
       padding:
           const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
+      decoration:
+          BoxDecoration(
+        color:
+            theme.colorScheme.surface,
         borderRadius:
             BorderRadius.circular(12),
         border: Border.all(
-          color: theme.colorScheme.outline
-              .withValues(alpha: 0.18),
+          color: theme
+              .colorScheme
+              .outline
+              .withValues(
+            alpha: 0.18,
+          ),
         ),
       ),
       child: Column(
@@ -836,7 +906,9 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
                   .onSurfaceVariant,
             ),
           ),
-          const SizedBox(height: 5),
+          const SizedBox(
+            height: 5,
+          ),
           Text(
             value.isEmpty
                 ? '-'
@@ -868,25 +940,37 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
                   ),
           tooltip: 'Back',
           icon: const Icon(
-            Icons.arrow_back_rounded,
+            Icons
+                .arrow_back_rounded,
           ),
         ),
-        const SizedBox(width: 4),
+        const SizedBox(
+          width: 4,
+        ),
         Container(
           width: 46,
           height: 46,
-          decoration: BoxDecoration(
-            color: AppColors.success
-                .withValues(alpha: 0.12),
+          decoration:
+              BoxDecoration(
+            color: AppColors
+                .success
+                .withValues(
+              alpha: 0.12,
+            ),
             borderRadius:
-                BorderRadius.circular(14),
+                BorderRadius.circular(
+              14,
+            ),
           ),
           child: const Icon(
             Icons.payments_rounded,
-            color: AppColors.success,
+            color:
+                AppColors.success,
           ),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(
+          width: 12,
+        ),
         Expanded(
           child: Column(
             crossAxisAlignment:
@@ -902,7 +986,9 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
                       FontWeight.w900,
                 ),
               ),
-              const SizedBox(height: 3),
+              const SizedBox(
+                height: 3,
+              ),
               Text(
                 'Record customer payment',
                 style: Theme.of(context)
@@ -937,11 +1023,13 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
                 child:
                     CircularProgressIndicator(
                   strokeWidth: 2.5,
-                  color: Colors.white,
+                  color:
+                      Colors.white,
                 ),
               )
             : const Icon(
-                Icons.check_circle_rounded,
+                Icons
+                    .check_circle_rounded,
               ),
         label: Text(
           _isSaving
@@ -966,20 +1054,29 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
               height: 72,
               decoration:
                   BoxDecoration(
-                color: AppColors.danger
-                    .withValues(alpha: 0.12),
-                shape: BoxShape.circle,
+                color: AppColors
+                    .danger
+                    .withValues(
+                  alpha: 0.12,
+                ),
+                shape:
+                    BoxShape.circle,
               ),
               child: const Icon(
-                Icons.error_outline_rounded,
+                Icons
+                    .error_outline_rounded,
                 size: 38,
-                color: AppColors.danger,
+                color:
+                    AppColors.danger,
               ),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(
+              height: 18,
+            ),
             Text(
               'Unable to load payment form',
-              textAlign: TextAlign.center,
+              textAlign:
+                  TextAlign.center,
               style: Theme.of(context)
                   .textTheme
                   .titleLarge
@@ -988,11 +1085,14 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
                     FontWeight.w800,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(
+              height: 8,
+            ),
             Text(
               _errorMessage ??
                   'Something went wrong.',
-              textAlign: TextAlign.center,
+              textAlign:
+                  TextAlign.center,
               style: Theme.of(context)
                   .textTheme
                   .bodyMedium
@@ -1002,16 +1102,20 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
                     .onSurfaceVariant,
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(
+              height: 20,
+            ),
             FilledButton.icon(
               onPressed:
                   _isSaving
                       ? null
                       : _loadData,
               icon: const Icon(
-                Icons.refresh_rounded,
+                Icons
+                    .refresh_rounded,
               ),
-              label: const Text(
+              label:
+                  const Text(
                 'Retry',
               ),
             ),
@@ -1028,14 +1132,23 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
     return Container(
       padding:
           const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.warning
-            .withValues(alpha: 0.08),
+      decoration:
+          BoxDecoration(
+        color: AppColors
+            .warning
+            .withValues(
+          alpha: 0.08,
+        ),
         borderRadius:
-            BorderRadius.circular(14),
+            BorderRadius.circular(
+          14,
+        ),
         border: Border.all(
-          color: AppColors.warning
-              .withValues(alpha: 0.25),
+          color: AppColors
+              .warning
+              .withValues(
+            alpha: 0.25,
+          ),
         ),
       ),
       child: Row(
@@ -1043,10 +1156,14 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
             CrossAxisAlignment.start,
         children: [
           const Icon(
-            Icons.info_outline_rounded,
-            color: AppColors.warning,
+            Icons
+                .info_outline_rounded,
+            color:
+                AppColors.warning,
           ),
-          const SizedBox(width: 12),
+          const SizedBox(
+            width: 12,
+          ),
           Expanded(
             child: Text(
               'No customers or hotels are available. Add a customer first, then record the payment.',
@@ -1074,7 +1191,8 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
           BoxConstraints constraints,
         ) {
           final bool isWide =
-              constraints.maxWidth >= 900;
+              constraints.maxWidth >=
+                  900;
 
           final List<Widget> fields =
               <Widget>[
@@ -1082,14 +1200,17 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
               _buildEmptyCustomerState()
             else
               _buildCustomerSelector(),
-            const SizedBox(height: 16),
+            const SizedBox(
+              height: 16,
+            ),
           ];
 
           if (isWide) {
             fields.add(
               Row(
                 crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                    CrossAxisAlignment
+                        .start,
                 children: [
                   Expanded(
                     child:
@@ -1110,7 +1231,9 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
               _buildAmountField(),
             );
             fields.add(
-              const SizedBox(height: 16),
+              const SizedBox(
+                height: 16,
+              ),
             );
             fields.add(
               _buildPaymentMethodSelector(),
@@ -1119,15 +1242,25 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
 
           fields.addAll(
             <Widget>[
-              const SizedBox(height: 16),
+              const SizedBox(
+                height: 16,
+              ),
               _buildDateSelector(),
-              const SizedBox(height: 16),
+              const SizedBox(
+                height: 16,
+              ),
               _buildReferenceField(),
-              const SizedBox(height: 8),
+              const SizedBox(
+                height: 8,
+              ),
               _buildNotesField(),
-              const SizedBox(height: 8),
+              const SizedBox(
+                height: 8,
+              ),
               _buildSummaryCard(),
-              const SizedBox(height: 20),
+              const SizedBox(
+                height: 20,
+              ),
               _buildSaveButton(),
             ],
           );
@@ -1138,7 +1271,8 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
                   const EdgeInsets.all(20),
               child: Column(
                 crossAxisAlignment:
-                    CrossAxisAlignment.stretch,
+                    CrossAxisAlignment
+                        .stretch,
                 children: fields,
               ),
             ),
@@ -1149,7 +1283,9 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -1166,7 +1302,8 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
                     _business == null
                 ? _buildErrorState()
                 : RefreshIndicator(
-                    onRefresh: _loadData,
+                    onRefresh:
+                        _loadData,
                     child: ListView(
                       physics:
                           const AlwaysScrollableScrollPhysics(),

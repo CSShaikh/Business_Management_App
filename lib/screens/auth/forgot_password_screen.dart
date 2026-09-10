@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../repositories/auth_repository.dart';
@@ -16,7 +17,8 @@ class _ForgotPasswordScreenState
     extends State<ForgotPasswordScreen> {
   final AuthRepository _authRepository = AuthRepository();
 
-  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final GlobalKey<FormState> _formKey =
+      GlobalKey<FormState>();
 
   final TextEditingController _emailController =
       TextEditingController();
@@ -30,9 +32,20 @@ class _ForgotPasswordScreenState
   }
 
   Future<void> _sendResetEmail() async {
-    if (!_formKey.currentState!.validate()) {
+    if (_isLoading) {
       return;
     }
+
+    final FormState? form = _formKey.currentState;
+
+    if (form == null || !form.validate()) {
+      return;
+    }
+
+    FocusScope.of(context).unfocus();
+
+    final String email =
+        _emailController.text.trim();
 
     setState(() {
       _isLoading = true;
@@ -40,33 +53,53 @@ class _ForgotPasswordScreenState
 
     try {
       await _authRepository.sendPasswordResetEmail(
-        email: _emailController.text,
+        email: email,
       );
 
       if (!mounted) {
         return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Password reset email sent. Please check your inbox.',
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text(
+              'If an account exists for this email, a password reset link has been sent.',
+            ),
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(
+              seconds: 3,
+            ),
           ),
+        );
+
+      await Future.delayed(
+        const Duration(
+          milliseconds: 500,
         ),
       );
+
+      if (!mounted) {
+        return;
+      }
 
       Navigator.pop(context);
-    } on Exception catch (e) {
+    } on FirebaseAuthException catch (e) {
       if (!mounted) {
         return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _getErrorMessage(e),
-          ),
-        ),
+      _showError(
+        _getFirebaseErrorMessage(e),
+      );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      _showError(
+        'Could not send reset email. Please try again.',
       );
     } finally {
       if (mounted) {
@@ -77,31 +110,84 @@ class _ForgotPasswordScreenState
     }
   }
 
-  String _getErrorMessage(Exception error) {
-    final message = error.toString();
+  String _getFirebaseErrorMessage(
+    FirebaseAuthException error,
+  ) {
+    switch (error.code) {
+      case 'invalid-email':
+        return 'Please enter a valid email address.';
 
-    if (message.contains('invalid-email')) {
-      return 'Please enter a valid email address.';
+      case 'network-request-failed':
+        return 'Internet connection check karo.';
+
+      case 'too-many-requests':
+        return 'Too many attempts. Please try again later.';
+
+      case 'operation-not-allowed':
+        return 'Password reset is not enabled in Firebase.';
+
+      case 'user-disabled':
+        return 'This account has been disabled.';
+
+      case 'user-not-found':
+        // Keep account existence private.
+        return 'If an account exists for this email, a password reset link has been sent.';
+
+      default:
+        return 'Could not send reset email. Please try again.';
+    }
+  }
+
+  void _showError(
+    String message,
+  ) {
+    if (!mounted) {
+      return;
     }
 
-    if (message.contains('user-not-found')) {
-      return 'No account found with this email.';
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
+
+  String? _validateEmail(
+    String? value,
+  ) {
+    final String email =
+        value?.trim() ?? '';
+
+    if (email.isEmpty) {
+      return 'Email is required';
     }
 
-    if (message.contains('network-request-failed')) {
-      return 'Internet connection check karo.';
+    final RegExp emailRegex = RegExp(
+      r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+    );
+
+    if (!emailRegex.hasMatch(email)) {
+      return 'Enter a valid email address';
     }
 
-    return 'Could not send reset email. Please try again.';
+    return null;
   }
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+  Widget build(
+    BuildContext context,
+  ) {
+    final ThemeData theme =
+        Theme.of(context);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Forgot Password'),
+        title: const Text(
+          'Forgot Password',
+        ),
       ),
       body: SafeArea(
         child: Center(
@@ -114,13 +200,15 @@ class _ForgotPasswordScreenState
               child: Form(
                 key: _formKey,
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  crossAxisAlignment:
+                      CrossAxisAlignment.stretch,
                   children: [
                     Container(
                       width: 72,
                       height: 72,
+                      alignment: Alignment.center,
                       decoration: BoxDecoration(
-                        color: Theme.of(context)
+                        color: theme
                             .colorScheme
                             .primaryContainer,
                         shape: BoxShape.circle,
@@ -128,74 +216,94 @@ class _ForgotPasswordScreenState
                       child: Icon(
                         Icons.lock_reset_rounded,
                         size: 36,
-                        color: Theme.of(context)
+                        color: theme
                             .colorScheme
                             .primary,
                       ),
                     ),
 
-                    const SizedBox(height: 24),
+                    const SizedBox(
+                      height: 24,
+                    ),
 
                     Text(
                       'Reset your password',
-                      textAlign: TextAlign.center,
-                      style:
-                          theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
+                      textAlign:
+                          TextAlign.center,
+                      style: theme
+                          .textTheme
+                          .headlineSmall
+                          ?.copyWith(
+                        fontWeight:
+                            FontWeight.bold,
                       ),
                     ),
 
-                    const SizedBox(height: 10),
+                    const SizedBox(
+                      height: 10,
+                    ),
 
                     Text(
                       'Enter your registered email address. '
                       'We will send you a password reset link.',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color:
-                            theme.colorScheme.onSurfaceVariant,
+                      textAlign:
+                          TextAlign.center,
+                      style: theme
+                          .textTheme
+                          .bodyMedium
+                          ?.copyWith(
+                        color: theme
+                            .colorScheme
+                            .onSurfaceVariant,
                       ),
                     ),
 
-                    const SizedBox(height: 30),
+                    const SizedBox(
+                      height: 30,
+                    ),
 
                     TextFormField(
-                      controller: _emailController,
+                      controller:
+                          _emailController,
                       keyboardType:
                           TextInputType.emailAddress,
-                      textInputAction: TextInputAction.done,
-                      onFieldSubmitted: (_) =>
-                          _sendResetEmail(),
-                      decoration: const InputDecoration(
+                      textInputAction:
+                          TextInputAction.done,
+                      enabled:
+                          !_isLoading,
+                      autocorrect: false,
+                      autofillHints: const [
+                        AutofillHints.email,
+                      ],
+                      onFieldSubmitted: (_) {
+                        if (!_isLoading) {
+                          _sendResetEmail();
+                        }
+                      },
+                      decoration:
+                          const InputDecoration(
                         labelText: 'Email',
-                        hintText: 'Enter your email',
+                        hintText:
+                            'Enter your email',
                         prefixIcon: Icon(
                           Icons.email_outlined,
                         ),
                       ),
-                      validator: (value) {
-                        final email = value?.trim() ?? '';
-
-                        if (email.isEmpty) {
-                          return 'Email is required';
-                        }
-
-                        if (!email.contains('@')) {
-                          return 'Enter a valid email';
-                        }
-
-                        return null;
-                      },
+                      validator:
+                          _validateEmail,
                     ),
 
-                    const SizedBox(height: 24),
+                    const SizedBox(
+                      height: 24,
+                    ),
 
                     SizedBox(
                       height: 52,
                       child: FilledButton(
-                        onPressed: _isLoading
-                            ? null
-                            : _sendResetEmail,
+                        onPressed:
+                            _isLoading
+                                ? null
+                                : _sendResetEmail,
                         child: _isLoading
                             ? const SizedBox(
                                 width: 22,
@@ -203,12 +311,31 @@ class _ForgotPasswordScreenState
                                 child:
                                     CircularProgressIndicator(
                                   strokeWidth: 2.5,
-                                  color: Colors.white,
+                                  color:
+                                      Colors.white,
                                 ),
                               )
                             : const Text(
                                 'Send Reset Link',
                               ),
+                      ),
+                    ),
+
+                    const SizedBox(
+                      height: 12,
+                    ),
+
+                    TextButton(
+                      onPressed:
+                          _isLoading
+                              ? null
+                              : () {
+                                  Navigator.pop(
+                                    context,
+                                  );
+                                },
+                      child: const Text(
+                        'Back to Login',
                       ),
                     ),
                   ],

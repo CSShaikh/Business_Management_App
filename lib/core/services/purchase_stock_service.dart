@@ -3,31 +3,30 @@ import 'package:business_management_app/repositories/stock_repository.dart';
 
 /// Handles inventory updates created by purchase transactions.
 ///
-/// A successful purchase increases stock for every product item and creates
-/// a stock-in transaction for each item through [StockRepository].
-///
-/// This service also supports reversing a previously processed purchase.
-/// Reversal is useful when a purchase is edited or deleted.
+/// A purchase normally increases stock through [processPurchaseStock].
+/// When an existing purchase is edited or deleted, its original stock
+/// contribution can be reversed through [reversePurchaseStock].
 class PurchaseStockService {
   final StockRepository stockRepository;
 
   PurchaseStockService({
     StockRepository? stockRepository,
-  }) : stockRepository = stockRepository ?? StockRepository();
+  }) : stockRepository =
+            stockRepository ?? StockRepository();
+
+  // ===========================================================================
+  // PROCESS PURCHASE STOCK
+  // ===========================================================================
 
   /// Adds purchased quantities to product stock.
   ///
-  /// This method should be called after the purchase itself has been
+  /// This method is intended to be called after the purchase itself has been
   /// successfully saved.
-  ///
-  /// Every purchase item must have:
-  /// - a valid product ID
-  /// - a quantity greater than zero
-  /// - a non-negative purchase rate
   Future<void> processPurchaseStock({
     required PurchaseModel purchase,
   }) async {
-    final String businessId = purchase.businessId.trim();
+    final String businessId =
+        purchase.businessId.trim();
 
     if (purchase.items.isEmpty) {
       return;
@@ -39,46 +38,75 @@ class PurchaseStockService {
       );
     }
 
-    for (final item in purchase.items) {
-      final String productId = item.productId.trim();
-      final String productName = item.productName.trim();
-
-      _validatePurchaseItem(
-        productId: productId,
-        productName: productName,
-        quantity: item.quantity,
-        purchaseRate: item.purchaseRate,
+    if (purchase.id.trim().isEmpty) {
+      throw ArgumentError(
+        'Purchase ID cannot be empty when processing purchase stock.',
       );
+    }
+
+    for (final item in purchase.items) {
+      final String productId =
+          item.productId.trim();
+
+      final String productName =
+          item.productName.trim();
+
+      if (productId.isEmpty) {
+        throw ArgumentError(
+          'Product ID cannot be empty for purchase item: '
+          '${productName.isEmpty ? 'Unknown product' : productName}',
+        );
+      }
+
+      if (item.quantity <= 0) {
+        throw ArgumentError(
+          'Purchase quantity must be greater than zero for '
+          '${productName.isEmpty ? productId : productName}.',
+        );
+      }
+
+      if (item.purchaseRate < 0) {
+        throw ArgumentError(
+          'Purchase rate cannot be negative for '
+          '${productName.isEmpty ? productId : productName}.',
+        );
+      }
 
       await stockRepository.stockIn(
         businessId: businessId,
         productId: productId,
         quantity: item.quantity,
         unitCost: item.purchaseRate,
-        referenceId: purchase.id,
+        referenceId: purchase.id.trim(),
         date: purchase.date,
-        notes: 'Stock added for purchase transaction',
+        notes:
+            'Stock added for purchase transaction',
       );
     }
   }
 
-  /// Reverses stock that was previously added by a purchase.
+  // ===========================================================================
+  // REVERSE PURCHASE STOCK
+  // ===========================================================================
+
+  /// Reverses the stock contribution of an existing purchase.
   ///
-  /// This is intended to be used when:
-  /// - a purchase is deleted
+  /// A purchase originally creates an IN stock transaction. Reversing it
+  /// creates the corresponding OUT operation so the product's current stock
+  /// returns to the level before that purchase.
+  ///
+  /// This is used when:
+  ///
+  /// - an existing purchase is deleted
   /// - an existing purchase is edited
-  /// - a previously processed purchase needs to be rolled back
+  /// - a purchase operation needs to be rolled back
   ///
-  /// Reversal creates a stock-out transaction rather than deleting the
-  /// original stock-in transaction. This preserves the inventory audit trail.
-  ///
-  /// If the current stock is lower than the quantity being reversed,
-  /// [StockRepository] will reject the operation instead of allowing
-  /// negative stock.
+  /// The original purchase itself is not deleted or modified here.
   Future<void> reversePurchaseStock({
     required PurchaseModel purchase,
   }) async {
-    final String businessId = purchase.businessId.trim();
+    final String businessId =
+        purchase.businessId.trim();
 
     if (purchase.items.isEmpty) {
       return;
@@ -90,56 +118,100 @@ class PurchaseStockService {
       );
     }
 
-    for (final item in purchase.items) {
-      final String productId = item.productId.trim();
-      final String productName = item.productName.trim();
-
-      _validatePurchaseItem(
-        productId: productId,
-        productName: productName,
-        quantity: item.quantity,
-        purchaseRate: item.purchaseRate,
+    if (purchase.id.trim().isEmpty) {
+      throw ArgumentError(
+        'Purchase ID cannot be empty when reversing purchase stock.',
       );
+    }
+
+    for (final item in purchase.items) {
+      final String productId =
+          item.productId.trim();
+
+      final String productName =
+          item.productName.trim();
+
+      if (productId.isEmpty) {
+        throw ArgumentError(
+          'Product ID cannot be empty for purchase item: '
+          '${productName.isEmpty ? 'Unknown product' : productName}',
+        );
+      }
+
+      if (item.quantity <= 0) {
+        throw ArgumentError(
+          'Purchase quantity must be greater than zero for '
+          '${productName.isEmpty ? productId : productName}.',
+        );
+      }
+
+      if (item.purchaseRate < 0) {
+        throw ArgumentError(
+          'Purchase rate cannot be negative for '
+          '${productName.isEmpty ? productId : productName}.',
+        );
+      }
 
       await stockRepository.stockOut(
         businessId: businessId,
         productId: productId,
         quantity: item.quantity,
         unitCost: item.purchaseRate,
-        referenceId: purchase.id,
+        referenceId: purchase.id.trim(),
         date: DateTime.now(),
-        notes: 'Stock reversed for purchase transaction',
+        notes:
+            'Stock reversed for purchase transaction',
       );
     }
   }
 
-  /// Validates a purchase item before changing inventory.
-  void _validatePurchaseItem({
-    required String productId,
-    required String productName,
-    required double quantity,
-    required double purchaseRate,
-  }) {
-    final String displayName = productName.isEmpty
-        ? (productId.isEmpty ? 'Unknown product' : productId)
-        : productName;
+  // ===========================================================================
+  // VALIDATION
+  // ===========================================================================
 
-    if (productId.isEmpty) {
+  /// Validates a purchase before stock processing.
+  void validatePurchase(
+    PurchaseModel purchase,
+  ) {
+    final String businessId =
+        purchase.businessId.trim();
+
+    if (businessId.isEmpty) {
       throw ArgumentError(
-        'Product ID cannot be empty for purchase item: $displayName',
+        'Business ID cannot be empty.',
       );
     }
 
-    if (quantity <= 0) {
+    if (purchase.id.trim().isEmpty) {
       throw ArgumentError(
-        'Purchase quantity must be greater than zero for $displayName.',
+        'Purchase ID cannot be empty.',
       );
     }
 
-    if (purchaseRate < 0) {
+    if (purchase.items.isEmpty) {
       throw ArgumentError(
-        'Purchase rate cannot be negative for $displayName.',
+        'Purchase must contain at least one item.',
       );
+    }
+
+    for (final item in purchase.items) {
+      if (item.productId.trim().isEmpty) {
+        throw ArgumentError(
+          'Purchase item product ID cannot be empty.',
+        );
+      }
+
+      if (item.quantity <= 0) {
+        throw ArgumentError(
+          'Purchase item quantity must be greater than zero.',
+        );
+      }
+
+      if (item.purchaseRate < 0) {
+        throw ArgumentError(
+          'Purchase item rate cannot be negative.',
+        );
+      }
     }
   }
 }
