@@ -1,11 +1,11 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../models/business_model.dart';
 import '../../models/product_model.dart';
-import '../../repositories/business_repository.dart';
-import '../../repositories/product_repository.dart';
+import '../../providers/business_provider.dart';
+import '../../providers/product_provider.dart';
 import 'add_product_screen.dart';
 
 class ProductsScreen extends StatefulWidget {
@@ -18,8 +18,8 @@ class ProductsScreen extends StatefulWidget {
 }
 
 class _ProductsScreenState extends State<ProductsScreen> {
-  final ProductRepository _productRepository = ProductRepository();
-  final BusinessRepository _businessRepository = BusinessRepository();
+  late final ProductProvider _productProvider;
+  late final BusinessProvider _businessProvider;
 
   final TextEditingController _searchController =
       TextEditingController();
@@ -33,6 +33,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
   @override
   void initState() {
     super.initState();
+
+    _productProvider = context.read<ProductProvider>();
+    _businessProvider = context.read<BusinessProvider>();
 
     _searchController.addListener(_onSearchChanged);
 
@@ -60,19 +63,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
   String? get _businessId => _business?.id;
 
   Future<void> _loadBusiness() async {
-    final User? user =
-        FirebaseAuth.instance.currentUser;
-
-    if (user == null) {
-      if (!mounted) return;
-
-      setState(() {
-        _loadingBusiness = false;
-        _businessError = 'User session not found.';
-      });
-
-      return;
-    }
+    if (!mounted) return;
 
     setState(() {
       _loadingBusiness = true;
@@ -81,9 +72,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
     try {
       final BusinessModel? business =
-          await _businessRepository.getBusinessForOwner(
-        user.uid,
-      );
+          await _businessProvider.loadBusiness();
 
       if (!mounted) return;
 
@@ -91,9 +80,40 @@ class _ProductsScreenState extends State<ProductsScreen> {
         setState(() {
           _loadingBusiness = false;
           _businessError =
+              _businessProvider.errorMessage ??
               'Business profile not found. Please complete business setup.';
         });
+        return;
+      }
 
+      final String businessId = business.id.trim();
+
+      if (businessId.isEmpty) {
+        setState(() {
+          _loadingBusiness = false;
+          _businessError = 'Business ID is missing.';
+        });
+        return;
+      }
+
+      _businessProvider.watchBusiness(businessId);
+
+      _productProvider.setBusinessId(businessId);
+
+      await _productProvider.loadAndWatchProducts(
+        businessId,
+      );
+
+      if (!mounted) return;
+
+      if (_productProvider.errorMessage != null &&
+          _productProvider.products.isEmpty) {
+        setState(() {
+          _business = business;
+          _loadingBusiness = false;
+          _businessError =
+              _productProvider.errorMessage;
+        });
         return;
       }
 
@@ -116,7 +136,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
   Future<void> _openAddProduct() async {
     final String? businessId = _businessId;
 
-    if (businessId == null) {
+    if (businessId == null ||
+        businessId.trim().isEmpty) {
       _showMessage(
         'Business information not available.',
         isError: true,
@@ -139,7 +160,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
   ) async {
     final String? businessId = _businessId;
 
-    if (businessId == null) {
+    if (businessId == null ||
+        businessId.trim().isEmpty) {
       _showMessage(
         'Business information not available.',
         isError: true,
@@ -164,7 +186,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
     final bool? confirmed =
         await showDialog<bool>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           title: const Text(
             'Delete Product?',
@@ -176,7 +198,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
             TextButton(
               onPressed: () {
                 Navigator.pop(
-                  context,
+                  dialogContext,
                   false,
                 );
               },
@@ -191,7 +213,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
               ),
               onPressed: () {
                 Navigator.pop(
-                  context,
+                  dialogContext,
                   true,
                 );
               },
@@ -208,10 +230,10 @@ class _ProductsScreenState extends State<ProductsScreen> {
       return;
     }
 
-    final String? businessId =
-        _businessId;
+    final String? businessId = _businessId;
 
-    if (businessId == null) {
+    if (businessId == null ||
+        businessId.trim().isEmpty) {
       _showMessage(
         'Business information not available.',
         isError: true,
@@ -220,12 +242,22 @@ class _ProductsScreenState extends State<ProductsScreen> {
     }
 
     try {
-      await _productRepository.deleteProduct(
-        businessId,
+      final bool deleted =
+          await _productProvider.deleteProduct(
         product.id,
+        businessId,
       );
 
       if (!mounted) return;
+
+      if (!deleted) {
+        _showMessage(
+          _productProvider.errorMessage ??
+              'Unable to delete product.',
+          isError: true,
+        );
+        return;
+      }
 
       _showMessage(
         'Product deleted successfully.',
@@ -243,10 +275,10 @@ class _ProductsScreenState extends State<ProductsScreen> {
   Future<void> _toggleProductStatus(
     ProductModel product,
   ) async {
-    final String? businessId =
-        _businessId;
+    final String? businessId = _businessId;
 
-    if (businessId == null) {
+    if (businessId == null ||
+        businessId.trim().isEmpty) {
       _showMessage(
         'Business information not available.',
         isError: true,
@@ -255,13 +287,23 @@ class _ProductsScreenState extends State<ProductsScreen> {
     }
 
     try {
-      await _productRepository.setProductStatus(
-        businessId,
+      final bool updated =
+          await _productProvider.setProductStatus(
         product.id,
         !product.isActive,
+        businessId,
       );
 
       if (!mounted) return;
+
+      if (!updated) {
+        _showMessage(
+          _productProvider.errorMessage ??
+              'Unable to update product status.',
+          isError: true,
+        );
+        return;
+      }
 
       _showMessage(
         product.isActive
@@ -348,9 +390,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
       );
     }
 
-    final String businessId =
-        _business!.id;
-
     return Scaffold(
       backgroundColor:
           theme.scaffoldBackgroundColor,
@@ -366,36 +405,34 @@ class _ProductsScreenState extends State<ProductsScreen> {
               Icons.refresh_rounded,
             ),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(
+            width: 4,
+          ),
         ],
       ),
-      body: StreamBuilder<List<ProductModel>>(
-        stream:
-            _productRepository.watchProducts(
-          businessId,
-        ),
+      body: Consumer<ProductProvider>(
         builder: (
           context,
-          snapshot,
+          productProvider,
+          child,
         ) {
-          if (snapshot.connectionState ==
-              ConnectionState.waiting) {
+          if (productProvider.isLoading &&
+              productProvider.products.isEmpty) {
             return const Center(
-              child:
-                  CircularProgressIndicator(),
+              child: CircularProgressIndicator(),
             );
           }
 
-          if (snapshot.hasError) {
+          if (productProvider.errorMessage != null &&
+              productProvider.products.isEmpty) {
             return _buildErrorState(
               context,
               theme,
             );
           }
 
-          final List<ProductModel>
-              allProducts =
-              snapshot.data ?? [];
+          final List<ProductModel> allProducts =
+              productProvider.products;
 
           final List<ProductModel>
               filteredProducts =
@@ -539,9 +576,13 @@ class _ProductsScreenState extends State<ProductsScreen> {
             activeCount,
             lowStockCount,
           ),
-          const SizedBox(height: 18),
+          const SizedBox(
+            height: 18,
+          ),
           _buildSearchField(theme),
-          const SizedBox(height: 20),
+          const SizedBox(
+            height: 20,
+          ),
           if (allProducts.isEmpty)
             _buildEmptyState(
               context,
@@ -583,7 +624,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
                 FontWeight.bold,
           ),
         ),
-        const SizedBox(height: 5),
+        const SizedBox(
+          height: 5,
+        ),
         Text(
           'Manage your products, prices and stock.',
           style: theme
@@ -595,7 +638,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
                 .onSurfaceVariant,
           ),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(
+          height: 18,
+        ),
         LayoutBuilder(
           builder: (
             context,
@@ -713,67 +758,84 @@ class _ProductsScreenState extends State<ProductsScreen> {
     IconData icon,
     Color color,
   ) {
-    return Card(
-      child: Padding(
-        padding:
-            const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration:
-                  BoxDecoration(
-                color:
-                    color.withValues(
-                  alpha: 0.10,
-                ),
-                borderRadius:
-                    BorderRadius.circular(
-                  13,
-                ),
-              ),
-              child: Icon(
-                icon,
-                color: color,
-                size: 22,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    value,
-                    style: theme
-                        .textTheme
-                        .titleLarge
-                        ?.copyWith(
-                      fontWeight:
-                          FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(
-                    height: 2,
-                  ),
-                  Text(
-                    title,
-                    style: theme
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(
-                      color: theme
-                          .colorScheme
-                          .onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+    return Container(
+      padding:
+          const EdgeInsets.all(16),
+      decoration:
+          BoxDecoration(
+        color:
+            theme.cardColor,
+        borderRadius:
+            BorderRadius.circular(16),
+        border: Border.all(
+          color: theme
+              .dividerColor
+              .withValues(
+            alpha: 0.35,
+          ),
         ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration:
+                BoxDecoration(
+              color: color.withValues(
+                alpha: 0.10,
+              ),
+              borderRadius:
+                  BorderRadius.circular(12),
+            ),
+            child: Icon(
+              icon,
+              color: color,
+              size: 22,
+            ),
+          ),
+          const SizedBox(
+            width: 12,
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style: theme
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(
+                    color: theme
+                        .colorScheme
+                        .onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(
+                  height: 3,
+                ),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style: theme
+                      .textTheme
+                      .titleLarge
+                      ?.copyWith(
+                    fontWeight:
+                        FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -789,63 +851,26 @@ class _ProductsScreenState extends State<ProductsScreen> {
       decoration:
           InputDecoration(
         hintText:
-            'Search products...',
-        prefixIcon: const Icon(
+            'Search product, category or unit...',
+        prefixIcon:
+            const Icon(
           Icons.search_rounded,
         ),
         suffixIcon:
-            _searchQuery.isNotEmpty
-                ? IconButton(
-                    tooltip: 'Clear',
+            _searchQuery.isEmpty
+                ? null
+                : IconButton(
+                    tooltip:
+                        'Clear search',
                     onPressed: () {
                       _searchController
                           .clear();
                     },
-                    icon: const Icon(
+                    icon:
+                        const Icon(
                       Icons.clear_rounded,
                     ),
-                  )
-                : null,
-        filled: true,
-        fillColor: theme
-            .colorScheme
-            .surface,
-        border: OutlineInputBorder(
-          borderRadius:
-              BorderRadius.circular(14),
-          borderSide: BorderSide(
-            color: theme
-                .colorScheme
-                .outline
-                .withValues(
-              alpha: 0.15,
-            ),
-          ),
-        ),
-        enabledBorder:
-            OutlineInputBorder(
-          borderRadius:
-              BorderRadius.circular(14),
-          borderSide: BorderSide(
-            color: theme
-                .colorScheme
-                .outline
-                .withValues(
-              alpha: 0.15,
-            ),
-          ),
-        ),
-        focusedBorder:
-            OutlineInputBorder(
-          borderRadius:
-              BorderRadius.circular(14),
-          borderSide:
-              const BorderSide(
-            color:
-                AppColors.primary,
-            width: 1.5,
-          ),
-        ),
+                  ),
       ),
     );
   }
@@ -856,28 +881,21 @@ class _ProductsScreenState extends State<ProductsScreen> {
     List<ProductModel> products,
   ) {
     return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
       children: [
-        Text(
-          '${products.length} product${products.length == 1 ? '' : 's'}',
-          style: theme
-              .textTheme
-              .titleMedium
-              ?.copyWith(
-            fontWeight:
-                FontWeight.w700,
+        for (final ProductModel product
+            in products)
+          Padding(
+            padding:
+                const EdgeInsets.only(
+              bottom: 14,
+            ),
+            child:
+                _buildProductCard(
+              context,
+              theme,
+              product,
+            ),
           ),
-        ),
-        const SizedBox(height: 12),
-        ...products.map(
-          (product) =>
-              _buildProductCard(
-            context,
-            theme,
-            product,
-          ),
-        ),
       ],
     );
   }
@@ -887,139 +905,153 @@ class _ProductsScreenState extends State<ProductsScreen> {
     ThemeData theme,
     ProductModel product,
   ) {
-    final bool isLowStock =
+    final bool lowStock =
         product.currentStock <=
             product.minimumStock &&
-        product.isActive;
+        product.currentStock > 0;
+
+    final bool outOfStock =
+        product.currentStock <= 0;
+
+    final Color stockColor =
+        outOfStock
+            ? AppColors.danger
+            : lowStock
+                ? AppColors.warning
+                : AppColors.success;
+
+    final double stockValue =
+        product.currentStock *
+            product.purchasePrice;
+
+    final double potentialSalesValue =
+        product.currentStock *
+            product.sellingPrice;
 
     return Card(
-      margin:
-          const EdgeInsets.only(
-        bottom: 12,
-      ),
-      child: InkWell(
-        borderRadius:
-            BorderRadius.circular(16),
-        onTap: () {
-          _openEditProduct(product);
-        },
-        child: Padding(
-          padding:
-              const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              Row(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  _buildProductIcon(
-                    product,
-                  ),
-                  const SizedBox(
-                    width: 13,
-                  ),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment
-                              .start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                product.name,
-                                maxLines: 1,
-                                overflow:
-                                    TextOverflow
-                                        .ellipsis,
-                                style: theme
-                                    .textTheme
-                                    .titleMedium
-                                    ?.copyWith(
-                                  fontWeight:
-                                      FontWeight
-                                          .bold,
-                                ),
+      clipBehavior:
+          Clip.antiAlias,
+      child: Padding(
+        padding:
+            const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                _buildProductIcon(
+                  product,
+                ),
+                const SizedBox(
+                  width: 14,
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              product.name,
+                              maxLines: 2,
+                              overflow:
+                                  TextOverflow.ellipsis,
+                              style: theme
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(
+                                fontWeight:
+                                    FontWeight.w700,
                               ),
                             ),
-                            const SizedBox(
-                              width: 8,
-                            ),
-                            _buildStatusChip(
-                              product,
-                            ),
-                          ],
-                        ),
-                        if (product
-                            .category
-                            .isNotEmpty) ...[
-                          const SizedBox(
-                            height: 4,
                           ),
-                          Text(
-                            product.category,
-                            style: theme
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(
-                              color: theme
-                                  .colorScheme
-                                  .onSurfaceVariant,
-                            ),
+                          const SizedBox(
+                            width: 8,
+                          ),
+                          _buildStatusChip(
+                            product,
                           ),
                         ],
+                      ),
+                      if (product
+                          .category
+                          .trim()
+                          .isNotEmpty) ...[
+                        const SizedBox(
+                          height: 4,
+                        ),
+                        Text(
+                          product.category,
+                          maxLines: 1,
+                          overflow:
+                              TextOverflow.ellipsis,
+                          style: theme
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(
+                            color: theme
+                                .colorScheme
+                                .onSurfaceVariant,
+                          ),
+                        ),
                       ],
-                    ),
+                    ],
                   ),
-                  PopupMenuButton<String>(
-                    tooltip: 'More',
-                    onSelected:
-                        (value) {
-                      if (value ==
-                          'edit') {
-                        _openEditProduct(
-                          product,
-                        );
-                      } else if (value ==
-                          'toggle') {
-                        _toggleProductStatus(
-                          product,
-                        );
-                      } else if (value ==
-                          'delete') {
-                        _deleteProduct(
-                          product,
-                        );
-                      }
-                    },
-                    itemBuilder:
-                        (context) => [
-                      const PopupMenuItem(
+                ),
+                PopupMenuButton<String>(
+                  tooltip:
+                      'Product options',
+                  onSelected:
+                      (value) {
+                    if (value ==
+                        'edit') {
+                      _openEditProduct(
+                        product,
+                      );
+                    } else if (value ==
+                        'toggle') {
+                      _toggleProductStatus(
+                        product,
+                      );
+                    } else if (value ==
+                        'delete') {
+                      _deleteProduct(
+                        product,
+                      );
+                    }
+                  },
+                  itemBuilder:
+                      (context) {
+                    return [
+                      const PopupMenuItem<String>(
                         value: 'edit',
                         child: ListTile(
                           contentPadding:
                               EdgeInsets.zero,
                           leading: Icon(
-                            Icons
-                                .edit_outlined,
+                            Icons.edit_outlined,
                           ),
-                          title:
-                              Text('Edit'),
+                          title: Text(
+                            'Edit',
+                          ),
                         ),
                       ),
-                      PopupMenuItem(
+                      PopupMenuItem<String>(
                         value: 'toggle',
                         child: ListTile(
                           contentPadding:
                               EdgeInsets.zero,
                           leading: Icon(
-                            product
-                                    .isActive
+                            product.isActive
                                 ? Icons
-                                    .visibility_off_outlined
+                                    .pause_circle_outline_rounded
                                 : Icons
-                                    .visibility_outlined,
+                                    .play_circle_outline_rounded,
                           ),
                           title: Text(
                             product.isActive
@@ -1029,7 +1061,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                         ),
                       ),
                       const PopupMenuDivider(),
-                      const PopupMenuItem(
+                      const PopupMenuItem<String>(
                         value: 'delete',
                         child: ListTile(
                           contentPadding:
@@ -1042,200 +1074,261 @@ class _ProductsScreenState extends State<ProductsScreen> {
                           ),
                           title: Text(
                             'Delete',
-                            style:
-                                TextStyle(
-                              color:
-                                  AppColors
-                                      .danger,
-                            ),
                           ),
                         ),
                       ),
+                    ];
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(
+              height: 18,
+            ),
+            LayoutBuilder(
+              builder: (
+                context,
+                constraints,
+              ) {
+                final bool compact =
+                    constraints.maxWidth <
+                        650;
+
+                if (compact) {
+                  return Column(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child:
+                                _ProductInfo(
+                              label:
+                                  'Current Stock',
+                              value:
+                                  '${_formatNumber(product.currentStock)} ${product.unit}',
+                              icon: Icons
+                                  .inventory_2_outlined,
+                              color:
+                                  stockColor,
+                            ),
+                          ),
+                          const SizedBox(
+                            width: 12,
+                          ),
+                          Expanded(
+                            child:
+                                _ProductInfo(
+                              label:
+                                  'Minimum Stock',
+                              value:
+                                  '${_formatNumber(product.minimumStock)} ${product.unit}',
+                              icon: Icons
+                                  .warning_amber_outlined,
+                              color:
+                                  AppColors.warning,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(
+                        height: 14,
+                      ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child:
+                                _ProductInfo(
+                              label:
+                                  'Purchase Price',
+                              value:
+                                  '₹${_formatMoney(product.purchasePrice)}',
+                              icon: Icons
+                                  .shopping_cart_outlined,
+                              color:
+                                  AppColors.info,
+                            ),
+                          ),
+                          const SizedBox(
+                            width: 12,
+                          ),
+                          Expanded(
+                            child:
+                                _ProductInfo(
+                              label:
+                                  'Selling Price',
+                              value:
+                                  '₹${_formatMoney(product.sellingPrice)}',
+                              icon: Icons
+                                  .sell_outlined,
+                              color:
+                                  AppColors.success,
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
-                  ),
-                ],
+                  );
+                }
+
+                return Row(
+                  children: [
+                    Expanded(
+                      child:
+                          _ProductInfo(
+                        label:
+                            'Current Stock',
+                        value:
+                            '${_formatNumber(product.currentStock)} ${product.unit}',
+                        icon: Icons
+                            .inventory_2_outlined,
+                        color:
+                            stockColor,
+                      ),
+                    ),
+                    const SizedBox(
+                      width: 14,
+                    ),
+                    Expanded(
+                      child:
+                          _ProductInfo(
+                        label:
+                            'Minimum Stock',
+                        value:
+                            '${_formatNumber(product.minimumStock)} ${product.unit}',
+                        icon: Icons
+                            .warning_amber_outlined,
+                        color:
+                            AppColors.warning,
+                      ),
+                    ),
+                    const SizedBox(
+                      width: 14,
+                    ),
+                    Expanded(
+                      child:
+                          _ProductInfo(
+                        label:
+                            'Purchase Price',
+                        value:
+                            '₹${_formatMoney(product.purchasePrice)}',
+                        icon: Icons
+                            .shopping_cart_outlined,
+                        color:
+                            AppColors.info,
+                      ),
+                    ),
+                    const SizedBox(
+                      width: 14,
+                    ),
+                    Expanded(
+                      child:
+                          _ProductInfo(
+                        label:
+                            'Selling Price',
+                        value:
+                            '₹${_formatMoney(product.sellingPrice)}',
+                        icon: Icons
+                            .sell_outlined,
+                        color:
+                            AppColors.success,
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(
+              height: 16,
+            ),
+            Divider(
+              color: theme
+                  .dividerColor
+                  .withValues(
+                alpha: 0.35,
               ),
+            ),
+            const SizedBox(
+              height: 14,
+            ),
+            Wrap(
+              spacing: 18,
+              runSpacing: 10,
+              children: [
+                _ValueText(
+                  label: 'Stock Value',
+                  value:
+                      '₹${_formatMoney(stockValue)}',
+                ),
+                _ValueText(
+                  label:
+                      'Potential Sales',
+                  value:
+                      '₹${_formatMoney(potentialSalesValue)}',
+                ),
+              ],
+            ),
+            if (lowStock ||
+                outOfStock) ...[
               const SizedBox(
-                height: 16,
+                height: 14,
               ),
               Container(
+                width: double.infinity,
                 padding:
-                    const EdgeInsets.all(13),
-                decoration: BoxDecoration(
-                  color: theme
-                      .colorScheme
-                      .surfaceContainerHighest
+                    const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 9,
+                ),
+                decoration:
+                    BoxDecoration(
+                  color: (outOfStock
+                          ? AppColors.danger
+                          : AppColors.warning)
                       .withValues(
-                    alpha: 0.35,
+                    alpha: 0.08,
                   ),
                   borderRadius:
                       BorderRadius.circular(
-                    13,
+                    10,
                   ),
                 ),
-                child: LayoutBuilder(
-                  builder: (
-                    context,
-                    constraints,
-                  ) {
-                    final bool compact =
-                        constraints.maxWidth <
-                            500;
-
-                    final Widget stock =
-                        _ProductInfo(
-                      label: 'Stock',
-                      value:
-                          '${_formatNumber(product.currentStock)} ${product.unit}',
-                      icon: Icons
-                          .inventory_outlined,
-                      color: isLowStock
-                          ? AppColors
-                              .warning
-                          : AppColors.info,
-                    );
-
-                    final Widget purchase =
-                        _ProductInfo(
-                      label: 'Purchase',
-                      value:
-                          '₹${_formatMoney(product.purchasePrice)}',
-                      icon: Icons
-                          .shopping_cart_outlined,
-                      color:
-                          AppColors.info,
-                    );
-
-                    final Widget selling =
-                        _ProductInfo(
-                      label: 'Selling',
-                      value:
-                          '₹${_formatMoney(product.sellingPrice)}',
-                      icon: Icons
-                          .sell_outlined,
-                      color:
-                          AppColors.success,
-                    );
-
-                    final Widget minimum =
-                        _ProductInfo(
-                      label: 'Min. Stock',
-                      value:
-                          '${_formatNumber(product.minimumStock)} ${product.unit}',
-                      icon: Icons
-                          .warning_amber_outlined,
-                      color:
-                          AppColors.warning,
-                    );
-
-                    if (compact) {
-                      return Column(
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child:
-                                    stock,
-                              ),
-                              Expanded(
-                                child:
-                                    purchase,
-                              ),
-                            ],
-                          ),
-                          const SizedBox(
-                            height: 12,
-                          ),
-                          Row(
-                            children: [
-                              Expanded(
-                                child:
-                                    selling,
-                              ),
-                              Expanded(
-                                child:
-                                    minimum,
-                              ),
-                            ],
-                          ),
-                        ],
-                      );
-                    }
-
-                    return Row(
-                      children: [
-                        Expanded(
-                          child: stock,
+                child: Row(
+                  children: [
+                    Icon(
+                      outOfStock
+                          ? Icons
+                              .error_outline_rounded
+                          : Icons
+                              .warning_amber_rounded,
+                      color: outOfStock
+                          ? AppColors.danger
+                          : AppColors.warning,
+                      size: 18,
+                    ),
+                    const SizedBox(
+                      width: 8,
+                    ),
+                    Expanded(
+                      child: Text(
+                        outOfStock
+                            ? 'Out of stock — current stock is 0 ${product.unit}.'
+                            : 'Low stock — minimum level is ${_formatNumber(product.minimumStock)} ${product.unit}.',
+                        style:
+                            TextStyle(
+                          color: outOfStock
+                              ? AppColors.danger
+                              : AppColors.warning,
+                          fontWeight:
+                              FontWeight.w600,
+                          fontSize: 12,
                         ),
-                        Expanded(
-                          child: purchase,
-                        ),
-                        Expanded(
-                          child: selling,
-                        ),
-                        Expanded(
-                          child: minimum,
-                        ),
-                      ],
-                    );
-                  },
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              if (isLowStock) ...[
-                const SizedBox(
-                  height: 10,
-                ),
-                Container(
-                  width:
-                      double.infinity,
-                  padding:
-                      const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 9,
-                  ),
-                  decoration:
-                      BoxDecoration(
-                    color: AppColors.warning
-                        .withValues(
-                      alpha: 0.08,
-                    ),
-                    borderRadius:
-                        BorderRadius.circular(
-                      10,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons
-                            .warning_amber_rounded,
-                        color:
-                            AppColors.warning,
-                        size: 18,
-                      ),
-                      const SizedBox(
-                        width: 8,
-                      ),
-                      Expanded(
-                        child: Text(
-                          'Low stock — minimum level is ${_formatNumber(product.minimumStock)} ${product.unit}.',
-                          style:
-                              const TextStyle(
-                            color: AppColors
-                                .warning,
-                            fontWeight:
-                                FontWeight
-                                    .w600,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
             ],
-          ),
+          ],
         ),
       ),
     );
@@ -1284,7 +1377,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
         horizontal: 8,
         vertical: 5,
       ),
-      decoration: BoxDecoration(
+      decoration:
+          BoxDecoration(
         color: color.withValues(
           alpha: 0.09,
         ),
@@ -1292,7 +1386,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
             BorderRadius.circular(8),
       ),
       child: Text(
-        active ? 'Active' : 'Inactive',
+        active
+            ? 'Active'
+            : 'Inactive',
         style: TextStyle(
           color: color,
           fontSize: 11,
@@ -1476,7 +1572,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
               height: 8,
             ),
             Text(
-              'Please check your internet connection and Firebase configuration.',
+              _productProvider.errorMessage ??
+                  'Please check your internet connection and Firebase configuration.',
               textAlign:
                   TextAlign.center,
               style: theme
@@ -1492,9 +1589,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
               height: 18,
             ),
             FilledButton.icon(
-              onPressed: () {
-                setState(() {});
-              },
+              onPressed:
+                  _loadBusiness,
               icon: const Icon(
                 Icons.refresh_rounded,
               ),
@@ -1607,6 +1703,52 @@ class _ProductInfo
                 ),
               ),
             ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ValueText extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _ValueText({
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    final ThemeData theme =
+        Theme.of(context);
+
+    return Row(
+      mainAxisSize:
+          MainAxisSize.min,
+      children: [
+        Text(
+          '$label: ',
+          style: theme
+              .textTheme
+              .bodySmall
+              ?.copyWith(
+            color: theme
+                .colorScheme
+                .onSurfaceVariant,
+          ),
+        ),
+        Text(
+          value,
+          style: theme
+              .textTheme
+              .bodySmall
+              ?.copyWith(
+            fontWeight:
+                FontWeight.w700,
           ),
         ),
       ],

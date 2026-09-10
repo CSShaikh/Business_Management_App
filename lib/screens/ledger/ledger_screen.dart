@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/services/customer_statement_pdf_service.dart';
 import '../../core/theme/app_colors.dart';
+import '../../models/business_model.dart';
 import '../../models/customer_model.dart';
 import '../../models/ledger_transaction_model.dart';
 import '../../providers/business_provider.dart';
@@ -209,7 +211,12 @@ class _LedgerScreenState extends State<LedgerScreen> {
 
       if (businessId.isEmpty) {
         customerProvider.setBusinessId('');
-        ledgerProvider.clearError();
+
+        ledgerProvider.clearTransactions();
+
+        setState(() {
+          _selectedCustomerId = null;
+        });
 
         return;
       }
@@ -226,18 +233,19 @@ class _LedgerScreenState extends State<LedgerScreen> {
 
       if (_selectedCustomerId != null &&
           _selectedCustomerId!.trim().isNotEmpty) {
+        final String customerId =
+            _selectedCustomerId!.trim();
+
         ledgerProvider.setContext(
           businessId: businessId,
-          customerId: _selectedCustomerId!,
+          customerId: customerId,
         );
 
         await ledgerProvider
             .loadAndWatchCustomerTransactions(
           businessId: businessId,
-          customerId: _selectedCustomerId!,
+          customerId: customerId,
         );
-      } else {
-        ledgerProvider.clearError();
       }
     } catch (e) {
       if (!mounted) {
@@ -245,22 +253,10 @@ class _LedgerScreenState extends State<LedgerScreen> {
       }
 
       _showMessage(
-        _cleanError(e),
+        'Unable to refresh ledger: ${_cleanError(e)}',
         isError: true,
       );
     }
-  }
-
-  // ===========================================================================
-  // SEARCH
-  // ===========================================================================
-
-  void _onSearchChanged() {
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {});
   }
 
   // ===========================================================================
@@ -279,15 +275,30 @@ class _LedgerScreenState extends State<LedgerScreen> {
       _transactionFilter = 'All';
       _startDate = null;
       _endDate = null;
+      _searchController.clear();
     });
 
     if (customerId == null ||
         customerId.trim().isEmpty) {
-      context.read<LedgerProvider>().clearError();
+      context.read<LedgerProvider>().clearTransactions();
       return;
     }
 
-    await _loadCustomerLedger(customerId);
+    await _loadCustomerLedger(
+      customerId,
+    );
+  }
+
+  // ===========================================================================
+  // SEARCH
+  // ===========================================================================
+
+  void _onSearchChanged() {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {});
   }
 
   // ===========================================================================
@@ -306,11 +317,22 @@ class _LedgerScreenState extends State<LedgerScreen> {
         await showDatePicker(
       context: context,
       firstDate: DateTime(2020),
-      lastDate: DateTime(now.year + 2),
-      initialDate: initialDate,
+      lastDate: DateTime(now.year + 5),
+      initialDate: initialDate.isAfter(now)
+          ? now
+          : initialDate,
     );
 
     if (selected == null || !mounted) {
+      return;
+    }
+
+    if (_endDate != null &&
+        selected.isAfter(_endDate!)) {
+      _showMessage(
+        'Start date cannot be after end date.',
+        isError: true,
+      );
       return;
     }
 
@@ -320,11 +342,6 @@ class _LedgerScreenState extends State<LedgerScreen> {
         selected.month,
         selected.day,
       );
-
-      if (_endDate != null &&
-          _endDate!.isBefore(_startDate!)) {
-        _endDate = null;
-      }
     });
   }
 
@@ -339,12 +356,23 @@ class _LedgerScreenState extends State<LedgerScreen> {
     final DateTime? selected =
         await showDatePicker(
       context: context,
-      firstDate: _startDate ?? DateTime(2020),
-      lastDate: DateTime(now.year + 2),
-      initialDate: initialDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(now.year + 5),
+      initialDate: initialDate.isAfter(now)
+          ? now
+          : initialDate,
     );
 
     if (selected == null || !mounted) {
+      return;
+    }
+
+    if (_startDate != null &&
+        selected.isBefore(_startDate!)) {
+      _showMessage(
+        'End date cannot be before start date.',
+        isError: true,
+      );
       return;
     }
 
@@ -446,6 +474,176 @@ class _LedgerScreenState extends State<LedgerScreen> {
   }
 
   // ===========================================================================
+  // CUSTOMER STATEMENT PDF
+  // ===========================================================================
+
+  Future<void> _printCustomerStatement() async {
+    final BusinessProvider businessProvider =
+        context.read<BusinessProvider>();
+
+    final CustomerProvider customerProvider =
+        context.read<CustomerProvider>();
+
+    final LedgerProvider ledgerProvider =
+        context.read<LedgerProvider>();
+
+    final String businessId =
+        businessProvider.business?.id.trim() ?? '';
+
+    final String customerId =
+        _selectedCustomerId?.trim() ?? '';
+
+    if (businessId.isEmpty ||
+        customerId.isEmpty) {
+      _showMessage(
+        'Please select a customer first.',
+        isError: true,
+      );
+      return;
+    }
+
+    final BusinessModel? business =
+        businessProvider.business;
+
+    final CustomerModel? customer =
+        customerProvider.findCustomerById(
+      customerId,
+    );
+
+    if (business == null ||
+        customer == null) {
+      _showMessage(
+        'Customer or business information is not available.',
+        isError: true,
+      );
+      return;
+    }
+
+    try {
+      await CustomerStatementPdfService.printStatement(
+        business: business,
+        customer: customer,
+        transactions: _statementTransactions(
+          ledgerProvider.transactions,
+        ),
+        fromDate: _startDate,
+        toDate: _endDate,
+      );
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      _showMessage(
+        'Unable to print statement: ${_cleanError(e)}',
+        isError: true,
+      );
+    }
+  }
+
+  Future<void> _shareCustomerStatement() async {
+    final BusinessProvider businessProvider =
+        context.read<BusinessProvider>();
+
+    final CustomerProvider customerProvider =
+        context.read<CustomerProvider>();
+
+    final LedgerProvider ledgerProvider =
+        context.read<LedgerProvider>();
+
+    final String businessId =
+        businessProvider.business?.id.trim() ?? '';
+
+    final String customerId =
+        _selectedCustomerId?.trim() ?? '';
+
+    if (businessId.isEmpty ||
+        customerId.isEmpty) {
+      _showMessage(
+        'Please select a customer first.',
+        isError: true,
+      );
+      return;
+    }
+
+    final BusinessModel? business =
+        businessProvider.business;
+
+    final CustomerModel? customer =
+        customerProvider.findCustomerById(
+      customerId,
+    );
+
+    if (business == null ||
+        customer == null) {
+      _showMessage(
+        'Customer or business information is not available.',
+        isError: true,
+      );
+      return;
+    }
+
+    try {
+      await CustomerStatementPdfService.shareStatement(
+        business: business,
+        customer: customer,
+        transactions: _statementTransactions(
+          ledgerProvider.transactions,
+        ),
+        fromDate: _startDate,
+        toDate: _endDate,
+      );
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      _showMessage(
+        'Unable to share statement: ${_cleanError(e)}',
+        isError: true,
+      );
+    }
+  }
+
+  List<LedgerTransactionModel> _statementTransactions(
+    List<LedgerTransactionModel> transactions,
+  ) {
+    return transactions.where(
+      (LedgerTransactionModel transaction) {
+        if (_startDate != null) {
+          final DateTime start = DateTime(
+            _startDate!.year,
+            _startDate!.month,
+            _startDate!.day,
+          );
+
+          if (transaction.date.isBefore(start)) {
+            return false;
+          }
+        }
+
+        if (_endDate != null) {
+          final DateTime end = DateTime(
+            _endDate!.year,
+            _endDate!.month,
+            _endDate!.day,
+            23,
+            59,
+            59,
+            999,
+          );
+
+          if (transaction.date.isAfter(end)) {
+            return false;
+          }
+        }
+
+        return true;
+      },
+    ).toList(growable: false);
+  }
+
+  // ===========================================================================
   // BUILD
   // ===========================================================================
 
@@ -468,6 +666,50 @@ class _LedgerScreenState extends State<LedgerScreen> {
               'Customer Ledger',
             ),
             actions: [
+              if (_selectedCustomerId != null &&
+                  _selectedCustomerId!.trim().isNotEmpty)
+                PopupMenuButton<String>(
+                  tooltip: 'Customer Statement',
+                  onSelected: (String value) {
+                    if (value == 'print') {
+                      _printCustomerStatement();
+                    } else if (value == 'share') {
+                      _shareCustomerStatement();
+                    }
+                  },
+                  itemBuilder: (
+                    BuildContext context,
+                  ) {
+                    return const [
+                      PopupMenuItem<String>(
+                        value: 'print',
+                        child: ListTile(
+                          contentPadding:
+                              EdgeInsets.zero,
+                          leading: Icon(
+                            Icons.print_rounded,
+                          ),
+                          title: Text(
+                            'Print Statement',
+                          ),
+                        ),
+                      ),
+                      PopupMenuItem<String>(
+                        value: 'share',
+                        child: ListTile(
+                          contentPadding:
+                              EdgeInsets.zero,
+                          leading: Icon(
+                            Icons.share_rounded,
+                          ),
+                          title: Text(
+                            'Share Statement PDF',
+                          ),
+                        ),
+                      ),
+                    ];
+                  },
+                ),
               IconButton(
                 tooltip: 'Refresh',
                 onPressed:
@@ -788,7 +1030,6 @@ class _LedgerScreenState extends State<LedgerScreen> {
       },
     );
 
-
     return LayoutBuilder(
       builder: (
         BuildContext context,
@@ -942,25 +1183,60 @@ class _LedgerScreenState extends State<LedgerScreen> {
   Widget _buildFilters(
     BuildContext context,
   ) {
+    final ThemeData theme =
+        Theme.of(context);
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
           children: [
+            Row(
+              children: [
+                const Icon(
+                  Icons.filter_alt_rounded,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Search & Filters',
+                    style: theme
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(
+                      fontWeight:
+                          FontWeight.w800,
+                    ),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed:
+                      _clearFilters,
+                  icon: const Icon(
+                    Icons.clear_all_rounded,
+                  ),
+                  label: const Text(
+                    'Clear',
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
             TextField(
               controller:
                   _searchController,
-              decoration: InputDecoration(
-                labelText:
-                    'Search transactions',
+              decoration:
+                  InputDecoration(
                 hintText:
-                    'Search type, reference or notes...',
-                prefixIcon: const Icon(
+                    'Search transactions...',
+                prefixIcon:
+                    const Icon(
                   Icons.search_rounded,
                 ),
                 suffixIcon:
-                    _searchController
-                            .text
+                    _searchController.text
                             .trim()
                             .isEmpty
                         ? null
@@ -969,9 +1245,10 @@ class _LedgerScreenState extends State<LedgerScreen> {
                               _searchController
                                   .clear();
                             },
-                            icon: const Icon(
+                            icon:
+                                const Icon(
                               Icons
-                                  .clear_rounded,
+                                  .close_rounded,
                             ),
                           ),
               ),
@@ -982,19 +1259,22 @@ class _LedgerScreenState extends State<LedgerScreen> {
                 BuildContext context,
                 BoxConstraints constraints,
               ) {
-                final bool stacked =
-                    constraints.maxWidth < 700;
+                final bool compact =
+                    constraints.maxWidth < 600;
 
-                final Widget typeDropdown =
-                    DropdownButtonFormField<String>(
+                final Widget typeFilter =
+                    DropdownButtonFormField<
+                        String>(
                   initialValue:
                       _transactionFilter,
                   decoration:
                       const InputDecoration(
                     labelText:
                         'Transaction Type',
-                    prefixIcon: Icon(
-                      Icons.swap_vert_rounded,
+                    prefixIcon:
+                        Icon(
+                      Icons
+                          .swap_vert_rounded,
                     ),
                   ),
                   items: const [
@@ -1010,10 +1290,19 @@ class _LedgerScreenState extends State<LedgerScreen> {
                       value: 'PAYMENT',
                       child: Text('Payment'),
                     ),
+                    DropdownMenuItem<String>(
+                      value: 'RETURN',
+                      child: Text('Return'),
+                    ),
+                    DropdownMenuItem<String>(
+                      value: 'ADJUSTMENT',
+                      child: Text(
+                        'Adjustment',
+                      ),
+                    ),
                   ],
-                  onChanged: (
-                    String? value,
-                  ) {
+                  onChanged:
+                      (String? value) {
                     if (value == null) {
                       return;
                     }
@@ -1028,8 +1317,11 @@ class _LedgerScreenState extends State<LedgerScreen> {
                 final Widget startDate =
                     _dateFilterButton(
                   context,
-                  label: 'From',
+                  label: 'From Date',
                   date: _startDate,
+                  icon:
+                      Icons
+                          .calendar_today_rounded,
                   onPressed:
                       _selectStartDate,
                 );
@@ -1037,49 +1329,36 @@ class _LedgerScreenState extends State<LedgerScreen> {
                 final Widget endDate =
                     _dateFilterButton(
                   context,
-                  label: 'To',
+                  label: 'To Date',
                   date: _endDate,
+                  icon:
+                      Icons
+                          .calendar_month_rounded,
                   onPressed:
                       _selectEndDate,
                 );
 
-                if (stacked) {
+                if (compact) {
                   return Column(
                     children: [
-                      typeDropdown,
+                      typeFilter,
                       const SizedBox(
-                        height: 12,
+                        height: 10,
                       ),
                       Row(
                         children: [
                           Expanded(
-                            child: startDate,
+                            child:
+                                startDate,
                           ),
                           const SizedBox(
                             width: 10,
                           ),
                           Expanded(
-                            child: endDate,
+                            child:
+                                endDate,
                           ),
                         ],
-                      ),
-                      const SizedBox(
-                        height: 10,
-                      ),
-                      SizedBox(
-                        width: double.infinity,
-                        child:
-                            OutlinedButton.icon(
-                          onPressed:
-                              _clearFilters,
-                          icon: const Icon(
-                            Icons
-                                .filter_alt_off_rounded,
-                          ),
-                          label: const Text(
-                            'Clear Filters',
-                          ),
-                        ),
                       ),
                     ],
                   );
@@ -1088,33 +1367,22 @@ class _LedgerScreenState extends State<LedgerScreen> {
                 return Row(
                   children: [
                     Expanded(
-                      child: typeDropdown,
+                      child:
+                          typeFilter,
                     ),
                     const SizedBox(
                       width: 10,
                     ),
                     Expanded(
-                      child: startDate,
+                      child:
+                          startDate,
                     ),
                     const SizedBox(
                       width: 10,
                     ),
                     Expanded(
-                      child: endDate,
-                    ),
-                    const SizedBox(
-                      width: 10,
-                    ),
-                    OutlinedButton.icon(
-                      onPressed:
-                          _clearFilters,
-                      icon: const Icon(
-                        Icons
-                            .filter_alt_off_rounded,
-                      ),
-                      label: const Text(
-                        'Clear',
-                      ),
+                      child:
+                          endDate,
                     ),
                   ],
                 );
@@ -1130,20 +1398,35 @@ class _LedgerScreenState extends State<LedgerScreen> {
     BuildContext context, {
     required String label,
     required DateTime? date,
+    required IconData icon,
     required VoidCallback onPressed,
   }) {
-    return OutlinedButton.icon(
-      onPressed: onPressed,
-      icon: const Icon(
-        Icons.calendar_today_rounded,
-        size: 18,
-      ),
-      label: Text(
-        date == null
-            ? label
-            : '$label: ${_formatDate(date)}',
-        overflow:
-            TextOverflow.ellipsis,
+    final ThemeData theme =
+        Theme.of(context);
+
+    return InkWell(
+      onTap: onPressed,
+      borderRadius:
+          BorderRadius.circular(12),
+      child: InputDecorator(
+        decoration:
+            InputDecoration(
+          labelText: label,
+          prefixIcon:
+              Icon(icon),
+        ),
+        child: Text(
+          date == null
+              ? 'Select'
+              : _formatDate(date),
+          style: theme
+              .textTheme
+              .bodyMedium
+              ?.copyWith(
+            fontWeight:
+                FontWeight.w600,
+          ),
+        ),
       ),
     );
   }
@@ -1160,34 +1443,15 @@ class _LedgerScreenState extends State<LedgerScreen> {
     final ThemeData theme =
         Theme.of(context);
 
-    if (ledgerProvider.isLoading &&
-        transactions.isEmpty) {
-      return const SizedBox(
-        height: 300,
-        child: Center(
-          child:
-              CircularProgressIndicator(),
-        ),
-      );
-    }
-
-    if (ledgerProvider.errorMessage != null &&
-        transactions.isEmpty) {
-      return _buildErrorCard(
-        context,
-        ledgerProvider.errorMessage!,
-      );
-    }
-
-    if (transactions.isEmpty) {
-      return _buildEmptyLedger(
-        context,
-      );
-    }
-
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding:
+            const EdgeInsets.fromLTRB(
+          16,
+          16,
+          16,
+          8,
+        ),
         child: Column(
           crossAxisAlignment:
               CrossAxisAlignment.start,
@@ -1195,11 +1459,9 @@ class _LedgerScreenState extends State<LedgerScreen> {
             Row(
               children: [
                 const Icon(
-                  Icons.history_rounded,
-                  color:
-                      AppColors.primary,
+                  Icons.receipt_long_rounded,
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'Transaction History',
@@ -1212,58 +1474,70 @@ class _LedgerScreenState extends State<LedgerScreen> {
                     ),
                   ),
                 ),
-                Text(
-                  '${transactions.length} records',
-                  style: theme
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(
-                    color: theme
-                        .colorScheme
-                        .onSurfaceVariant,
+                if (ledgerProvider
+                    .isLoading)
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child:
+                        CircularProgressIndicator(
+                      strokeWidth: 2,
+                    ),
                   ),
-                ),
               ],
             ),
             const SizedBox(height: 12),
-            const Divider(),
-            const SizedBox(height: 4),
-            ListView.separated(
-              shrinkWrap: true,
-              physics:
-                  const NeverScrollableScrollPhysics(),
-              itemCount:
-                  transactions.length,
-              separatorBuilder:
-                  (
-                BuildContext context,
-                int index,
-              ) =>
-                  const Divider(height: 1),
-              itemBuilder:
-                  (
-                BuildContext context,
-                int index,
-              ) {
-                final LedgerTransactionModel
-                    transaction =
-                    transactions[index];
+            if (ledgerProvider.errorMessage !=
+                    null &&
+                transactions.isEmpty)
+              _buildLedgerError(
+                context,
+                ledgerProvider.errorMessage!,
+              )
+            else if (transactions.isEmpty)
+              _buildEmptyLedger(context)
+            else
+              ListView.separated(
+                shrinkWrap: true,
+                physics:
+                    const NeverScrollableScrollPhysics(),
+                itemCount:
+                    transactions.length,
+                separatorBuilder:
+                    (
+                  BuildContext context,
+                  int index,
+                ) {
+                  return Divider(
+                    height: 1,
+                    color: theme
+                        .colorScheme
+                        .outline
+                        .withValues(
+                      alpha: 0.14,
+                    ),
+                  );
+                },
+                itemBuilder:
+                    (
+                  BuildContext context,
+                  int index,
+                ) {
+                  final LedgerTransactionModel
+                      transaction =
+                      transactions[index];
 
-                return _buildTransactionTile(
-                  context,
-                  transaction,
-                );
-              },
-            ),
+                  return _buildTransactionTile(
+                    context,
+                    transaction,
+                  );
+                },
+              ),
           ],
         ),
       ),
     );
   }
-
-  // ===========================================================================
-  // TRANSACTION TILE
-  // ===========================================================================
 
   Widget _buildTransactionTile(
     BuildContext context,
@@ -1283,12 +1557,19 @@ class _LedgerScreenState extends State<LedgerScreen> {
     final Color color =
         isPayment
             ? AppColors.success
-            : AppColors.primary;
+            : type == 'SALE'
+                ? AppColors.primary
+                : AppColors.secondary;
 
     final IconData icon =
         isPayment
-            ? Icons.payments_rounded
-            : Icons.receipt_long_rounded;
+            ? Icons
+                .south_west_rounded
+            : type == 'SALE'
+                ? Icons
+                    .north_east_rounded
+                : Icons
+                    .swap_horiz_rounded;
 
     return InkWell(
       onTap: () {
@@ -1317,7 +1598,9 @@ class _LedgerScreenState extends State<LedgerScreen> {
                   alpha: 0.10,
                 ),
                 borderRadius:
-                    BorderRadius.circular(13),
+                    BorderRadius.circular(
+                  14,
+                ),
               ),
               child: Icon(
                 icon,
@@ -1337,6 +1620,8 @@ class _LedgerScreenState extends State<LedgerScreen> {
                           _transactionTitle(
                             transaction,
                           ),
+                          overflow:
+                              TextOverflow.ellipsis,
                           style: theme
                               .textTheme
                               .titleSmall
@@ -1353,7 +1638,10 @@ class _LedgerScreenState extends State<LedgerScreen> {
                         _formatCurrency(
                           transaction.amount,
                         ),
-                        style: TextStyle(
+                        style: theme
+                            .textTheme
+                            .titleSmall
+                            ?.copyWith(
                           color: color,
                           fontWeight:
                               FontWeight.w800,
@@ -1375,23 +1663,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
                           .onSurfaceVariant,
                     ),
                   ),
-                  if (transaction.notes
-                      .trim()
-                      .isNotEmpty) ...[
-                    const SizedBox(
-                      height: 5,
-                    ),
-                    Text(
-                      transaction.notes,
-                      maxLines: 2,
-                      overflow:
-                          TextOverflow.ellipsis,
-                      style: theme
-                          .textTheme
-                          .bodySmall,
-                    ),
-                  ],
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 7),
                   Wrap(
                     spacing: 8,
                     runSpacing: 6,
@@ -1433,6 +1705,41 @@ class _LedgerScreenState extends State<LedgerScreen> {
         ),
       ),
     );
+  }
+
+  String _transactionTitle(
+    LedgerTransactionModel transaction,
+  ) {
+    final String type =
+        transaction.transactionType
+            .trim()
+            .toUpperCase();
+
+    if (type == 'SALE') {
+      if (transaction.notes
+          .trim()
+          .isNotEmpty) {
+        return transaction.notes.trim();
+      }
+
+      return 'Sale';
+    }
+
+    if (type == 'PAYMENT') {
+      return 'Payment Received';
+    }
+
+    if (type == 'RETURN') {
+      return 'Return';
+    }
+
+    if (type == 'ADJUSTMENT') {
+      return 'Adjustment';
+    }
+
+    return type.isEmpty
+        ? 'Transaction'
+        : type;
   }
 
   Widget _transactionChip(
@@ -1650,7 +1957,8 @@ class _LedgerScreenState extends State<LedgerScreen> {
             children: [
               Icon(
                 noCustomers
-                    ? Icons.person_add_alt_1_rounded
+                    ? Icons
+                        .person_add_alt_1_rounded
                     : Icons
                         .account_balance_wallet_outlined,
                 size: 58,
@@ -1699,62 +2007,166 @@ class _LedgerScreenState extends State<LedgerScreen> {
     final ThemeData theme =
         Theme.of(context);
 
-    return Card(
-      child: Padding(
-        padding:
-            const EdgeInsets.symmetric(
-          vertical: 60,
-          horizontal: 24,
-        ),
-        child: Center(
-          child: Column(
-            children: [
-              Icon(
-                Icons.receipt_long_outlined,
-                size: 58,
+    return Padding(
+      padding:
+          const EdgeInsets.symmetric(
+        vertical: 40,
+        horizontal: 20,
+      ),
+      child: Center(
+        child: Column(
+          children: [
+            Icon(
+              Icons
+                  .receipt_long_outlined,
+              size: 52,
+              color: theme
+                  .colorScheme
+                  .onSurfaceVariant,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'No transactions found',
+              style: theme
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(
+                fontWeight:
+                    FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              'This customer does not have transactions matching the current filters.',
+              textAlign:
+                  TextAlign.center,
+              style: theme
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(
                 color: theme
                     .colorScheme
-                    .onSurfaceVariant
-                    .withValues(alpha: 0.55),
+                    .onSurfaceVariant,
               ),
-              const SizedBox(height: 16),
-              Text(
-                'No Ledger Transactions',
-                style: theme
-                    .textTheme
-                    .titleLarge
-                    ?.copyWith(
-                  fontWeight:
-                      FontWeight.w800,
-                ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLedgerError(
+    BuildContext context,
+    String message,
+  ) {
+    final ThemeData theme =
+        Theme.of(context);
+
+    return Padding(
+      padding:
+          const EdgeInsets.symmetric(
+        vertical: 30,
+        horizontal: 12,
+      ),
+      child: Center(
+        child: Column(
+          children: [
+            Icon(
+              Icons.error_outline_rounded,
+              size: 50,
+              color: AppColors.danger,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Unable to load ledger',
+              style: theme
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(
+                fontWeight:
+                    FontWeight.w700,
               ),
-              const SizedBox(height: 8),
-              Text(
-                'No transactions match the selected filters.',
-                textAlign:
-                    TextAlign.center,
-                style: theme
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(
-                  color: theme
-                      .colorScheme
-                      .onSurfaceVariant,
-                ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              message,
+              textAlign:
+                  TextAlign.center,
+              style: theme
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(
+                color: theme
+                    .colorScheme
+                    .onSurfaceVariant,
               ),
-              const SizedBox(height: 16),
-              OutlinedButton.icon(
-                onPressed:
-                    _clearFilters,
-                icon: const Icon(
-                  Icons.filter_alt_off_rounded,
-                ),
-                label: const Text(
-                  'Clear Filters',
-                ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // BUSINESS ERROR
+  // ===========================================================================
+
+  Widget _buildErrorState(
+    BuildContext context,
+    String message,
+  ) {
+    final ThemeData theme =
+        Theme.of(context);
+
+    return Center(
+      child: Padding(
+        padding:
+            const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize:
+              MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.error_outline_rounded,
+              size: 60,
+              color: AppColors.danger,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Something went wrong',
+              style: theme
+                  .textTheme
+                  .titleLarge
+                  ?.copyWith(
+                fontWeight:
+                    FontWeight.w800,
               ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              textAlign:
+                  TextAlign.center,
+              style: theme
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(
+                color: theme
+                    .colorScheme
+                    .onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 18),
+            FilledButton.icon(
+              onPressed: _initialize,
+              icon: const Icon(
+                Icons.refresh_rounded,
+              ),
+              label: const Text(
+                'Retry',
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1768,74 +2180,21 @@ class _LedgerScreenState extends State<LedgerScreen> {
 
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding:
+            const EdgeInsets.all(24),
         child: Column(
           mainAxisSize:
               MainAxisSize.min,
           children: [
             Icon(
               Icons.business_outlined,
-              size: 64,
-              color: theme
-                  .colorScheme
-                  .onSurfaceVariant,
+              size: 62,
+              color: AppColors.primary
+                  .withValues(alpha: 0.7),
             ),
             const SizedBox(height: 16),
             Text(
-              'Business Not Found',
-              style: theme
-                  .textTheme
-                  .titleLarge
-                  ?.copyWith(
-                fontWeight:
-                    FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Please complete your business setup first.',
-              textAlign:
-                  TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: _initialize,
-              icon: const Icon(
-                Icons.refresh_rounded,
-              ),
-              label: const Text(
-                'Retry',
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildErrorState(
-    BuildContext context,
-    String message,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize:
-              MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.error_outline_rounded,
-              size: 60,
-              color:
-                  AppColors.danger,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Unable to Load Ledger',
+              'Business Profile Required',
               style: theme
                   .textTheme
                   .titleLarge
@@ -1846,54 +2205,16 @@ class _LedgerScreenState extends State<LedgerScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              message,
+              'Complete your business setup before using customer ledgers.',
               textAlign:
                   TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: _initialize,
-              icon: const Icon(
-                Icons.refresh_rounded,
-              ),
-              label: const Text(
-                'Retry',
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildErrorCard(
-    BuildContext context,
-    String message,
-  ) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            const Icon(
-              Icons.error_outline_rounded,
-              size: 48,
-              color: AppColors.danger,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              message,
-              textAlign:
-                  TextAlign.center,
-            ),
-            const SizedBox(height: 14),
-            OutlinedButton.icon(
-              onPressed: _refresh,
-              icon: const Icon(
-                Icons.refresh_rounded,
-              ),
-              label: const Text(
-                'Retry',
+              style: theme
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(
+                color: theme
+                    .colorScheme
+                    .onSurfaceVariant,
               ),
             ),
           ],
@@ -1903,87 +2224,8 @@ class _LedgerScreenState extends State<LedgerScreen> {
   }
 
   // ===========================================================================
-  // HELPERS
+  // MESSAGE
   // ===========================================================================
-
-  String _transactionTitle(
-    LedgerTransactionModel transaction,
-  ) {
-    final String type =
-        transaction.transactionType
-            .trim()
-            .toUpperCase();
-
-    switch (type) {
-      case 'SALE':
-        return 'Sale';
-      case 'PAYMENT':
-        return 'Payment Received';
-      case 'RETURN':
-        return 'Sale Return';
-      case 'ADJUSTMENT':
-        return 'Balance Adjustment';
-      default:
-        return transaction.transactionType
-                .trim()
-                .isEmpty
-            ? 'Transaction'
-            : transaction.transactionType;
-    }
-  }
-
-  String _formatCurrency(
-    double value,
-  ) {
-    return NumberFormat.currency(
-      locale: 'en_IN',
-      symbol: '₹',
-      decimalDigits: 2,
-    ).format(value);
-  }
-
-  String _formatDate(
-    DateTime value,
-  ) {
-    return DateFormat(
-      'dd MMM yyyy',
-    ).format(value);
-  }
-
-  String _formatDateTime(
-    DateTime value,
-  ) {
-    return DateFormat(
-      'dd MMM yyyy, hh:mm a',
-    ).format(value);
-  }
-
-  String _cleanError(
-    Object error,
-  ) {
-    String message =
-        error.toString().trim();
-
-    if (message.startsWith(
-      'Exception: ',
-    )) {
-      message = message.substring(
-        'Exception: '.length,
-      );
-    }
-
-    if (message.startsWith(
-      'Bad state: ',
-    )) {
-      message = message.substring(
-        'Bad state: '.length,
-      );
-    }
-
-    return message.isEmpty
-        ? 'Something went wrong.'
-        : message;
-  }
 
   void _showMessage(
     String message, {
@@ -2006,5 +2248,57 @@ class _LedgerScreenState extends State<LedgerScreen> {
                   : AppColors.success,
         ),
       );
+  }
+
+  // ===========================================================================
+  // HELPERS
+  // ===========================================================================
+
+  String _formatCurrency(
+    double value,
+  ) {
+    final NumberFormat format =
+        NumberFormat.currency(
+      locale: 'en_IN',
+      symbol: '₹',
+      decimalDigits: 2,
+    );
+
+    return format.format(value);
+  }
+
+  String _formatDate(
+    DateTime date,
+  ) {
+    return DateFormat(
+      'dd MMM yyyy',
+    ).format(date);
+  }
+
+  String _formatDateTime(
+    DateTime date,
+  ) {
+    return DateFormat(
+      'dd MMM yyyy, hh:mm a',
+    ).format(date.toLocal());
+  }
+
+  String _cleanError(
+    Object error,
+  ) {
+    final String message =
+        error.toString().trim();
+
+    if (message.startsWith(
+      'Exception: ',
+    )) {
+      return message.substring(
+        'Exception: '.length,
+      );
+    }
+
+    return message.isEmpty
+        ? 'Unknown error occurred.'
+        : message;
   }
 }

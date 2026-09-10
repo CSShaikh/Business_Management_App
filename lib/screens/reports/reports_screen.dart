@@ -15,6 +15,16 @@ import '../../repositories/product_repository.dart';
 import '../../repositories/purchase_repository.dart';
 import '../../repositories/sale_repository.dart';
 
+import 'analytics_report_screen.dart';
+import 'customer_report_screen.dart';
+import 'expense_report_screen.dart';
+import 'payment_report_screen.dart';
+import 'profit_report_screen.dart';
+import 'purchase_report_screen.dart';
+import 'sales_report_screen.dart';
+import 'stock_report_screen.dart';
+import 'supplier_report_screen.dart';
+
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({
     super.key,
@@ -46,16 +56,18 @@ class _ReportsScreenState extends State<ReportsScreen> {
   final DateFormat _dateFormat =
       DateFormat('dd MMM yyyy');
 
-  final DateFormat _shortDateFormat =
-      DateFormat('dd MMM');
-
+  
   BusinessModel? _business;
 
-  List<SaleModel> _sales = [];
-  List<PurchaseModel> _purchases = [];
-  List<ExpenseModel> _expenses = [];
-  List<PaymentModel> _payments = [];
-  List<ProductModel> _products = [];
+  List<SaleModel> _sales = <SaleModel>[];
+  List<PurchaseModel> _purchases =
+      <PurchaseModel>[];
+  List<ExpenseModel> _expenses =
+      <ExpenseModel>[];
+  List<PaymentModel> _payments =
+      <PaymentModel>[];
+  List<ProductModel> _products =
+      <ProductModel>[];
 
   bool _isLoading = true;
   bool _isRefreshing = false;
@@ -100,13 +112,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
         return;
       }
 
-      _business = business;
-
       final String businessId =
           business.id.trim();
 
       if (businessId.isEmpty) {
         setState(() {
+          _business = business;
           _isLoading = false;
           _errorMessage =
               'Business ID is missing.';
@@ -114,76 +125,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
         return;
       }
 
-      final results = await Future.wait([
-        _saleRepository.getSales(
-          businessId: businessId,
-        ),
-        _purchaseRepository.getPurchases(
-          businessId: businessId,
-        ),
-        _expenseRepository.getExpenses(
-          businessId: businessId,
-        ),
-        _paymentRepository.getPayments(
-          businessId: businessId,
-        ),
-        _productRepository.getProducts(
-          businessId,
-        ),
-      ]);
-
-      if (!mounted) return;
-
-      setState(() {
-        _sales = results[0] as List<SaleModel>;
-        _purchases =
-            results[1] as List<PurchaseModel>;
-        _expenses =
-            results[2] as List<ExpenseModel>;
-        _payments =
-            results[3] as List<PaymentModel>;
-        _products =
-            results[4] as List<ProductModel>;
-
-        _isLoading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        _isLoading = false;
-        _errorMessage =
-            'Unable to load reports. Please try again.';
-      });
-    }
-  }
-
-  // ===========================================================================
-  // REFRESH
-  // ===========================================================================
-
-  Future<void> _refresh() async {
-    if (_isRefreshing) return;
-
-    setState(() {
-      _isRefreshing = true;
-    });
-
-    try {
-      final BusinessModel? business =
-          await _businessRepository
-              .getBusinessForCurrentUser();
-
-      if (business == null) {
-        throw Exception(
-          'Business profile not found.',
-        );
-      }
-
-      final String businessId =
-          business.id.trim();
-
-      final results = await Future.wait([
+      final List<dynamic> results =
+          await Future.wait<dynamic>([
         _saleRepository.getSales(
           businessId: businessId,
         ),
@@ -205,7 +148,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
       setState(() {
         _business = business;
-        _sales = results[0] as List<SaleModel>;
+        _sales =
+            results[0] as List<SaleModel>;
         _purchases =
             results[1] as List<PurchaseModel>;
         _expenses =
@@ -214,19 +158,116 @@ class _ReportsScreenState extends State<ReportsScreen> {
             results[3] as List<PaymentModel>;
         _products =
             results[4] as List<ProductModel>;
-
+        _isLoading = false;
         _errorMessage = null;
       });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+        _errorMessage =
+            'Unable to load reports. Please try again.';
+      });
+    }
+  }
+
+  // ===========================================================================
+  // REFRESH
+  // ===========================================================================
+
+  Future<void> _refresh() async {
+    if (_isRefreshing) return;
+
+    if (!mounted) return;
+
+    setState(() {
+      _isRefreshing = true;
+    });
+
+    try {
+      final BusinessModel? business =
+          await _businessRepository
+              .getBusinessForCurrentUser();
+
+      if (business == null) {
+        throw Exception(
+          'Business profile not found.',
+        );
+      }
+
+      final String businessId =
+          business.id.trim();
+
+      if (businessId.isEmpty) {
+        throw Exception(
+          'Business ID is missing.',
+        );
+      }
+
+      final List<dynamic> results =
+          await Future.wait<dynamic>([
+        _saleRepository.getSales(
+          businessId: businessId,
+        ),
+        _purchaseRepository.getPurchases(
+          businessId: businessId,
+        ),
+        _expenseRepository.getExpenses(
+          businessId: businessId,
+        ),
+        _paymentRepository.getPayments(
+          businessId: businessId,
+        ),
+        _productRepository.getProducts(
+          businessId,
+        ),
+      ]);
+
+      if (!mounted) return;
+
+      setState(() {
+        _business = business;
+        _sales =
+            results[0] as List<SaleModel>;
+        _purchases =
+            results[1] as List<PurchaseModel>;
+        _expenses =
+            results[2] as List<ExpenseModel>;
+        _payments =
+            results[3] as List<PaymentModel>;
+        _products =
+            results[4] as List<ProductModel>;
+        _errorMessage = null;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Reports refreshed successfully.',
+              ),
+              behavior:
+                  SnackBarBehavior.floating,
+            ),
+          );
+      }
     } catch (_) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Unable to refresh reports.',
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Unable to refresh reports.',
+            ),
+            behavior:
+                SnackBarBehavior.floating,
           ),
-        ),
-      );
+        );
     } finally {
       if (mounted) {
         setState(() {
@@ -271,7 +312,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
       saveText: 'Apply',
     );
 
-    if (selected == null) {
+    if (selected == null ||
+        !mounted) {
       return;
     }
 
@@ -300,10 +342,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
     });
   }
 
-  // ===========================================================================
-  // DATE FILTER
-  // ===========================================================================
-
   bool _isDateInRange(DateTime date) {
     if (_startDate == null &&
         _endDate == null) {
@@ -324,35 +362,46 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   List<SaleModel> get _filteredSales {
-    return _sales.where(
-      (sale) {
-        return _isDateInRange(sale.date);
-      },
-    ).toList();
+    return _sales
+        .where(
+          (sale) =>
+              _isDateInRange(sale.date),
+        )
+        .toList();
   }
 
-  List<PurchaseModel> get _filteredPurchases {
-    return _purchases.where(
-      (purchase) {
-        return _isDateInRange(purchase.date);
-      },
-    ).toList();
+  List<PurchaseModel>
+      get _filteredPurchases {
+    return _purchases
+        .where(
+          (purchase) =>
+              _isDateInRange(
+            purchase.date,
+          ),
+        )
+        .toList();
   }
 
   List<ExpenseModel> get _filteredExpenses {
-    return _expenses.where(
-      (expense) {
-        return _isDateInRange(expense.date);
-      },
-    ).toList();
+    return _expenses
+        .where(
+          (expense) =>
+              _isDateInRange(
+            expense.date,
+          ),
+        )
+        .toList();
   }
 
   List<PaymentModel> get _filteredPayments {
-    return _payments.where(
-      (payment) {
-        return _isDateInRange(payment.date);
-      },
-    ).toList();
+    return _payments
+        .where(
+          (payment) =>
+              _isDateInRange(
+            payment.date,
+          ),
+        )
+        .toList();
   }
 
   // ===========================================================================
@@ -360,40 +409,46 @@ class _ReportsScreenState extends State<ReportsScreen> {
   // ===========================================================================
 
   double get _totalSales {
-    return _filteredSales.fold(
+    return _filteredSales.fold<double>(
       0,
-      (sum, sale) => sum + sale.total,
+      (sum, sale) =>
+          sum + sale.total,
     );
   }
 
   double get _totalPurchases {
-    return _filteredPurchases.fold(
+    return _filteredPurchases.fold<double>(
       0,
-      (sum, purchase) => sum + purchase.total,
+      (sum, purchase) =>
+          sum + purchase.total,
     );
   }
 
   double get _totalExpenses {
-    return _filteredExpenses.fold(
+    return _filteredExpenses.fold<double>(
       0,
-      (sum, expense) => sum + expense.amount,
+      (sum, expense) =>
+          sum + expense.amount,
     );
   }
 
   double get _totalPayments {
-    return _filteredPayments.fold(
+    return _filteredPayments.fold<double>(
       0,
-      (sum, payment) => sum + payment.amount,
+      (sum, payment) =>
+          sum + payment.amount,
     );
   }
 
   double get _grossProfit {
     double profit = 0;
 
-    for (final sale in _filteredSales) {
+    for (final SaleModel sale
+        in _filteredSales) {
       for (final item in sale.items) {
         profit +=
-            (item.sellingRate - item.costPrice) *
+            (item.sellingRate -
+                    item.costPrice) *
                 item.quantity;
       }
     }
@@ -402,7 +457,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   double get _netProfit {
-    return _grossProfit - _totalExpenses;
+    return _grossProfit -
+        _totalExpenses;
   }
 
   double get _profitMargin {
@@ -410,26 +466,30 @@ class _ReportsScreenState extends State<ReportsScreen> {
       return 0;
     }
 
-    return (_netProfit / _totalSales) * 100;
+    return (_netProfit /
+            _totalSales) *
+        100;
   }
 
   double get _outstandingSales {
-    double amount = 0;
+    double outstanding = 0;
 
-    for (final sale in _filteredSales) {
-      final double outstanding =
-          sale.total - sale.paidAmount;
+    for (final SaleModel sale
+        in _filteredSales) {
+      final double balance =
+          sale.total -
+              sale.paidAmount;
 
-      if (outstanding > 0) {
-        amount += outstanding;
+      if (balance > 0) {
+        outstanding += balance;
       }
     }
 
-    return amount;
+    return outstanding;
   }
 
   double get _stockValue {
-    return _products.fold(
+    return _products.fold<double>(
       0,
       (sum, product) =>
           sum +
@@ -440,45 +500,112 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   int get _lowStockCount {
     return _products.where(
-      (product) {
-        return product.currentStock <=
-            product.minimumStock;
-      },
+      (product) =>
+          product.isActive &&
+          product.currentStock > 0 &&
+          product.currentStock <=
+              product.minimumStock,
     ).length;
   }
 
   int get _outOfStockCount {
     return _products.where(
-      (product) {
-        return product.currentStock <= 0;
-      },
+      (product) =>
+          product.isActive &&
+          product.currentStock <= 0,
     ).length;
   }
 
   // ===========================================================================
-  // NAVIGATION
+  // REPORT NAVIGATION
   // ===========================================================================
 
-  void _openReport(
-    String title,
-    String description,
-    IconData icon,
-    Color color,
-  ) {
+  void _openSalesReport() {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => _ReportDetailScreen(
-          title: title,
-          description: description,
-          icon: icon,
-          color: color,
-          sales: _filteredSales,
-          purchases: _filteredPurchases,
-          expenses: _filteredExpenses,
-          payments: _filteredPayments,
-          products: _products,
-        ),
+        builder: (_) =>
+            const SalesReportScreen(),
+      ),
+    );
+  }
+
+  void _openPurchaseReport() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            const PurchaseReportScreen(),
+      ),
+    );
+  }
+
+  void _openExpenseReport() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            const ExpenseReportScreen(),
+      ),
+    );
+  }
+
+  void _openProfitReport() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            const ProfitReportScreen(),
+      ),
+    );
+  }
+
+  void _openPaymentReport() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            const PaymentReportScreen(),
+      ),
+    );
+  }
+
+  void _openStockReport() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            const StockReportScreen(),
+      ),
+    );
+  }
+
+  void _openCustomerReport() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            const CustomerReportScreen(),
+      ),
+    );
+  }
+
+  void _openSupplierReport() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            const SupplierReportScreen(),
+      ),
+    );
+  }
+
+  void _openAnalyticsReport() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            const AnalyticsReportScreen(),
       ),
     );
   }
@@ -491,6 +618,60 @@ class _ReportsScreenState extends State<ReportsScreen> {
   Widget build(BuildContext context) {
     final ThemeData theme =
         Theme.of(context);
+
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor:
+            theme.scaffoldBackgroundColor,
+        appBar: AppBar(
+          title: const Text(
+            'Reports',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        body: const Center(
+          child:
+              CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (_errorMessage != null) {
+      return Scaffold(
+        backgroundColor:
+            theme.scaffoldBackgroundColor,
+        appBar: AppBar(
+          title: const Text(
+            'Reports',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        body: _buildErrorState(theme),
+      );
+    }
+
+    if (_business == null) {
+      return Scaffold(
+        backgroundColor:
+            theme.scaffoldBackgroundColor,
+        appBar: AppBar(
+          title: const Text(
+            'Reports',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        body:
+            _buildEmptyBusinessState(
+          theme,
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor:
@@ -521,49 +702,79 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     Icons.refresh_rounded,
                   ),
           ),
+          const SizedBox(width: 8),
         ],
       ),
-      body: _buildBody(theme),
-    );
-  }
+      body: RefreshIndicator(
+        onRefresh: _refresh,
+        child: LayoutBuilder(
+          builder: (
+            context,
+            constraints,
+          ) {
+            final bool isDesktop =
+                constraints.maxWidth >=
+                    1000;
 
-  Widget _buildBody(ThemeData theme) {
-    if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
-    }
-
-    if (_errorMessage != null) {
-      return _buildErrorState(theme);
-    }
-
-    if (_business == null) {
-      return _buildEmptyBusinessState(theme);
-    }
-
-    return RefreshIndicator(
-      onRefresh: _refresh,
-      child: ListView(
-        physics:
-            const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
-        children: [
-          _buildHeader(theme),
-          const SizedBox(height: 16),
-          _buildDateFilter(theme),
-          const SizedBox(height: 20),
-          _buildFinancialOverview(theme),
-          const SizedBox(height: 24),
-          _buildReportCategories(theme),
-          const SizedBox(height: 24),
-          _buildBusinessHealth(theme),
-          const SizedBox(height: 24),
-          _buildQuickSummary(theme),
-          const SizedBox(height: 24),
-          _buildReportTips(theme),
-          const SizedBox(height: 30),
-        ],
+            return SingleChildScrollView(
+              physics:
+                  const AlwaysScrollableScrollPhysics(),
+              padding: EdgeInsets.fromLTRB(
+                isDesktop ? 28 : 16,
+                20,
+                isDesktop ? 28 : 16,
+                40,
+              ),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints:
+                      const BoxConstraints(
+                    maxWidth: 1250,
+                  ),
+                  child: Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment
+                            .start,
+                    children: [
+                      _buildHeader(theme),
+                      const SizedBox(
+                        height: 20,
+                      ),
+                      _buildDateFilter(
+                        theme,
+                      ),
+                      const SizedBox(
+                        height: 20,
+                      ),
+                      _buildOverview(
+                        theme,
+                        isDesktop,
+                      ),
+                      const SizedBox(
+                        height: 24,
+                      ),
+                      _buildReportCategories(
+                        theme,
+                      ),
+                      const SizedBox(
+                        height: 24,
+                      ),
+                      _buildQuickSummary(
+                        theme,
+                      ),
+                      const SizedBox(
+                        height: 24,
+                      ),
+                      _buildReportTips(
+                        theme,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -572,35 +783,48 @@ class _ReportsScreenState extends State<ReportsScreen> {
   // HEADER
   // ===========================================================================
 
-  Widget _buildHeader(ThemeData theme) {
+  Widget _buildHeader(
+    ThemeData theme,
+  ) {
+    final String businessName =
+        _business?.businessName.trim() ??
+            '';
+
     return Container(
-      padding: const EdgeInsets.all(20),
+      width: double.infinity,
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
+        gradient: const LinearGradient(
           colors: [
             AppColors.primary,
             AppColors.secondary,
           ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+          begin:
+              Alignment.topLeft,
+          end:
+              Alignment.bottomRight,
         ),
         borderRadius:
-            BorderRadius.circular(22),
+            BorderRadius.circular(20),
       ),
       child: Row(
         children: [
           Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(
-                alpha: 0.16,
+            width: 58,
+            height: 58,
+            decoration:
+                BoxDecoration(
+              color: Colors.white
+                  .withValues(
+                alpha: 0.14,
               ),
               borderRadius:
-                  BorderRadius.circular(16),
+                  BorderRadius.circular(
+                16,
+              ),
             ),
             child: const Icon(
-              Icons.analytics_rounded,
+              Icons.assessment_rounded,
               color: Colors.white,
               size: 30,
             ),
@@ -609,30 +833,39 @@ class _ReportsScreenState extends State<ReportsScreen> {
           Expanded(
             child: Column(
               crossAxisAlignment:
-                  CrossAxisAlignment.start,
+                  CrossAxisAlignment
+                      .start,
               children: [
                 Text(
-                  _business?.businessName ??
-                      'Business Reports',
-                  maxLines: 1,
-                  overflow:
-                      TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 19,
+                  'Business Reports',
+                  style: theme
+                      .textTheme
+                      .headlineSmall
+                      ?.copyWith(
+                    color:
+                        Colors.white,
                     fontWeight:
-                        FontWeight.w800,
+                        FontWeight.w900,
                   ),
                 ),
-                const SizedBox(height: 5),
+                const SizedBox(
+                  height: 5,
+                ),
                 Text(
-                  'Track your business performance',
-                  style: TextStyle(
-                    color:
-                        Colors.white.withValues(
-                      alpha: 0.82,
+                  businessName.isEmpty
+                      ? 'Analyze your business performance'
+                      : businessName,
+                  maxLines: 2,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style: theme
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(
+                    color: Colors.white
+                        .withValues(
+                      alpha: 0.88,
                     ),
-                    fontSize: 13,
                   ),
                 ),
               ],
@@ -647,130 +880,220 @@ class _ReportsScreenState extends State<ReportsScreen> {
   // DATE FILTER
   // ===========================================================================
 
-  Widget _buildDateFilter(ThemeData theme) {
-    final bool hasDateFilter =
-        _startDate != null ||
+  Widget _buildDateFilter(
+    ThemeData theme,
+  ) {
+    final bool hasDateRange =
+        _startDate != null &&
             _endDate != null;
 
-    String label = 'All time';
+    String label =
+        'All Dates';
 
-    if (_startDate != null &&
-        _endDate != null) {
+    if (hasDateRange) {
       label =
-          '${_shortDateFormat.format(_startDate!)} - '
-          '${_shortDateFormat.format(_endDate!)}';
-    } else if (_startDate != null) {
-      label =
-          'From ${_dateFormat.format(_startDate!)}';
-    } else if (_endDate != null) {
-      label =
-          'Until ${_dateFormat.format(_endDate!)}';
+          '${_dateFormat.format(_startDate!)} - '
+          '${_dateFormat.format(_endDate!)}';
     }
 
     return Card(
       elevation: 0,
       child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: AppColors.primary
-                    .withValues(alpha: 0.10),
-                borderRadius:
-                    BorderRadius.circular(12),
-              ),
-              child: const Icon(
-                Icons.date_range_rounded,
-                color: AppColors.primary,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
+        padding:
+            const EdgeInsets.all(16),
+        child: LayoutBuilder(
+          builder: (
+            context,
+            constraints,
+          ) {
+            final bool compact =
+                constraints.maxWidth <
+                    620;
+
+            if (compact) {
+              return Column(
                 crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                    CrossAxisAlignment
+                        .stretch,
                 children: [
-                  Text(
+                  _sectionTitle(
+                    theme,
                     'Report Period',
-                    style: theme
-                        .textTheme
-                        .labelMedium
-                        ?.copyWith(
-                          fontWeight:
-                              FontWeight.w700,
-                        ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
                     label,
-                    style: theme
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(
-                          fontWeight:
-                              FontWeight.w600,
-                        ),
+                    Icons.date_range_rounded,
+                  ),
+                  const SizedBox(
+                    height: 14,
+                  ),
+                  FilledButton.icon(
+                    onPressed:
+                        _selectDateRange,
+                    icon: const Icon(
+                      Icons
+                          .calendar_month_rounded,
+                    ),
+                    label: const Text(
+                      'Select Date Range',
+                    ),
+                  ),
+                  if (hasDateRange) ...[
+                    const SizedBox(
+                      height: 8,
+                    ),
+                    OutlinedButton.icon(
+                      onPressed:
+                          _clearDateRange,
+                      icon: const Icon(
+                        Icons
+                            .clear_rounded,
+                      ),
+                      label: const Text(
+                        'Clear Filter',
+                      ),
+                    ),
+                  ],
+                ],
+              );
+            }
+
+            return Row(
+              children: [
+                Expanded(
+                  child: _sectionTitle(
+                    theme,
+                    'Report Period',
+                    label,
+                    Icons.date_range_rounded,
+                  ),
+                ),
+                const SizedBox(
+                  width: 12,
+                ),
+                FilledButton.icon(
+                  onPressed:
+                      _selectDateRange,
+                  icon: const Icon(
+                    Icons
+                        .calendar_month_rounded,
+                  ),
+                  label: const Text(
+                    'Select Date Range',
+                  ),
+                ),
+                if (hasDateRange) ...[
+                  const SizedBox(
+                    width: 8,
+                  ),
+                  OutlinedButton.icon(
+                    onPressed:
+                        _clearDateRange,
+                    icon: const Icon(
+                      Icons.clear_rounded,
+                    ),
+                    label: const Text(
+                      'Clear',
+                    ),
                   ),
                 ],
-              ),
-            ),
-            if (hasDateFilter)
-              IconButton(
-                tooltip: 'Clear',
-                onPressed: _clearDateRange,
-                icon: const Icon(
-                  Icons.close_rounded,
-                ),
-              ),
-            FilledButton.icon(
-              onPressed: _selectDateRange,
-              icon: const Icon(
-                Icons.calendar_month_rounded,
-                size: 18,
-              ),
-              label: const Text('Select'),
-            ),
-          ],
+              ],
+            );
+          },
         ),
       ),
     );
   }
 
   // ===========================================================================
-  // FINANCIAL OVERVIEW
+  // OVERVIEW
   // ===========================================================================
 
-  Widget _buildFinancialOverview(
+  Widget _buildOverview(
     ThemeData theme,
+    bool isDesktop,
   ) {
+    final List<_MetricItem> metrics =
+        [
+      _MetricItem(
+        title: 'Total Sales',
+        value: _currency(_totalSales),
+        icon: Icons
+            .point_of_sale_rounded,
+        color: AppColors.success,
+      ),
+      _MetricItem(
+        title: 'Total Purchases',
+        value:
+            _currency(_totalPurchases),
+        icon: Icons
+            .shopping_bag_rounded,
+        color: AppColors.primary,
+      ),
+      _MetricItem(
+        title: 'Expenses',
+        value:
+            _currency(_totalExpenses),
+        icon: Icons
+            .receipt_long_rounded,
+        color: AppColors.warning,
+      ),
+      _MetricItem(
+        title: 'Net Profit',
+        value:
+            _currency(_netProfit),
+        icon: Icons
+            .trending_up_rounded,
+        color: _netProfit >= 0
+            ? AppColors.success
+            : AppColors.danger,
+      ),
+      _MetricItem(
+        title: 'Received',
+        value:
+            _currency(_totalPayments),
+        icon:
+            Icons.payments_rounded,
+        color: AppColors.info,
+      ),
+      _MetricItem(
+        title: 'Outstanding',
+        value:
+            _currency(_outstandingSales),
+        icon: Icons
+            .pending_actions_rounded,
+        color: AppColors.warning,
+      ),
+    ];
+
     return Column(
       crossAxisAlignment:
           CrossAxisAlignment.start,
       children: [
         _sectionTitle(
           theme,
-          'Financial Overview',
-          'Your selected-period business numbers',
-          Icons.account_balance_wallet_rounded,
+          'Overview',
+          'Financial performance for the selected period',
+          Icons.insights_rounded,
         ),
         const SizedBox(height: 12),
         LayoutBuilder(
-          builder: (context, constraints) {
+          builder: (
+            context,
+            constraints,
+          ) {
             final double width =
                 constraints.maxWidth;
 
-            int columns = 2;
+            int columns = 1;
 
             if (width >= 1100) {
-              columns = 4;
-            } else if (width >= 700) {
               columns = 3;
+            } else if (width >= 650) {
+              columns = 2;
             }
 
-            final double spacing = 12;
+            const double spacing =
+                12;
+
             final double cardWidth =
                 (width -
                         ((columns - 1) *
@@ -780,62 +1103,102 @@ class _ReportsScreenState extends State<ReportsScreen> {
             return Wrap(
               spacing: spacing,
               runSpacing: spacing,
-              children: [
-                SizedBox(
-                  width: cardWidth,
-                  child: _metricCard(
-                    title: 'Sales',
-                    value: _currency(
-                      _totalSales,
+              children:
+                  metrics.map(
+                (metric) {
+                  return SizedBox(
+                    width: cardWidth,
+                    child:
+                        _metricCard(
+                      theme,
+                      metric,
                     ),
-                    icon:
-                        Icons.trending_up_rounded,
-                    color: AppColors.success,
-                  ),
-                ),
-                SizedBox(
-                  width: cardWidth,
-                  child: _metricCard(
-                    title: 'Purchases',
-                    value: _currency(
-                      _totalPurchases,
-                    ),
-                    icon:
-                        Icons.shopping_cart_rounded,
-                    color: AppColors.primary,
-                  ),
-                ),
-                SizedBox(
-                  width: cardWidth,
-                  child: _metricCard(
-                    title: 'Expenses',
-                    value: _currency(
-                      _totalExpenses,
-                    ),
-                    icon:
-                        Icons.receipt_long_rounded,
-                    color: AppColors.warning,
-                  ),
-                ),
-                SizedBox(
-                  width: cardWidth,
-                  child: _metricCard(
-                    title: 'Net Profit',
-                    value: _currency(
-                      _netProfit,
-                    ),
-                    icon:
-                        Icons.auto_graph_rounded,
-                    color: _netProfit >= 0
-                        ? AppColors.success
-                        : AppColors.danger,
-                  ),
-                ),
-              ],
+                  );
+                },
+              ).toList(),
             );
           },
         ),
       ],
+    );
+  }
+
+  Widget _metricCard(
+    ThemeData theme,
+    _MetricItem metric,
+  ) {
+    return Card(
+      elevation: 0,
+      child: Padding(
+        padding:
+            const EdgeInsets.all(18),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration:
+                  BoxDecoration(
+                color: metric.color
+                    .withValues(
+                  alpha: 0.10,
+                ),
+                borderRadius:
+                    BorderRadius.circular(
+                  14,
+                ),
+              ),
+              child: Icon(
+                metric.icon,
+                color: metric.color,
+                size: 24,
+              ),
+            ),
+            const SizedBox(
+              width: 13,
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment:
+                    CrossAxisAlignment
+                        .start,
+                children: [
+                  Text(
+                    metric.title,
+                    style: theme
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(
+                      color: theme
+                          .colorScheme
+                          .onSurfaceVariant,
+                      fontWeight:
+                          FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(
+                    height: 4,
+                  ),
+                  Text(
+                    metric.value,
+                    maxLines: 1,
+                    overflow:
+                        TextOverflow
+                            .ellipsis,
+                    style: theme
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(
+                      fontWeight:
+                          FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -852,25 +1215,29 @@ class _ReportsScreenState extends State<ReportsScreen> {
       children: [
         _sectionTitle(
           theme,
-          'Reports',
-          'Open detailed reports for each business area',
+          'Detailed Reports',
+          'Open the dedicated report for each business area',
           Icons.assessment_rounded,
         ),
         const SizedBox(height: 12),
         LayoutBuilder(
-          builder: (context, constraints) {
+          builder: (
+            context,
+            constraints,
+          ) {
             final double width =
                 constraints.maxWidth;
 
             int columns = 1;
 
-            if (width >= 1000) {
+            if (width >= 1050) {
               columns = 3;
             } else if (width >= 650) {
               columns = 2;
             }
 
-            final double spacing = 12;
+            const double spacing =
+                12;
 
             final double cardWidth =
                 (width -
@@ -878,65 +1245,119 @@ class _ReportsScreenState extends State<ReportsScreen> {
                             spacing)) /
                     columns;
 
-            final reports = [
+            final List<_ReportItem>
+                reports = [
               _ReportItem(
                 title: 'Sales Report',
                 description:
-                    'Analyze sales, invoices, customers and collections.',
+                    'Analyze sales, invoices, customers, collections and profit.',
                 icon:
                     Icons.point_of_sale_rounded,
-                color: AppColors.success,
+                color:
+                    AppColors.success,
+                onTap:
+                    _openSalesReport,
               ),
               _ReportItem(
                 title: 'Purchase Report',
                 description:
-                    'Track purchases, suppliers and purchase spending.',
+                    'Track purchases, suppliers, spending and outstanding amounts.',
                 icon:
                     Icons.shopping_bag_rounded,
-                color: AppColors.primary,
+                color:
+                    AppColors.primary,
+                onTap:
+                    _openPurchaseReport,
               ),
               _ReportItem(
                 title: 'Expense Report',
                 description:
-                    'Review business expenses and spending categories.',
+                    'Review business expenses, categories and payment methods.',
                 icon:
                     Icons.receipt_long_rounded,
-                color: AppColors.warning,
+                color:
+                    AppColors.warning,
+                onTap:
+                    _openExpenseReport,
               ),
               _ReportItem(
                 title: 'Profit Report',
                 description:
-                    'Understand gross profit, expenses and net profit.',
+                    'Understand gross profit, expenses, net profit and margins.',
                 icon:
                     Icons.bar_chart_rounded,
-                color: AppColors.secondary,
+                color:
+                    AppColors.secondary,
+                onTap:
+                    _openProfitReport,
               ),
               _ReportItem(
                 title: 'Payment Report',
                 description:
-                    'Track received payments and outstanding amounts.',
+                    'Track received payments, methods and collection activity.',
                 icon:
                     Icons.payments_rounded,
-                color: AppColors.info,
+                color:
+                    AppColors.info,
+                onTap:
+                    _openPaymentReport,
               ),
               _ReportItem(
                 title: 'Stock Report',
                 description:
-                    'Review stock value, low stock and inventory position.',
+                    'Review stock value, current quantity and low-stock items.',
                 icon:
                     Icons.inventory_2_rounded,
-                color: AppColors.danger,
+                color:
+                    AppColors.danger,
+                onTap:
+                    _openStockReport,
+              ),
+              _ReportItem(
+                title: 'Customer Report',
+                description:
+                    'Analyze customer sales, received amount and outstanding balance.',
+                icon:
+                    Icons.people_alt_rounded,
+                color:
+                    const Color(0xFF0891B2),
+                onTap:
+                    _openCustomerReport,
+              ),
+              _ReportItem(
+                title: 'Supplier Report',
+                description:
+                    'Review supplier purchases, payments and outstanding amounts.',
+                icon:
+                    Icons.local_shipping_rounded,
+                color:
+                    const Color(0xFFEA580C),
+                onTap:
+                    _openSupplierReport,
+              ),
+              _ReportItem(
+                title: 'Analytics Report',
+                description:
+                    'Explore sales, purchases, expenses and payment trends with charts.',
+                icon:
+                    Icons.analytics_rounded,
+                color:
+                    const Color(0xFF7C3AED),
+                onTap:
+                    _openAnalyticsReport,
               ),
             ];
 
             return Wrap(
               spacing: spacing,
               runSpacing: spacing,
-              children: reports.map(
+              children:
+                  reports.map(
                 (report) {
                   return SizedBox(
                     width: cardWidth,
-                    child: _reportCard(
+                    child:
+                        _reportCard(
                       theme,
                       report,
                     ),
@@ -956,28 +1377,28 @@ class _ReportsScreenState extends State<ReportsScreen> {
   ) {
     return Card(
       elevation: 0,
-      clipBehavior: Clip.antiAlias,
+      clipBehavior:
+          Clip.antiAlias,
       child: InkWell(
-        onTap: () {
-          _openReport(
-            report.title,
-            report.description,
-            report.icon,
-            report.color,
-          );
-        },
+        onTap: report.onTap,
         child: Padding(
-          padding: const EdgeInsets.all(18),
+          padding:
+              const EdgeInsets.all(18),
           child: Row(
             children: [
               Container(
                 width: 50,
                 height: 50,
-                decoration: BoxDecoration(
+                decoration:
+                    BoxDecoration(
                   color: report.color
-                      .withValues(alpha: 0.10),
+                      .withValues(
+                    alpha: 0.10,
+                  ),
                   borderRadius:
-                      BorderRadius.circular(15),
+                      BorderRadius.circular(
+                    15,
+                  ),
                 ),
                 child: Icon(
                   report.icon,
@@ -985,220 +1406,63 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   size: 26,
                 ),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(
+                width: 14,
+              ),
               Expanded(
                 child: Column(
                   crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                      CrossAxisAlignment
+                          .start,
                   children: [
                     Text(
                       report.title,
+                      maxLines: 1,
+                      overflow:
+                          TextOverflow
+                              .ellipsis,
                       style: theme
                           .textTheme
                           .titleSmall
                           ?.copyWith(
-                            fontWeight:
-                                FontWeight.w800,
-                          ),
+                        fontWeight:
+                            FontWeight.w800,
+                      ),
                     ),
-                    const SizedBox(height: 5),
+                    const SizedBox(
+                      height: 5,
+                    ),
                     Text(
                       report.description,
-                      maxLines: 2,
+                      maxLines: 3,
                       overflow:
-                          TextOverflow.ellipsis,
+                          TextOverflow
+                              .ellipsis,
                       style: theme
                           .textTheme
                           .bodySmall
                           ?.copyWith(
-                            height: 1.35,
-                          ),
+                        height: 1.35,
+                      ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(
+                width: 8,
+              ),
               Icon(
-                Icons.arrow_forward_ios_rounded,
+                Icons
+                    .arrow_forward_ios_rounded,
                 size: 15,
-                color:
-                    theme.colorScheme.onSurface
-                        .withValues(alpha: 0.45),
+                color: theme
+                    .colorScheme
+                    .onSurfaceVariant,
               ),
             ],
           ),
         ),
       ),
-    );
-  }
-
-  // ===========================================================================
-  // BUSINESS HEALTH
-  // ===========================================================================
-
-  Widget _buildBusinessHealth(
-    ThemeData theme,
-  ) {
-    final double collectionRate =
-        _totalSales <= 0
-            ? 0
-            : (_totalPayments /
-                    _totalSales) *
-                100;
-
-    final double expenseRatio =
-        _totalSales <= 0
-            ? 0
-            : (_totalExpenses /
-                    _totalSales) *
-                100;
-
-    return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
-      children: [
-        _sectionTitle(
-          theme,
-          'Business Health',
-          'Key indicators for the selected period',
-          Icons.favorite_rounded,
-        ),
-        const SizedBox(height: 12),
-        Card(
-          elevation: 0,
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              children: [
-                _healthRow(
-                  theme,
-                  title: 'Profit Margin',
-                  value:
-                      '${_profitMargin.toStringAsFixed(1)}%',
-                  progress:
-                      (_profitMargin / 100)
-                          .clamp(0.0, 1.0),
-                  color: _profitMargin >= 0
-                      ? AppColors.success
-                      : AppColors.danger,
-                  icon:
-                      Icons.percent_rounded,
-                ),
-                const SizedBox(height: 18),
-                _healthRow(
-                  theme,
-                  title: 'Collection Rate',
-                  value:
-                      '${collectionRate.toStringAsFixed(1)}%',
-                  progress:
-                      (collectionRate / 100)
-                          .clamp(0.0, 1.0),
-                  color: AppColors.info,
-                  icon:
-                      Icons.payments_outlined,
-                ),
-                const SizedBox(height: 18),
-                _healthRow(
-                  theme,
-                  title: 'Expense Ratio',
-                  value:
-                      '${expenseRatio.toStringAsFixed(1)}%',
-                  progress:
-                      (expenseRatio / 100)
-                          .clamp(0.0, 1.0),
-                  color: expenseRatio > 50
-                      ? AppColors.danger
-                      : AppColors.warning,
-                  icon:
-                      Icons.money_off_rounded,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _healthRow(
-    ThemeData theme, {
-    required String title,
-    required String value,
-    required double progress,
-    required Color color,
-    required IconData icon,
-  }) {
-    return Row(
-      children: [
-        Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            color: color.withValues(
-              alpha: 0.10,
-            ),
-            borderRadius:
-                BorderRadius.circular(12),
-          ),
-          child: Icon(
-            icon,
-            color: color,
-            size: 21,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: theme
-                          .textTheme
-                          .bodyMedium
-                          ?.copyWith(
-                            fontWeight:
-                                FontWeight.w700,
-                          ),
-                    ),
-                  ),
-                  Text(
-                    value,
-                    style: TextStyle(
-                      color: color,
-                      fontWeight:
-                          FontWeight.w800,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              ClipRRect(
-                borderRadius:
-                    BorderRadius.circular(20),
-                child:
-                    LinearProgressIndicator(
-                  value: progress,
-                  minHeight: 7,
-                  backgroundColor:
-                      color.withValues(
-                    alpha: 0.10,
-                  ),
-                  valueColor:
-                      AlwaysStoppedAnimation<
-                          Color>(
-                    color,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
     );
   }
 
@@ -1227,43 +1491,74 @@ class _ReportsScreenState extends State<ReportsScreen> {
               _summaryRow(
                 theme,
                 'Amount Received',
-                _currency(_totalPayments),
+                _currency(
+                  _totalPayments,
+                ),
                 Icons.payments_rounded,
                 AppColors.success,
               ),
-              const Divider(height: 1),
+              const Divider(
+                height: 1,
+              ),
               _summaryRow(
                 theme,
                 'Outstanding',
                 _currency(
                   _outstandingSales,
                 ),
-                Icons.pending_actions_rounded,
+                Icons
+                    .pending_actions_rounded,
                 AppColors.warning,
               ),
-              const Divider(height: 1),
+              const Divider(
+                height: 1,
+              ),
               _summaryRow(
                 theme,
                 'Stock Value',
-                _currency(_stockValue),
-                Icons.inventory_2_rounded,
+                _currency(
+                  _stockValue,
+                ),
+                Icons
+                    .inventory_2_rounded,
                 AppColors.primary,
               ),
-              const Divider(height: 1),
+              const Divider(
+                height: 1,
+              ),
               _summaryRow(
                 theme,
                 'Low Stock Products',
-                _lowStockCount.toString(),
-                Icons.warning_amber_rounded,
+                _lowStockCount
+                    .toString(),
+                Icons
+                    .warning_amber_rounded,
                 AppColors.warning,
               ),
-              const Divider(height: 1),
+              const Divider(
+                height: 1,
+              ),
               _summaryRow(
                 theme,
                 'Out of Stock',
-                _outOfStockCount.toString(),
-                Icons.remove_shopping_cart_rounded,
+                _outOfStockCount
+                    .toString(),
+                Icons
+                    .remove_shopping_cart_rounded,
                 AppColors.danger,
+              ),
+              const Divider(
+                height: 1,
+              ),
+              _summaryRow(
+                theme,
+                'Profit Margin',
+                '${_profitMargin.toStringAsFixed(1)}%',
+                Icons
+                    .percent_rounded,
+                _profitMargin >= 0
+                    ? AppColors.success
+                    : AppColors.danger,
               ),
             ],
           ),
@@ -1280,7 +1575,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     Color color,
   ) {
     return Padding(
-      padding: const EdgeInsets.symmetric(
+      padding:
+          const EdgeInsets.symmetric(
         horizontal: 16,
         vertical: 15,
       ),
@@ -1289,12 +1585,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
           Container(
             width: 38,
             height: 38,
-            decoration: BoxDecoration(
+            decoration:
+                BoxDecoration(
               color: color.withValues(
                 alpha: 0.10,
               ),
               borderRadius:
-                  BorderRadius.circular(11),
+                  BorderRadius.circular(
+                11,
+              ),
             ),
             child: Icon(
               icon,
@@ -1302,7 +1601,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
               size: 20,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(
+            width: 12,
+          ),
           Expanded(
             child: Text(
               title,
@@ -1310,9 +1611,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   .textTheme
                   .bodyMedium
                   ?.copyWith(
-                    fontWeight:
-                        FontWeight.w600,
-                  ),
+                fontWeight:
+                    FontWeight.w600,
+              ),
             ),
           ),
           Text(
@@ -1321,9 +1622,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 .textTheme
                 .bodyMedium
                 ?.copyWith(
-                  fontWeight:
-                      FontWeight.w800,
-                ),
+              fontWeight:
+                  FontWeight.w800,
+            ),
           ),
         ],
       ),
@@ -1339,24 +1640,30 @@ class _ReportsScreenState extends State<ReportsScreen> {
   ) {
     return Card(
       elevation: 0,
-      color: AppColors.primary.withValues(
+      color: AppColors.primary
+          .withValues(
         alpha: 0.06,
       ),
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding:
+            const EdgeInsets.all(18),
         child: Row(
           crossAxisAlignment:
               CrossAxisAlignment.start,
           children: [
             const Icon(
               Icons.lightbulb_rounded,
-              color: AppColors.warning,
+              color:
+                  AppColors.warning,
             ),
-            const SizedBox(width: 12),
+            const SizedBox(
+              width: 12,
+            ),
             Expanded(
               child: Column(
                 crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                    CrossAxisAlignment
+                        .start,
                 children: [
                   Text(
                     'Reporting Tip',
@@ -1364,21 +1671,24 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         .textTheme
                         .titleSmall
                         ?.copyWith(
-                          fontWeight:
-                              FontWeight.w800,
-                        ),
+                      fontWeight:
+                          FontWeight.w800,
+                    ),
                   ),
-                  const SizedBox(height: 5),
+                  const SizedBox(
+                    height: 5,
+                  ),
                   Text(
-                    'Use the date filter to compare a specific period. '
-                    'Detailed sales, purchase, expense, payment and stock '
-                    'reports will use the same selected period.',
+                    'Use the date filter to review a specific period. '
+                    'Detailed reports open separately so you can analyze '
+                    'sales, purchases, expenses, payments, stock, customers '
+                    'and suppliers in more detail.',
                     style: theme
                         .textTheme
                         .bodySmall
                         ?.copyWith(
-                          height: 1.4,
-                        ),
+                      height: 1.4,
+                    ),
                   ),
                 ],
               ),
@@ -1404,23 +1714,32 @@ class _ReportsScreenState extends State<ReportsScreen> {
         Container(
           width: 38,
           height: 38,
-          decoration: BoxDecoration(
+          decoration:
+              BoxDecoration(
             color: AppColors.primary
-                .withValues(alpha: 0.10),
+                .withValues(
+              alpha: 0.10,
+            ),
             borderRadius:
-                BorderRadius.circular(11),
+                BorderRadius.circular(
+              11,
+            ),
           ),
           child: Icon(
             icon,
-            color: AppColors.primary,
+            color:
+                AppColors.primary,
             size: 20,
           ),
         ),
-        const SizedBox(width: 11),
+        const SizedBox(
+          width: 11,
+        ),
         Expanded(
           child: Column(
             crossAxisAlignment:
-                CrossAxisAlignment.start,
+                CrossAxisAlignment
+                    .start,
             children: [
               Text(
                 title,
@@ -1428,13 +1747,19 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     .textTheme
                     .titleMedium
                     ?.copyWith(
-                      fontWeight:
-                          FontWeight.w800,
-                    ),
+                  fontWeight:
+                      FontWeight.w800,
+                ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(
+                height: 2,
+              ),
               Text(
                 subtitle,
+                maxLines: 2,
+                overflow:
+                    TextOverflow
+                        .ellipsis,
                 style: theme
                     .textTheme
                     .bodySmall,
@@ -1446,78 +1771,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  Widget _metricCard({
-    required String title,
-    required String value,
-    required IconData icon,
-    required Color color,
-  }) {
-    return Card(
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: color.withValues(
-                      alpha: 0.10,
-                    ),
-                    borderRadius:
-                        BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    icon,
-                    color: color,
-                    size: 21,
-                  ),
-                ),
-                const Spacer(),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 12,
-                color: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.color,
-                fontWeight:
-                    FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 5),
-            Text(
-              value,
-              maxLines: 1,
-              overflow:
-                  TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight:
-                    FontWeight.w800,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // ===========================================================================
+  // ERROR STATE
+  // ===========================================================================
 
   Widget _buildErrorState(
     ThemeData theme,
   ) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding:
+            const EdgeInsets.all(24),
         child: Column(
           mainAxisSize:
               MainAxisSize.min,
@@ -1525,42 +1789,58 @@ class _ReportsScreenState extends State<ReportsScreen> {
             Container(
               width: 72,
               height: 72,
-              decoration: BoxDecoration(
-                color: AppColors.danger
-                    .withValues(alpha: 0.10),
-                shape: BoxShape.circle,
+              decoration:
+                  BoxDecoration(
+                color: AppColors
+                    .danger
+                    .withValues(
+                  alpha: 0.10,
+                ),
+                shape:
+                    BoxShape.circle,
               ),
               child: const Icon(
-                Icons.error_outline_rounded,
-                color: AppColors.danger,
+                Icons
+                    .error_outline_rounded,
+                color:
+                    AppColors.danger,
                 size: 38,
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(
+              height: 16,
+            ),
             Text(
               'Unable to load reports',
               style: theme
                   .textTheme
                   .titleLarge
                   ?.copyWith(
-                    fontWeight:
-                        FontWeight.w800,
-                  ),
+                fontWeight:
+                    FontWeight.w800,
+              ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(
+              height: 8,
+            ),
             Text(
               _errorMessage ??
                   'Something went wrong.',
-              textAlign: TextAlign.center,
+              textAlign:
+                  TextAlign.center,
               style: theme
                   .textTheme
                   .bodyMedium,
             ),
-            const SizedBox(height: 20),
+            const SizedBox(
+              height: 20,
+            ),
             FilledButton.icon(
-              onPressed: _initialize,
+              onPressed:
+                  _initialize,
               icon: const Icon(
-                Icons.refresh_rounded,
+                Icons
+                    .refresh_rounded,
               ),
               label: const Text(
                 'Try Again',
@@ -1572,12 +1852,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
+  // ===========================================================================
+  // EMPTY BUSINESS
+  // ===========================================================================
+
   Widget _buildEmptyBusinessState(
     ThemeData theme,
   ) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding:
+            const EdgeInsets.all(24),
         child: Column(
           mainAxisSize:
               MainAxisSize.min,
@@ -1585,23 +1870,29 @@ class _ReportsScreenState extends State<ReportsScreen> {
             const Icon(
               Icons.business_outlined,
               size: 60,
-              color: AppColors.primary,
+              color:
+                  AppColors.primary,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(
+              height: 16,
+            ),
             Text(
               'Business setup required',
               style: theme
                   .textTheme
                   .titleLarge
                   ?.copyWith(
-                    fontWeight:
-                        FontWeight.w800,
-                  ),
+                fontWeight:
+                    FontWeight.w800,
+              ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(
+              height: 8,
+            ),
             const Text(
               'Complete your business profile before viewing reports.',
-              textAlign: TextAlign.center,
+              textAlign:
+                  TextAlign.center,
             ),
           ],
         ),
@@ -1613,13 +1904,33 @@ class _ReportsScreenState extends State<ReportsScreen> {
   // FORMATTING
   // ===========================================================================
 
-  String _currency(double value) {
+  String _currency(
+    double value,
+  ) {
     return NumberFormat.currency(
       locale: 'en_IN',
       symbol: '₹',
       decimalDigits: 2,
     ).format(value);
   }
+}
+
+// =============================================================================
+// METRIC ITEM
+// =============================================================================
+
+class _MetricItem {
+  final String title;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  const _MetricItem({
+    required this.title,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
 }
 
 // =============================================================================
@@ -1631,386 +1942,13 @@ class _ReportItem {
   final String description;
   final IconData icon;
   final Color color;
+  final VoidCallback onTap;
 
   const _ReportItem({
     required this.title,
     required this.description,
     required this.icon,
     required this.color,
+    required this.onTap,
   });
 }
-
-// =============================================================================
-// REPORT DETAIL SCREEN
-// =============================================================================
-
-class _ReportDetailScreen extends StatelessWidget {
-  final String title;
-  final String description;
-  final IconData icon;
-  final Color color;
-
-  final List<SaleModel> sales;
-  final List<PurchaseModel> purchases;
-  final List<ExpenseModel> expenses;
-  final List<PaymentModel> payments;
-  final List<ProductModel> products;
-
-  const _ReportDetailScreen({
-    required this.title,
-    required this.description,
-    required this.icon,
-    required this.color,
-    required this.sales,
-    required this.purchases,
-    required this.expenses,
-    required this.payments,
-    required this.products,
-  });
-
-  double get totalSales {
-    return sales.fold(
-      0,
-      (sum, sale) => sum + sale.total,
-    );
-  }
-
-  double get totalPurchases {
-    return purchases.fold(
-      0,
-      (sum, purchase) => sum + purchase.total,
-    );
-  }
-
-  double get totalExpenses {
-    return expenses.fold(
-      0,
-      (sum, expense) => sum + expense.amount,
-    );
-  }
-
-  double get totalPayments {
-    return payments.fold(
-      0,
-      (sum, payment) => sum + payment.amount,
-    );
-  }
-
-  double get grossProfit {
-    double profit = 0;
-
-    for (final sale in sales) {
-      for (final item in sale.items) {
-        profit +=
-            (item.sellingRate - item.costPrice) *
-                item.quantity;
-      }
-    }
-
-    return profit;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme =
-        Theme.of(context);
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          title,
-          style: const TextStyle(
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          _buildHeader(theme),
-          const SizedBox(height: 20),
-          _buildSummary(theme),
-          const SizedBox(height: 20),
-          _buildInformation(theme),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeader(ThemeData theme) {
-    return Card(
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Row(
-          children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                color: color.withValues(
-                  alpha: 0.10,
-                ),
-                borderRadius:
-                    BorderRadius.circular(15),
-              ),
-              child: Icon(
-                icon,
-                color: color,
-                size: 27,
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: theme
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(
-                          fontWeight:
-                              FontWeight.w800,
-                        ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    description,
-                    style: theme
-                        .textTheme
-                        .bodySmall,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSummary(ThemeData theme) {
-    final List<_DetailMetric> metrics =
-        [
-      _DetailMetric(
-        'Sales',
-        totalSales,
-        Icons.point_of_sale_rounded,
-        AppColors.success,
-      ),
-      _DetailMetric(
-        'Purchases',
-        totalPurchases,
-        Icons.shopping_cart_rounded,
-        AppColors.primary,
-      ),
-      _DetailMetric(
-        'Expenses',
-        totalExpenses,
-        Icons.receipt_long_rounded,
-        AppColors.warning,
-      ),
-      _DetailMetric(
-        'Payments',
-        totalPayments,
-        Icons.payments_rounded,
-        AppColors.info,
-      ),
-      _DetailMetric(
-        'Gross Profit',
-        grossProfit,
-        Icons.auto_graph_rounded,
-        grossProfit >= 0
-            ? AppColors.success
-            : AppColors.danger,
-      ),
-    ];
-
-    return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Summary',
-          style: theme
-              .textTheme
-              .titleMedium
-              ?.copyWith(
-                fontWeight:
-                    FontWeight.w800,
-              ),
-        ),
-        const SizedBox(height: 12),
-        ...metrics.map(
-          (metric) {
-            return Padding(
-              padding:
-                  const EdgeInsets.only(
-                bottom: 10,
-              ),
-              child: Card(
-                elevation: 0,
-                child: ListTile(
-                  leading: Container(
-                    width: 42,
-                    height: 42,
-                    decoration:
-                        BoxDecoration(
-                      color:
-                          metric.color
-                              .withValues(
-                        alpha: 0.10,
-                      ),
-                      borderRadius:
-                          BorderRadius
-                              .circular(12),
-                    ),
-                    child: Icon(
-                      metric.icon,
-                      color:
-                          metric.color,
-                    ),
-                  ),
-                  title: Text(
-                    metric.title,
-                    style: const TextStyle(
-                      fontWeight:
-                          FontWeight.w700,
-                    ),
-                  ),
-                  trailing: Text(
-                    _currency(
-                      metric.value,
-                    ),
-                    style: const TextStyle(
-                      fontWeight:
-                          FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildInformation(
-    ThemeData theme,
-  ) {
-    return Card(
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Report Data',
-              style: theme
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(
-                    fontWeight:
-                        FontWeight.w800,
-                  ),
-            ),
-            const SizedBox(height: 14),
-            _infoRow(
-              theme,
-              'Sales Transactions',
-              sales.length.toString(),
-            ),
-            _infoRow(
-              theme,
-              'Purchase Transactions',
-              purchases.length.toString(),
-            ),
-            _infoRow(
-              theme,
-              'Expense Transactions',
-              expenses.length.toString(),
-            ),
-            _infoRow(
-              theme,
-              'Payment Transactions',
-              payments.length.toString(),
-            ),
-            _infoRow(
-              theme,
-              'Products',
-              products.length.toString(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _infoRow(
-    ThemeData theme,
-    String label,
-    String value,
-  ) {
-    return Padding(
-      padding:
-          const EdgeInsets.symmetric(
-        vertical: 7,
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: theme
-                  .textTheme
-                  .bodyMedium,
-            ),
-          ),
-          Text(
-            value,
-            style: theme
-                .textTheme
-                .bodyMedium
-                ?.copyWith(
-                  fontWeight:
-                      FontWeight.w800,
-                ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _currency(double value) {
-    return NumberFormat.currency(
-      locale: 'en_IN',
-      symbol: '₹',
-      decimalDigits: 2,
-    ).format(value);
-  }
-}
-
-// =============================================================================
-// DETAIL METRIC
-// =============================================================================
-
-class _DetailMetric {
-  final String title;
-  final double value;
-  final IconData icon;
-  final Color color;
-
-  const _DetailMetric(
-    this.title,
-    this.value,
-    this.icon,
-    this.color,
-  );
-}
-

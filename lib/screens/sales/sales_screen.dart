@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/services/invoice_pdf_service.dart';
 import '../../core/services/sale_stock_service.dart';
 import '../../core/theme/app_colors.dart';
+import '../../models/business_model.dart';
 import '../../models/sale_model.dart';
 import '../../providers/business_provider.dart';
 import '../../providers/sale_provider.dart';
@@ -538,6 +540,74 @@ class _SalesScreenState extends State<SalesScreen> {
   }
 
   // ===========================================================================
+  // PRINT INVOICE
+  // ===========================================================================
+
+  Future<void> _printInvoice(
+    SaleModel sale,
+  ) async {
+    final BusinessModel? business =
+        context.read<BusinessProvider>().business;
+
+    if (business == null) {
+      _showMessage(
+        'Business information is not available.',
+        isError: true,
+      );
+
+      return;
+    }
+
+    try {
+      await InvoicePdfService.printInvoice(
+        business: business,
+        sale: sale,
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      _showMessage(
+        'Unable to print invoice: ${_cleanError(e)}',
+        isError: true,
+      );
+    }
+  }
+
+  // ===========================================================================
+  // SHARE INVOICE
+  // ===========================================================================
+
+  Future<void> _shareInvoice(
+    SaleModel sale,
+  ) async {
+    final BusinessModel? business =
+        context.read<BusinessProvider>().business;
+
+    if (business == null) {
+      _showMessage(
+        'Business information is not available.',
+        isError: true,
+      );
+
+      return;
+    }
+
+    try {
+      await InvoicePdfService.shareInvoice(
+        business: business,
+        sale: sale,
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      _showMessage(
+        'Unable to share invoice: ${_cleanError(e)}',
+        isError: true,
+      );
+    }
+  }
+
+  // ===========================================================================
   // SHOW DETAILS
   // ===========================================================================
 
@@ -553,6 +623,45 @@ class _SalesScreenState extends State<SalesScreen> {
       builder: (_) {
         return _SaleDetailsSheet(
           sale: sale,
+
+          // -------------------------------------------------------------------
+          // PRINT INVOICE
+          // -------------------------------------------------------------------
+
+          onPrintInvoice: () {
+            Navigator.pop(context);
+
+            Future<void>.delayed(
+              Duration.zero,
+              () {
+                if (mounted) {
+                  _printInvoice(sale);
+                }
+              },
+            );
+          },
+
+          // -------------------------------------------------------------------
+          // SHARE INVOICE
+          // -------------------------------------------------------------------
+
+          onShareInvoice: () {
+            Navigator.pop(context);
+
+            Future<void>.delayed(
+              Duration.zero,
+              () {
+                if (mounted) {
+                  _shareInvoice(sale);
+                }
+              },
+            );
+          },
+
+          // -------------------------------------------------------------------
+          // EDIT
+          // -------------------------------------------------------------------
+
           onEdit: () {
             Navigator.pop(context);
 
@@ -565,6 +674,11 @@ class _SalesScreenState extends State<SalesScreen> {
               },
             );
           },
+
+          // -------------------------------------------------------------------
+          // DELETE
+          // -------------------------------------------------------------------
+
           onDelete: () {
             Navigator.pop(context);
 
@@ -711,26 +825,20 @@ class _SalesScreenState extends State<SalesScreen> {
                     _buildHeader(
                       isDesktop,
                     ),
-
                     const SizedBox(
                       height: 20,
                     ),
-
                     _buildSummary(
                       saleProvider,
                       isDesktop,
                     ),
-
                     const SizedBox(
                       height: 20,
                     ),
-
                     _buildFilterSection(),
-
                     const SizedBox(
                       height: 20,
                     ),
-
                     _buildSalesSection(
                       filteredSales,
                     ),
@@ -758,28 +866,6 @@ class _SalesScreenState extends State<SalesScreen> {
       crossAxisAlignment:
           CrossAxisAlignment.center,
       children: [
-        Container(
-          width: 54,
-          height: 54,
-          decoration: BoxDecoration(
-            color:
-                AppColors.success.withValues(
-              alpha: 0.12,
-            ),
-            borderRadius:
-                BorderRadius.circular(16),
-          ),
-          child: const Icon(
-            Icons.point_of_sale_rounded,
-            color: AppColors.success,
-            size: 28,
-          ),
-        ),
-
-        const SizedBox(
-          width: 14,
-        ),
-
         Expanded(
           child: Column(
             crossAxisAlignment:
@@ -796,10 +882,10 @@ class _SalesScreenState extends State<SalesScreen> {
                 ),
               ),
               const SizedBox(
-                height: 4,
+                height: 5,
               ),
               Text(
-                'Manage sales, invoices, customers and payments.',
+                'Manage sales, invoices and customer transactions.',
                 style: theme
                     .textTheme
                     .bodyMedium
@@ -812,17 +898,20 @@ class _SalesScreenState extends State<SalesScreen> {
             ],
           ),
         ),
-
-        if (isDesktop)
-          FilledButton.icon(
-            onPressed: _openAddSale,
-            icon: const Icon(
-              Icons.add_rounded,
-            ),
-            label: const Text(
-              'New Sale',
-            ),
+        const SizedBox(
+          width: 12,
+        ),
+        FilledButton.icon(
+          onPressed: _openAddSale,
+          icon: const Icon(
+            Icons.add_rounded,
           ),
+          label: Text(
+            isDesktop
+                ? 'Add Sale'
+                : 'Sale',
+          ),
+        ),
       ],
     );
   }
@@ -832,92 +921,130 @@ class _SalesScreenState extends State<SalesScreen> {
   // ===========================================================================
 
   Widget _buildSummary(
-    SaleProvider provider,
+    SaleProvider saleProvider,
     bool isDesktop,
   ) {
-    final List<_SummaryData> items = [
-      _SummaryData(
-        title: 'Total Sales',
-        value: _formatCurrency(
-          provider.totalSalesAmount,
-        ),
-        subtitle:
-            '${provider.saleCount} invoice${provider.saleCount == 1 ? '' : 's'}',
-        icon:
-            Icons.receipt_long_rounded,
-        color: AppColors.primary,
-      ),
-      _SummaryData(
-        title: 'Collected',
-        value: _formatCurrency(
-          provider.totalReceivedAmount,
-        ),
-        subtitle: 'Amount received',
-        icon:
-            Icons.payments_rounded,
-        color: AppColors.success,
-      ),
-      _SummaryData(
-        title: 'Outstanding',
-        value: _formatCurrency(
-          provider.todayPendingAmount,
-        ),
-        subtitle: 'Amount pending',
-        icon:
-            Icons.account_balance_wallet_outlined,
-        color: AppColors.warning,
-      ),
-    ];
+    final List<SaleModel> sales =
+        _filteredSales(
+      saleProvider.sales,
+    );
 
-    if (isDesktop) {
-      return Row(
-        children: items.map(
-          (item) {
-            return Expanded(
-              child: Padding(
-                padding:
-                    const EdgeInsets.only(
-                  right: 12,
-                ),
-                child:
-                    _SummaryMetricCard(
-                  data: item,
-                ),
-              ),
-            );
-          },
-        ).toList(),
-      );
+    double totalSales = 0;
+    double totalReceived = 0;
+    double totalPending = 0;
+
+    for (final SaleModel sale in sales) {
+      totalSales += sale.total;
+      totalReceived += sale.paidAmount;
+
+      final double pending =
+          sale.total - sale.paidAmount;
+
+      if (pending > 0) {
+        totalPending += pending;
+      }
     }
 
-    return Column(
-      children: [
-        _SummaryMetricCard(
-          data: items[0],
-        ),
-        const SizedBox(
-          height: 12,
-        ),
-        Row(
+    return LayoutBuilder(
+      builder: (
+        context,
+        constraints,
+      ) {
+        final double width =
+            constraints.maxWidth;
+
+        int columns;
+
+        if (width >= 1000) {
+          columns = 4;
+        } else if (width >= 650) {
+          columns = 2;
+        } else {
+          columns = 1;
+        }
+
+        final double spacing =
+            columns == 1 ? 0 : 12;
+
+        final double cardWidth =
+            columns == 1
+                ? width
+                : (width -
+                        spacing *
+                            (columns - 1)) /
+                    columns;
+
+        return Wrap(
+          spacing: 12,
+          runSpacing: 12,
           children: [
-            Expanded(
-              child:
-                  _SummaryMetricCard(
-                data: items[1],
+            SizedBox(
+              width: cardWidth,
+              child: _SummaryCard(
+                icon:
+                    Icons.receipt_long_rounded,
+                title: 'Total Sales',
+                value:
+                    _formatCurrency(
+                  totalSales,
+                ),
+                color:
+                    AppColors.success,
+                subtitle:
+                    '${sales.length} sale${sales.length == 1 ? '' : 's'}',
               ),
             ),
-            const SizedBox(
-              width: 12,
+            SizedBox(
+              width: cardWidth,
+              child: _SummaryCard(
+                icon:
+                    Icons.account_balance_wallet_outlined,
+                title: 'Received',
+                value:
+                    _formatCurrency(
+                  totalReceived,
+                ),
+                color:
+                    AppColors.info,
+                subtitle:
+                    'Paid amount',
+              ),
             ),
-            Expanded(
-              child:
-                  _SummaryMetricCard(
-                data: items[2],
+            SizedBox(
+              width: cardWidth,
+              child: _SummaryCard(
+                icon:
+                    Icons.pending_actions_rounded,
+                title: 'Pending',
+                value:
+                    _formatCurrency(
+                  totalPending,
+                ),
+                color:
+                    AppColors.warning,
+                subtitle:
+                    'Outstanding',
+              ),
+            ),
+            SizedBox(
+              width: cardWidth,
+              child: _SummaryCard(
+                icon:
+                    Icons.trending_up_rounded,
+                title: 'Collection Rate',
+                value:
+                    totalSales <= 0
+                        ? '0%'
+                        : '${((totalReceived / totalSales) * 100).clamp(0, 100).toStringAsFixed(1)}%',
+                color:
+                    AppColors.purple,
+                subtitle:
+                    'Received / sales',
               ),
             ),
           ],
-        ),
-      ],
+        );
+      },
     );
   }
 
@@ -926,182 +1053,201 @@ class _SalesScreenState extends State<SalesScreen> {
   // ===========================================================================
 
   Widget _buildFilterSection() {
+    final ThemeData theme =
+        Theme.of(context);
+
     final bool hasFilters =
         _searchQuery.isNotEmpty ||
             _paymentFilter != 'All' ||
             _startDate != null ||
             _endDate != null;
 
-    return Card(
-      child: Padding(
-        padding:
-            const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(
-                  Icons.filter_alt_outlined,
-                ),
-                const SizedBox(
-                  width: 8,
-                ),
-                Text(
-                  'Search & Filters',
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleMedium
-                      ?.copyWith(
-                    fontWeight:
-                        FontWeight.w700,
-                  ),
-                ),
-                const Spacer(),
-                if (hasFilters)
-                  TextButton(
-                    onPressed:
-                        _clearFilters,
-                    child: const Text(
-                      'Clear',
-                    ),
-                  ),
-              ],
-            ),
-
-            const SizedBox(
-              height: 14,
-            ),
-
-            TextField(
-              controller:
-                  _searchController,
-              textInputAction:
-                  TextInputAction.search,
-              decoration:
-                  InputDecoration(
-                hintText:
-                    'Search invoice, customer, product...',
-                prefixIcon:
-                    const Icon(
-                  Icons.search_rounded,
-                ),
-                suffixIcon:
-                    _searchController
-                            .text
-                            .isEmpty
-                        ? null
-                        : IconButton(
-                            tooltip:
-                                'Clear search',
-                            onPressed: () {
-                              _searchController
-                                  .clear();
-                            },
-                            icon:
-                                const Icon(
-                              Icons
-                                  .close_rounded,
-                            ),
-                          ),
+    return Container(
+      width: double.infinity,
+      padding:
+          const EdgeInsets.all(16),
+      decoration:
+          BoxDecoration(
+        color: theme
+            .colorScheme
+            .surfaceContainerHighest
+            .withValues(
+          alpha: 0.35,
+        ),
+        borderRadius:
+            BorderRadius.circular(
+          18,
+        ),
+        border:
+            Border.all(
+          color: theme
+              .colorScheme
+              .outline
+              .withValues(
+            alpha: 0.12,
+          ),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons
+                    .filter_alt_outlined,
+                size: 19,
+                color: theme
+                    .colorScheme
+                    .primary,
               ),
-            ),
+              const SizedBox(
+                width: 8,
+              ),
+              Text(
+                'Search & Filters',
+                style: theme
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(
+                  fontWeight:
+                      FontWeight.w800,
+                ),
+              ),
+              const Spacer(),
+              if (hasFilters)
+                TextButton(
+                  onPressed:
+                      _clearFilters,
+                  child: const Text(
+                    'Clear',
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(
+            height: 14,
+          ),
+          LayoutBuilder(
+            builder: (
+              context,
+              constraints,
+            ) {
+              final bool compact =
+                  constraints.maxWidth < 700;
 
-            const SizedBox(
-              height: 14,
-            ),
-
-            LayoutBuilder(
-              builder: (
-                context,
-                constraints,
-              ) {
-                if (constraints.maxWidth >=
-                    700) {
-                  return Row(
-                    children: [
-                      Expanded(
-                        child:
-                            _buildPaymentFilter(),
-                      ),
-                      const SizedBox(
-                        width: 12,
-                      ),
-                      Expanded(
-                        child:
-                            _buildStartDateButton(),
-                      ),
-                      const SizedBox(
-                        width: 12,
-                      ),
-                      Expanded(
-                        child:
-                            _buildEndDateButton(),
-                      ),
-                    ],
-                  );
-                }
-
+              if (compact) {
                 return Column(
                   children: [
-                    _buildPaymentFilter(),
+                    _buildSearchField(),
                     const SizedBox(
                       height: 12,
                     ),
-                    Row(
-                      children: [
-                        Expanded(
-                          child:
-                              _buildStartDateButton(),
-                        ),
-                        const SizedBox(
-                          width: 12,
-                        ),
-                        Expanded(
-                          child:
-                              _buildEndDateButton(),
-                        ),
-                      ],
+                    _buildPaymentDropdown(),
+                    const SizedBox(
+                      height: 12,
                     ),
+                    _buildDateButtons(),
                   ],
                 );
-              },
-            ),
+              }
 
-            if (_startDate != null ||
-                _endDate != null) ...[
-              const SizedBox(
-                height: 12,
-              ),
-              _buildDateSummary(),
-            ],
-          ],
+              return Row(
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child:
+                        _buildSearchField(),
+                  ),
+                  const SizedBox(
+                    width: 12,
+                  ),
+                  Expanded(
+                    child:
+                        _buildPaymentDropdown(),
+                  ),
+                  const SizedBox(
+                    width: 12,
+                  ),
+                  Expanded(
+                    child:
+                        _buildDateButtons(),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchField() {
+    return TextField(
+      controller: _searchController,
+      textInputAction:
+          TextInputAction.search,
+      decoration:
+          InputDecoration(
+        hintText:
+            'Search invoice, customer or product',
+        prefixIcon:
+            const Icon(
+          Icons.search_rounded,
+        ),
+        suffixIcon:
+            _searchQuery.isNotEmpty
+                ? IconButton(
+                    onPressed: () {
+                      _searchController
+                          .clear();
+                    },
+                    icon:
+                        const Icon(
+                      Icons
+                          .clear_rounded,
+                    ),
+                  )
+                : null,
+        border:
+            OutlineInputBorder(
+          borderRadius:
+              BorderRadius.circular(
+            14,
+          ),
         ),
       ),
     );
   }
 
-  // ===========================================================================
-  // PAYMENT FILTER
-  // ===========================================================================
-
-  Widget _buildPaymentFilter() {
+  Widget _buildPaymentDropdown() {
     return DropdownButtonFormField<String>(
       initialValue: _paymentFilter,
       decoration:
-          const InputDecoration(
-        labelText: 'Payment Status',
+          InputDecoration(
+        labelText:
+            'Payment Status',
         prefixIcon:
-            Icon(
-          Icons.payments_outlined,
+            const Icon(
+          Icons
+              .payments_outlined,
+        ),
+        border:
+            OutlineInputBorder(
+          borderRadius:
+              BorderRadius.circular(
+            14,
+          ),
         ),
       ),
       items: const [
         DropdownMenuItem(
           value: 'All',
           child: Text(
-            'All Payments',
+            'All',
           ),
         ),
         DropdownMenuItem(
@@ -1123,9 +1269,9 @@ class _SalesScreenState extends State<SalesScreen> {
           ),
         ),
       ],
-      onChanged: (value) {
+      onChanged:
+          (value) {
         if (value == null) return;
-
         _setPaymentFilter(
           value,
         );
@@ -1133,111 +1279,57 @@ class _SalesScreenState extends State<SalesScreen> {
     );
   }
 
-  // ===========================================================================
-  // START DATE
-  // ===========================================================================
-
-  Widget _buildStartDateButton() {
-    return OutlinedButton.icon(
-      onPressed: _selectStartDate,
-      icon: const Icon(
-        Icons.calendar_today_outlined,
-      ),
-      label: Text(
-        _startDate == null
-            ? 'Start Date'
-            : DateFormat(
-                'dd MMM yyyy',
-              ).format(
-                _startDate!,
-              ),
-        overflow:
-            TextOverflow.ellipsis,
-      ),
-    );
-  }
-
-  // ===========================================================================
-  // END DATE
-  // ===========================================================================
-
-  Widget _buildEndDateButton() {
-    return OutlinedButton.icon(
-      onPressed: _selectEndDate,
-      icon: const Icon(
-        Icons.event_outlined,
-      ),
-      label: Text(
-        _endDate == null
-            ? 'End Date'
-            : DateFormat(
-                'dd MMM yyyy',
-              ).format(
-                _endDate!,
-              ),
-        overflow:
-            TextOverflow.ellipsis,
-      ),
-    );
-  }
-
-  // ===========================================================================
-  // DATE SUMMARY
-  // ===========================================================================
-
-  Widget _buildDateSummary() {
-    String text = 'Date: ';
-
-    if (_startDate != null &&
-        _endDate != null) {
-      text +=
-          '${DateFormat('dd MMM yyyy').format(_startDate!)}'
-          ' → '
-          '${DateFormat('dd MMM yyyy').format(_endDate!)}';
-    } else if (_startDate != null) {
-      text +=
-          'From ${DateFormat('dd MMM yyyy').format(_startDate!)}';
-    } else if (_endDate != null) {
-      text +=
-          'Until ${DateFormat('dd MMM yyyy').format(_endDate!)}';
-    }
-
-    return Container(
-      width: double.infinity,
-      padding:
-          const EdgeInsets.symmetric(
-        horizontal: 12,
-        vertical: 10,
-      ),
-      decoration: BoxDecoration(
-        color:
-            AppColors.primary.withValues(
-          alpha: 0.08,
-        ),
-        borderRadius:
-            BorderRadius.circular(10),
-      ),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.date_range_rounded,
-            size: 18,
-            color: AppColors.primary,
-          ),
-          const SizedBox(
-            width: 8,
-          ),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(
-                fontWeight:
-                    FontWeight.w600,
-              ),
+  Widget _buildDateButtons() {
+    return Row(
+      children: [
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed:
+                _selectStartDate,
+            icon: const Icon(
+              Icons
+                  .calendar_today_outlined,
+              size: 17,
+            ),
+            label: Text(
+              _startDate == null
+                  ? 'From'
+                  : DateFormat(
+                      'dd MMM',
+                    ).format(
+                      _startDate!,
+                    ),
+              overflow:
+                  TextOverflow.ellipsis,
             ),
           ),
-        ],
-      ),
+        ),
+        const SizedBox(
+          width: 8,
+        ),
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed:
+                _selectEndDate,
+            icon: const Icon(
+              Icons
+                  .event_outlined,
+              size: 17,
+            ),
+            label: Text(
+              _endDate == null
+                  ? 'To'
+                  : DateFormat(
+                      'dd MMM',
+                    ).format(
+                      _endDate!,
+                    ),
+              overflow:
+                  TextOverflow.ellipsis,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1248,212 +1340,247 @@ class _SalesScreenState extends State<SalesScreen> {
   Widget _buildSalesSection(
     List<SaleModel> sales,
   ) {
-    return Card(
-      child: Padding(
-        padding:
-            const EdgeInsets.fromLTRB(
-          16,
-          18,
-          16,
-          16,
+    final ThemeData theme =
+        Theme.of(context);
+
+    if (sales.isEmpty) {
+      return _buildEmptySalesState();
+    }
+
+    return Container(
+      width: double.infinity,
+      decoration:
+          BoxDecoration(
+        color: theme
+            .colorScheme
+            .surface,
+        borderRadius:
+            BorderRadius.circular(
+          20,
         ),
-        child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
-          children: [
-            Row(
+        border:
+            Border.all(
+          color: theme
+              .colorScheme
+              .outline
+              .withValues(
+            alpha: 0.12,
+          ),
+        ),
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding:
+                const EdgeInsets.fromLTRB(
+              18,
+              18,
+              18,
+              12,
+            ),
+            child: Row(
               children: [
-                Expanded(
-                  child: Text(
-                    _searchQuery.isNotEmpty ||
-                            _paymentFilter !=
-                                'All' ||
-                            _startDate !=
-                                null ||
-                            _endDate != null
-                        ? 'Filtered Sales'
-                        : 'Recent Sales',
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleLarge
-                        ?.copyWith(
-                      fontWeight:
-                          FontWeight.w800,
-                    ),
+                Text(
+                  'Sales History',
+                  style: theme
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(
+                    fontWeight:
+                        FontWeight.w800,
                   ),
                 ),
-                Container(
-                  padding:
-                      const EdgeInsets
-                          .symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
-                  decoration:
-                      BoxDecoration(
-                    color: AppColors
-                        .primary
-                        .withValues(
-                      alpha: 0.10,
-                    ),
-                    borderRadius:
-                        BorderRadius.circular(
-                      20,
-                    ),
-                  ),
-                  child: Text(
-                    '${sales.length}',
-                    style: const TextStyle(
-                      color:
-                          AppColors.primary,
-                      fontWeight:
-                          FontWeight.w700,
-                    ),
+                const Spacer(),
+                Text(
+                  '${sales.length} record${sales.length == 1 ? '' : 's'}',
+                  style: theme
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(
+                    color: theme
+                        .colorScheme
+                        .onSurfaceVariant,
                   ),
                 ),
               ],
             ),
-
-            const SizedBox(
-              height: 16,
+          ),
+          const Divider(
+            height: 1,
+          ),
+          ListView.separated(
+            shrinkWrap: true,
+            physics:
+                const NeverScrollableScrollPhysics(),
+            padding:
+                const EdgeInsets.all(
+              12,
             ),
-
-            if (sales.isEmpty)
-              _buildEmptyState()
-            else
-              ...sales.map(
-                (sale) {
-                  return Padding(
-                    padding:
-                        const EdgeInsets
-                            .only(
-                      bottom: 10,
-                    ),
-                    child:
-                        _SaleListTile(
-                      sale: sale,
-                      onTap: () {
-                        _showSaleDetails(
-                          sale,
-                        );
-                      },
-                      onEdit: () {
-                        _openEditSale(
-                          sale,
-                        );
-                      },
-                      onDelete: () {
-                        _deleteSale(
-                          sale,
-                        );
-                      },
-                    ),
+            itemCount:
+                sales.length,
+            separatorBuilder:
+                (_, _) =>
+                    const SizedBox(
+              height: 8,
+            ),
+            itemBuilder:
+                (context, index) {
+              return _SaleListTile(
+                sale:
+                    sales[index],
+                onTap:
+                    () {
+                  _showSaleDetails(
+                    sales[index],
                   );
                 },
-              ),
-          ],
-        ),
+                onEdit:
+                    () {
+                  _openEditSale(
+                    sales[index],
+                  );
+                },
+                onDelete:
+                    () {
+                  _deleteSale(
+                    sales[index],
+                  );
+                },
+                onPrintInvoice:
+                    () {
+                  _printInvoice(
+                    sales[index],
+                  );
+                },
+                onShareInvoice:
+                    () {
+                  _shareInvoice(
+                    sales[index],
+                  );
+                },
+              );
+            },
+          ),
+        ],
       ),
     );
   }
 
-  // ===========================================================================
-  // EMPTY STATE
-  // ===========================================================================
+  Widget _buildEmptySalesState() {
+    final ThemeData theme =
+        Theme.of(context);
 
-  Widget _buildEmptyState() {
     final bool hasFilters =
         _searchQuery.isNotEmpty ||
             _paymentFilter != 'All' ||
             _startDate != null ||
             _endDate != null;
 
-    return Padding(
+    return Container(
+      width: double.infinity,
       padding:
           const EdgeInsets.symmetric(
-        vertical: 50,
+        horizontal: 24,
+        vertical: 48,
       ),
-      child: Center(
-        child: Column(
-          children: [
-            Container(
-              width: 78,
-              height: 78,
-              decoration:
-                  BoxDecoration(
-                color:
-                    AppColors.primary
-                        .withValues(
-                  alpha: 0.10,
-                ),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                hasFilters
-                    ? Icons
-                        .search_off_rounded
-                    : Icons
-                        .receipt_long_outlined,
-                size: 36,
-                color:
-                    AppColors.primary,
-              ),
-            ),
-
-            const SizedBox(
-              height: 16,
-            ),
-
-            Text(
-              hasFilters
-                  ? 'No sales found'
-                  : 'No sales yet',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(
-                fontWeight:
-                    FontWeight.w800,
-              ),
-            ),
-
-            const SizedBox(
-              height: 7,
-            ),
-
-            Text(
-              hasFilters
-                  ? 'Try changing the search or filters.'
-                  : 'Create your first sale to see it here.',
-              textAlign:
-                  TextAlign.center,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(
-                color: Theme.of(context)
-                    .colorScheme
-                    .onSurfaceVariant,
-              ),
-            ),
-
-            if (!hasFilters) ...[
-              const SizedBox(
-                height: 18,
-              ),
-              FilledButton.icon(
-                onPressed:
-                    _openAddSale,
-                icon: const Icon(
-                  Icons.add_rounded,
-                ),
-                label: const Text(
-                  'Create Sale',
-                ),
-              ),
-            ],
-          ],
+      decoration:
+          BoxDecoration(
+        color: theme
+            .colorScheme
+            .surface,
+        borderRadius:
+            BorderRadius.circular(
+          20,
         ),
+        border:
+            Border.all(
+          color: theme
+              .colorScheme
+              .outline
+              .withValues(
+            alpha: 0.12,
+          ),
+        ),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 72,
+            height: 72,
+            decoration:
+                BoxDecoration(
+              color: theme
+                  .colorScheme
+                  .primary
+                  .withValues(
+                alpha: 0.10,
+              ),
+              shape:
+                  BoxShape.circle,
+            ),
+            child: Icon(
+              hasFilters
+                  ? Icons
+                      .search_off_rounded
+                  : Icons
+                      .receipt_long_outlined,
+              size: 34,
+              color: theme
+                  .colorScheme
+                  .primary,
+            ),
+          ),
+          const SizedBox(
+            height: 16,
+          ),
+          Text(
+            hasFilters
+                ? 'No matching sales'
+                : 'No sales yet',
+            style: theme
+                .textTheme
+                .titleMedium
+                ?.copyWith(
+              fontWeight:
+                  FontWeight.w800,
+            ),
+          ),
+          const SizedBox(
+            height: 6,
+          ),
+          Text(
+            hasFilters
+                ? 'Try changing the search or filters.'
+                : 'Create your first sale to start tracking invoices and payments.',
+            textAlign:
+                TextAlign.center,
+            style: theme
+                .textTheme
+                .bodyMedium
+                ?.copyWith(
+              color: theme
+                  .colorScheme
+                  .onSurfaceVariant,
+            ),
+          ),
+          if (!hasFilters) ...[
+            const SizedBox(
+              height: 18,
+            ),
+            FilledButton.icon(
+              onPressed:
+                  _openAddSale,
+              icon:
+                  const Icon(
+                Icons.add_rounded,
+              ),
+              label:
+                  const Text(
+                'Add Sale',
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -1465,27 +1592,32 @@ class _SalesScreenState extends State<SalesScreen> {
   Widget _buildErrorState(
     String message,
   ) {
+    final ThemeData theme =
+        Theme.of(context);
+
     return Center(
       child: Padding(
         padding:
-            const EdgeInsets.all(24),
+            const EdgeInsets.all(
+          24,
+        ),
         child: Column(
-          mainAxisSize:
-              MainAxisSize.min,
+          mainAxisAlignment:
+              MainAxisAlignment.center,
           children: [
-            const Icon(
-              Icons.error_outline_rounded,
-              size: 54,
-              color: AppColors.danger,
+            Icon(
+              Icons
+                  .error_outline_rounded,
+              size: 52,
+              color:
+                  AppColors.danger,
             ),
-
             const SizedBox(
               height: 14,
             ),
-
             Text(
-              'Unable to load sales',
-              style: Theme.of(context)
+              'Something went wrong',
+              style: theme
                   .textTheme
                   .titleLarge
                   ?.copyWith(
@@ -1493,30 +1625,34 @@ class _SalesScreenState extends State<SalesScreen> {
                     FontWeight.w800,
               ),
             ),
-
             const SizedBox(
               height: 8,
             ),
-
             Text(
               message,
               textAlign:
                   TextAlign.center,
-              style: Theme.of(context)
+              style: theme
                   .textTheme
-                  .bodyMedium,
+                  .bodyMedium
+                  ?.copyWith(
+                color: theme
+                    .colorScheme
+                    .onSurfaceVariant,
+              ),
             ),
-
             const SizedBox(
               height: 18,
             ),
-
             FilledButton.icon(
-              onPressed: _initialize,
-              icon: const Icon(
+              onPressed:
+                  _initialize,
+              icon:
+                  const Icon(
                 Icons.refresh_rounded,
               ),
-              label: const Text(
+              label:
+                  const Text(
                 'Retry',
               ),
             ),
@@ -1527,31 +1663,37 @@ class _SalesScreenState extends State<SalesScreen> {
   }
 
   // ===========================================================================
-  // NO BUSINESS
+  // NO BUSINESS STATE
   // ===========================================================================
 
   Widget _buildNoBusinessState() {
+    final ThemeData theme =
+        Theme.of(context);
+
     return Center(
       child: Padding(
         padding:
-            const EdgeInsets.all(24),
+            const EdgeInsets.all(
+          24,
+        ),
         child: Column(
-          mainAxisSize:
-              MainAxisSize.min,
+          mainAxisAlignment:
+              MainAxisAlignment.center,
           children: [
-            const Icon(
-              Icons.business_outlined,
-              size: 58,
-              color: AppColors.warning,
+            Icon(
+              Icons
+                  .business_outlined,
+              size: 54,
+              color: theme
+                  .colorScheme
+                  .primary,
             ),
-
             const SizedBox(
               height: 14,
             ),
-
             Text(
-              'Business profile not found',
-              style: Theme.of(context)
+              'Business setup required',
+              style: theme
                   .textTheme
                   .titleLarge
                   ?.copyWith(
@@ -1559,15 +1701,21 @@ class _SalesScreenState extends State<SalesScreen> {
                     FontWeight.w800,
               ),
             ),
-
             const SizedBox(
               height: 8,
             ),
-
-            const Text(
-              'Please complete your business setup first.',
+            Text(
+              'Please complete your business setup before managing sales.',
               textAlign:
                   TextAlign.center,
+              style: theme
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(
+                color: theme
+                    .colorScheme
+                    .onSurfaceVariant,
+              ),
             ),
           ],
         ),
@@ -1576,7 +1724,7 @@ class _SalesScreenState extends State<SalesScreen> {
   }
 
   // ===========================================================================
-  // FORMAT CURRENCY
+  // HELPERS
   // ===========================================================================
 
   String _formatCurrency(
@@ -1591,35 +1739,23 @@ class _SalesScreenState extends State<SalesScreen> {
 }
 
 // =============================================================================
-// SUMMARY DATA
-// =============================================================================
-
-class _SummaryData {
-  final String title;
-  final String value;
-  final String subtitle;
-  final IconData icon;
-  final Color color;
-
-  const _SummaryData({
-    required this.title,
-    required this.value,
-    required this.subtitle,
-    required this.icon,
-    required this.color,
-  });
-}
-
-// =============================================================================
 // SUMMARY CARD
 // =============================================================================
 
-class _SummaryMetricCard
+class _SummaryCard
     extends StatelessWidget {
-  final _SummaryData data;
+  final IconData icon;
+  final String title;
+  final String value;
+  final Color color;
+  final String subtitle;
 
-  const _SummaryMetricCard({
-    required this.data,
+  const _SummaryCard({
+    required this.icon,
+    required this.title,
+    required this.value,
+    required this.color,
+    required this.subtitle,
   });
 
   @override
@@ -1629,98 +1765,109 @@ class _SummaryMetricCard
     final ThemeData theme =
         Theme.of(context);
 
-    return Card(
-      clipBehavior:
-          Clip.antiAlias,
-      child: Padding(
-        padding:
-            const EdgeInsets.all(18),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration:
-                  BoxDecoration(
-                color:
-                    data.color.withValues(
-                  alpha: 0.12,
-                ),
-                borderRadius:
-                    BorderRadius.circular(
-                  14,
-                ),
-              ),
-              child: Icon(
-                data.icon,
-                color: data.color,
-              ),
-            ),
-
-            const SizedBox(
-              width: 13,
-            ),
-
-            Expanded(
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    data.title,
-                    style: theme
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(
-                      color: theme
-                          .colorScheme
-                          .onSurfaceVariant,
-                      fontWeight:
-                          FontWeight.w600,
-                    ),
-                  ),
-
-                  const SizedBox(
-                    height: 4,
-                  ),
-
-                  Text(
-                    data.value,
-                    maxLines: 1,
-                    overflow:
-                        TextOverflow.ellipsis,
-                    style: theme
-                        .textTheme
-                        .titleLarge
-                        ?.copyWith(
-                      fontWeight:
-                          FontWeight.w800,
-                    ),
-                  ),
-
-                  const SizedBox(
-                    height: 3,
-                  ),
-
-                  Text(
-                    data.subtitle,
-                    maxLines: 1,
-                    overflow:
-                        TextOverflow.ellipsis,
-                    style: theme
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(
-                      color: theme
-                          .colorScheme
-                          .onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+    return Container(
+      padding:
+          const EdgeInsets.all(
+        16,
+      ),
+      decoration:
+          BoxDecoration(
+        color: theme
+            .colorScheme
+            .surface,
+        borderRadius:
+            BorderRadius.circular(
+          18,
         ),
+        border:
+            Border.all(
+          color: theme
+              .colorScheme
+              .outline
+              .withValues(
+            alpha: 0.12,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration:
+                BoxDecoration(
+              color: color.withValues(
+                alpha: 0.12,
+              ),
+              borderRadius:
+                  BorderRadius.circular(
+                14,
+              ),
+            ),
+            child: Icon(
+              icon,
+              color: color,
+              size: 22,
+            ),
+          ),
+          const SizedBox(
+            width: 12,
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: theme
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(
+                    color: theme
+                        .colorScheme
+                        .onSurfaceVariant,
+                    fontWeight:
+                        FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(
+                  height: 3,
+                ),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style: theme
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(
+                    fontWeight:
+                        FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(
+                  height: 2,
+                ),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style: theme
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(
+                    color: theme
+                        .colorScheme
+                        .onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1736,12 +1883,16 @@ class _SaleListTile
   final VoidCallback onTap;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final VoidCallback onPrintInvoice;
+  final VoidCallback onShareInvoice;
 
   const _SaleListTile({
     required this.sale,
     required this.onTap,
     required this.onEdit,
     required this.onDelete,
+    required this.onPrintInvoice,
+    required this.onShareInvoice,
   });
 
   Color _statusColor() {
@@ -1784,7 +1935,6 @@ class _SaleListTile
     ).format(value);
   }
 
-
   @override
   Widget build(
     BuildContext context,
@@ -1795,7 +1945,7 @@ class _SaleListTile
     final Color statusColor =
         _statusColor();
 
-    final double outstanding =
+    final double pending =
         (sale.total -
                 sale.paidAmount)
             .clamp(
@@ -1803,312 +1953,310 @@ class _SaleListTile
       double.infinity,
     );
 
-    return Card(
-      margin: EdgeInsets.zero,
+    return Material(
+      color: theme
+          .colorScheme
+          .surfaceContainerHighest
+          .withValues(
+        alpha: 0.22,
+      ),
+      borderRadius:
+          BorderRadius.circular(
+        16,
+      ),
       child: InkWell(
         onTap: onTap,
         borderRadius:
-            BorderRadius.circular(16),
+            BorderRadius.circular(
+          16,
+        ),
         child: Padding(
           padding:
-              const EdgeInsets.all(15),
-          child: Column(
+              const EdgeInsets.all(
+            14,
+          ),
+          child: Row(
             children: [
-              Row(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 46,
-                    height: 46,
-                    decoration:
-                        BoxDecoration(
-                      color: AppColors
-                          .success
-                          .withValues(
-                        alpha: 0.10,
-                      ),
-                      borderRadius:
-                          BorderRadius.circular(
-                        13,
-                      ),
-                    ),
-                    child: const Icon(
-                      Icons
-                          .receipt_long_rounded,
-                      color:
-                          AppColors.success,
-                    ),
+              Container(
+                width: 46,
+                height: 46,
+                decoration:
+                    BoxDecoration(
+                  color: AppColors
+                      .success
+                      .withValues(
+                    alpha: 0.10,
                   ),
-
-                  const SizedBox(
-                    width: 12,
+                  borderRadius:
+                      BorderRadius.circular(
+                    14,
                   ),
-
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment
-                              .start,
+                ),
+                child: const Icon(
+                  Icons
+                      .receipt_long_rounded,
+                  color:
+                      AppColors.success,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(
+                width: 12,
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment
+                          .start,
+                  children: [
+                    Row(
                       children: [
-                        Text(
-                          sale.invoiceNumber
-                                  .trim()
-                                  .isEmpty
-                              ? 'Sale'
-                              : sale
-                                  .invoiceNumber,
-                          maxLines: 1,
-                          overflow:
-                              TextOverflow
-                                  .ellipsis,
-                          style: theme
-                              .textTheme
-                              .titleMedium
-                              ?.copyWith(
-                            fontWeight:
-                                FontWeight.w800,
+                        Expanded(
+                          child: Text(
+                            sale.invoiceNumber
+                                    .trim()
+                                    .isEmpty
+                                ? 'Sale'
+                                : sale
+                                    .invoiceNumber,
+                            maxLines: 1,
+                            overflow:
+                                TextOverflow
+                                    .ellipsis,
+                            style: theme
+                                .textTheme
+                                .titleSmall
+                                ?.copyWith(
+                              fontWeight:
+                                  FontWeight.w800,
+                            ),
                           ),
                         ),
-
                         const SizedBox(
-                          height: 4,
+                          width: 8,
                         ),
-
-                        Text(
-                          sale.customerName
-                                  .trim()
-                                  .isEmpty
-                              ? 'Walk-in Customer'
-                              : sale
-                                  .customerName,
-                          maxLines: 1,
-                          overflow:
-                              TextOverflow
-                                  .ellipsis,
-                          style: theme
-                              .textTheme
-                              .bodyMedium
-                              ?.copyWith(
-                            color: theme
-                                .colorScheme
-                                .onSurfaceVariant,
+                        Container(
+                          padding:
+                              const EdgeInsets
+                                  .symmetric(
+                            horizontal: 8,
+                            vertical: 5,
+                          ),
+                          decoration:
+                              BoxDecoration(
+                            color:
+                                statusColor
+                                    .withValues(
+                              alpha: 0.10,
+                            ),
+                            borderRadius:
+                                BorderRadius
+                                    .circular(
+                              20,
+                            ),
+                          ),
+                          child: Text(
+                            _statusText(),
+                            style:
+                                TextStyle(
+                              color:
+                                  statusColor,
+                              fontSize: 10,
+                              fontWeight:
+                                  FontWeight.w800,
+                            ),
                           ),
                         ),
                       ],
                     ),
-                  ),
-
-                  const SizedBox(
-                    width: 10,
-                  ),
-
-                  Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        _formatCurrency(
-                          sale.total,
-                        ),
-                        style: theme
-                            .textTheme
-                            .titleMedium
-                            ?.copyWith(
-                          fontWeight:
-                              FontWeight.w800,
-                        ),
+                    const SizedBox(
+                      height: 5,
+                    ),
+                    Text(
+                      sale.customerName
+                              .trim()
+                              .isEmpty
+                          ? 'Walk-in Customer'
+                          : sale
+                              .customerName,
+                      maxLines: 1,
+                      overflow:
+                          TextOverflow.ellipsis,
+                      style: theme
+                          .textTheme
+                          .bodyMedium
+                          ?.copyWith(
+                        fontWeight:
+                            FontWeight.w600,
                       ),
-
-                      const SizedBox(
-                        height: 6,
+                    ),
+                    const SizedBox(
+                      height: 3,
+                    ),
+                    Text(
+                      '${DateFormat('dd MMM yyyy').format(sale.date)} • ${sale.items.length} item${sale.items.length == 1 ? '' : 's'}',
+                      maxLines: 1,
+                      overflow:
+                          TextOverflow.ellipsis,
+                      style: theme
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(
+                        color: theme
+                            .colorScheme
+                            .onSurfaceVariant,
                       ),
-
-                      Container(
-                        padding:
-                            const EdgeInsets
-                                .symmetric(
-                          horizontal: 9,
-                          vertical: 5,
-                        ),
-                        decoration:
-                            BoxDecoration(
-                          color: statusColor
-                              .withValues(
-                            alpha: 0.10,
-                          ),
-                          borderRadius:
-                              BorderRadius
-                                  .circular(
-                            20,
-                          ),
-                        ),
-                        child: Text(
-                          _statusText(),
-                          style: TextStyle(
-                            color:
-                                statusColor,
-                            fontSize: 11,
-                            fontWeight:
-                                FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-
-              const SizedBox(
-                height: 14,
-              ),
-
-              Divider(
-                height: 1,
-                color: theme
-                    .dividerColor
-                    .withValues(
-                  alpha: 0.6,
+                    ),
+                  ],
                 ),
               ),
-
               const SizedBox(
-                height: 12,
+                width: 12,
               ),
-
-              Wrap(
-                spacing: 16,
-                runSpacing: 8,
+              Column(
+                crossAxisAlignment:
+                    CrossAxisAlignment.end,
                 children: [
-                  _MiniInfo(
-                    icon:
-                        Icons.calendar_today_outlined,
-                    text: DateFormat(
-                      'dd MMM yyyy',
-                    ).format(
-                      sale.date,
+                  Text(
+                    _formatCurrency(
+                      sale.total,
+                    ),
+                    style: theme
+                        .textTheme
+                        .titleSmall
+                        ?.copyWith(
+                      fontWeight:
+                          FontWeight.w800,
                     ),
                   ),
-                  _MiniInfo(
-                    icon:
-                        Icons.inventory_2_outlined,
-                    text:
-                        '${sale.items.length} item${sale.items.length == 1 ? '' : 's'}',
+                  const SizedBox(
+                    height: 4,
                   ),
-                  _MiniInfo(
-                    icon:
-                        Icons.payments_outlined,
-                    text:
-                        'Paid ${_formatCurrency(sale.paidAmount)}',
-                  ),
-                  if (outstanding > 0)
-                    _MiniInfo(
-                      icon: Icons
-                          .account_balance_wallet_outlined,
-                      text:
-                          'Due ${_formatCurrency(outstanding)}',
-                    ),
-                ],
-              ),
-
-              const SizedBox(
-                height: 10,
-              ),
-
-              Row(
-                mainAxisAlignment:
-                    MainAxisAlignment.end,
-                children: [
-                  TextButton.icon(
-                    onPressed: onTap,
-                    icon: const Icon(
-                      Icons
-                          .visibility_outlined,
-                      size: 18,
-                    ),
-                    label:
-                        const Text(
-                      'View',
-                    ),
-                  ),
-
-                  TextButton.icon(
-                    onPressed: onEdit,
-                    icon: const Icon(
-                      Icons.edit_outlined,
-                      size: 18,
-                    ),
-                    label:
-                        const Text(
-                      'Edit',
-                    ),
-                  ),
-
-                  IconButton(
-                    tooltip:
-                        'Delete sale',
-                    onPressed: onDelete,
-                    icon: const Icon(
-                      Icons
-                          .delete_outline_rounded,
-                      color:
-                          AppColors.danger,
+                  Text(
+                    pending > 0
+                        ? 'Due ${_formatCurrency(pending)}'
+                        : 'Paid',
+                    style: TextStyle(
+                      color: pending > 0
+                          ? AppColors.warning
+                          : AppColors.success,
+                      fontSize: 11,
+                      fontWeight:
+                          FontWeight.w700,
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(
+                width: 4,
+              ),
+              PopupMenuButton<String>(
+                tooltip:
+                    'Sale actions',
+                onSelected:
+                    (value) {
+                  switch (value) {
+                    case 'view':
+                      onTap();
+                      break;
+
+                    case 'print':
+                      onPrintInvoice();
+                      break;
+
+                    case 'share':
+                      onShareInvoice();
+                      break;
+
+                    case 'edit':
+                      onEdit();
+                      break;
+
+                    case 'delete':
+                      onDelete();
+                      break;
+                  }
+                },
+                itemBuilder:
+                    (context) {
+                  return const [
+                    PopupMenuItem(
+                      value: 'view',
+                      child: ListTile(
+                        leading: Icon(
+                          Icons
+                              .visibility_outlined,
+                        ),
+                        title: Text(
+                          'View Details',
+                        ),
+                        contentPadding:
+                            EdgeInsets.zero,
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'print',
+                      child: ListTile(
+                        leading: Icon(
+                          Icons
+                              .print_outlined,
+                        ),
+                        title: Text(
+                          'Print Invoice',
+                        ),
+                        contentPadding:
+                            EdgeInsets.zero,
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'share',
+                      child: ListTile(
+                        leading: Icon(
+                          Icons
+                              .share_outlined,
+                        ),
+                        title: Text(
+                          'Share Invoice',
+                        ),
+                        contentPadding:
+                            EdgeInsets.zero,
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'edit',
+                      child: ListTile(
+                        leading: Icon(
+                          Icons
+                              .edit_outlined,
+                        ),
+                        title: Text(
+                          'Edit Sale',
+                        ),
+                        contentPadding:
+                            EdgeInsets.zero,
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: ListTile(
+                        leading: Icon(
+                          Icons
+                              .delete_outline_rounded,
+                        ),
+                        title: Text(
+                          'Delete Sale',
+                        ),
+                        contentPadding:
+                            EdgeInsets.zero,
+                      ),
+                    ),
+                  ];
+                },
               ),
             ],
           ),
         ),
       ),
-    );
-  }
-}
-
-// =============================================================================
-// MINI INFO
-// =============================================================================
-
-class _MiniInfo
-    extends StatelessWidget {
-  final IconData icon;
-  final String text;
-
-  const _MiniInfo({
-    required this.icon,
-    required this.text,
-  });
-
-  @override
-  Widget build(
-    BuildContext context,
-  ) {
-    return Row(
-      mainAxisSize:
-          MainAxisSize.min,
-      children: [
-        Icon(
-          icon,
-          size: 15,
-          color: Theme.of(context)
-              .colorScheme
-              .onSurfaceVariant,
-        ),
-        const SizedBox(
-          width: 5,
-        ),
-        Text(
-          text,
-          style: Theme.of(context)
-              .textTheme
-              .bodySmall
-              ?.copyWith(
-            color: Theme.of(context)
-                .colorScheme
-                .onSurfaceVariant,
-          ),
-        ),
-      ],
     );
   }
 }
@@ -2120,11 +2268,15 @@ class _MiniInfo
 class _SaleDetailsSheet
     extends StatelessWidget {
   final SaleModel sale;
+  final VoidCallback onPrintInvoice;
+  final VoidCallback onShareInvoice;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   const _SaleDetailsSheet({
     required this.sale,
+    required this.onPrintInvoice,
+    required this.onShareInvoice,
     required this.onEdit,
     required this.onDelete,
   });
@@ -2238,11 +2390,9 @@ class _SaleDetailsSheet
                         AppColors.success,
                   ),
                 ),
-
                 const SizedBox(
                   width: 12,
                 ),
-
                 Expanded(
                   child: Column(
                     crossAxisAlignment:
@@ -2285,7 +2435,6 @@ class _SaleDetailsSheet
                     ],
                   ),
                 ),
-
                 Container(
                   padding:
                       const EdgeInsets
@@ -2574,14 +2723,53 @@ class _SaleDetailsSheet
             ),
 
             // -------------------------------------------------------------------
-            // ACTIONS
+            // INVOICE ACTIONS
             // -------------------------------------------------------------------
 
             Row(
               children: [
                 Expanded(
-                  child:
-                      OutlinedButton.icon(
+                  child: OutlinedButton.icon(
+                    onPressed:
+                        onPrintInvoice,
+                    icon: const Icon(
+                      Icons.print_outlined,
+                    ),
+                    label: const Text(
+                      'Print Invoice',
+                    ),
+                  ),
+                ),
+                const SizedBox(
+                  width: 12,
+                ),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed:
+                        onShareInvoice,
+                    icon: const Icon(
+                      Icons.share_outlined,
+                    ),
+                    label: const Text(
+                      'Share Invoice',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(
+              height: 12,
+            ),
+
+            // -------------------------------------------------------------------
+            // EDIT / DELETE
+            // -------------------------------------------------------------------
+
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
                     onPressed: onEdit,
                     icon: const Icon(
                       Icons.edit_outlined,
@@ -2595,10 +2783,8 @@ class _SaleDetailsSheet
                   width: 12,
                 ),
                 Expanded(
-                  child:
-                      FilledButton.icon(
-                    style: FilledButton
-                        .styleFrom(
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
                       backgroundColor:
                           AppColors.danger,
                     ),
@@ -2639,13 +2825,16 @@ class _DetailSection
   Widget build(
     BuildContext context,
   ) {
+    final ThemeData theme =
+        Theme.of(context);
+
     return Column(
       crossAxisAlignment:
           CrossAxisAlignment.start,
       children: [
         Text(
           title,
-          style: Theme.of(context)
+          style: theme
               .textTheme
               .titleSmall
               ?.copyWith(
@@ -2670,45 +2859,51 @@ class _AmountRow
     extends StatelessWidget {
   final String label;
   final String value;
-  final Color? valueColor;
   final bool bold;
+  final Color? valueColor;
 
   const _AmountRow({
     required this.label,
     required this.value,
-    this.valueColor,
     this.bold = false,
+    this.valueColor,
   });
 
   @override
   Widget build(
     BuildContext context,
   ) {
+    final ThemeData theme =
+        Theme.of(context);
+
     return Row(
       children: [
         Expanded(
           child: Text(
             label,
-            style: Theme.of(context)
+            style: theme
                 .textTheme
                 .bodyMedium
                 ?.copyWith(
-              fontWeight: bold
-                  ? FontWeight.w700
-                  : FontWeight.w500,
+              fontWeight:
+                  bold
+                      ? FontWeight.w800
+                      : FontWeight.w500,
             ),
           ),
         ),
         Text(
           value,
-          style: Theme.of(context)
+          style: theme
               .textTheme
               .bodyMedium
               ?.copyWith(
-            color: valueColor,
-            fontWeight: bold
-                ? FontWeight.w800
-                : FontWeight.w600,
+            fontWeight:
+                bold
+                    ? FontWeight.w800
+                    : FontWeight.w600,
+            color:
+                valueColor,
           ),
         ),
       ],
@@ -2736,52 +2931,79 @@ class _InfoRow
   Widget build(
     BuildContext context,
   ) {
-    return Row(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
-      children: [
-        Icon(
-          icon,
-          size: 20,
-          color: Theme.of(context)
-              .colorScheme
-              .primary,
+    final ThemeData theme =
+        Theme.of(context);
+
+    return Container(
+      width: double.infinity,
+      padding:
+          const EdgeInsets.symmetric(
+        horizontal: 14,
+        vertical: 12,
+      ),
+      decoration:
+          BoxDecoration(
+        color: theme
+            .colorScheme
+            .surfaceContainerHighest
+            .withValues(
+          alpha: 0.28,
         ),
-        const SizedBox(
-          width: 10,
+        borderRadius:
+            BorderRadius.circular(
+          12,
         ),
-        Expanded(
-          child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .onSurfaceVariant,
-                  fontWeight:
-                      FontWeight.w600,
-                ),
-              ),
-              const SizedBox(
-                height: 3,
-              ),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontWeight:
-                      FontWeight.w600,
-                ),
-              ),
-            ],
+      ),
+      child: Row(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          Icon(
+            icon,
+            size: 20,
+            color: theme
+                .colorScheme
+                .primary,
           ),
-        ),
-      ],
+          const SizedBox(
+            width: 11,
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: theme
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(
+                    color: theme
+                        .colorScheme
+                        .onSurfaceVariant,
+                    fontWeight:
+                        FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(
+                  height: 3,
+                ),
+                Text(
+                  value,
+                  style: theme
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(
+                    fontWeight:
+                        FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

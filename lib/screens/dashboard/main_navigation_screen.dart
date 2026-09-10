@@ -11,6 +11,7 @@ import '../products/add_product_screen.dart';
 import '../products/product_screen.dart';
 import '../profile/profile_screen.dart';
 import '../purchases/add_purchase_screen.dart';
+import '../reports/reports_screen.dart';
 import '../sales/add_sale_screen.dart';
 import '../sales/sales_screen.dart';
 import 'dashboard_home_screen.dart';
@@ -42,7 +43,7 @@ class _MainNavigationScreenState
       DashboardHomeScreen(),
       ProductsScreen(),
       SalesScreen(),
-      _ReportsPlaceholderScreen(),
+      ReportsScreen(),
       ProfileScreen(),
     ];
   }
@@ -181,9 +182,7 @@ class _MainNavigationScreenState
                               FontWeight.bold,
                         ),
                   ),
-
                   const SizedBox(height: 6),
-
                   Text(
                     'Choose what you want to add.',
                     style: Theme.of(context)
@@ -195,12 +194,7 @@ class _MainNavigationScreenState
                               .onSurfaceVariant,
                         ),
                   ),
-
                   const SizedBox(height: 18),
-
-                  // --------------------------------------------------------
-                  // ADD SALE
-                  // --------------------------------------------------------
 
                   _AddOptionTile(
                     icon:
@@ -213,14 +207,9 @@ class _MainNavigationScreenState
                       Navigator.pop(
                         bottomSheetContext,
                       );
-
                       _openAddSale();
                     },
                   ),
-
-                  // --------------------------------------------------------
-                  // ADD PURCHASE
-                  // --------------------------------------------------------
 
                   _AddOptionTile(
                     icon:
@@ -233,14 +222,9 @@ class _MainNavigationScreenState
                       Navigator.pop(
                         bottomSheetContext,
                       );
-
                       _openAddPurchase();
                     },
                   ),
-
-                  // --------------------------------------------------------
-                  // ADD PAYMENT
-                  // --------------------------------------------------------
 
                   _AddOptionTile(
                     icon:
@@ -253,14 +237,9 @@ class _MainNavigationScreenState
                       Navigator.pop(
                         bottomSheetContext,
                       );
-
                       _openAddPayment();
                     },
                   ),
-
-                  // --------------------------------------------------------
-                  // ADD EXPENSE
-                  // --------------------------------------------------------
 
                   _AddOptionTile(
                     icon:
@@ -273,14 +252,9 @@ class _MainNavigationScreenState
                       Navigator.pop(
                         bottomSheetContext,
                       );
-
                       _openAddExpense();
                     },
                   ),
-
-                  // --------------------------------------------------------
-                  // ADD CUSTOMER
-                  // --------------------------------------------------------
 
                   _AddOptionTile(
                     icon:
@@ -294,14 +268,9 @@ class _MainNavigationScreenState
                       Navigator.pop(
                         bottomSheetContext,
                       );
-
                       _openAddCustomer();
                     },
                   ),
-
-                  // --------------------------------------------------------
-                  // ADD PRODUCT
-                  // --------------------------------------------------------
 
                   _AddOptionTile(
                     icon:
@@ -314,7 +283,6 @@ class _MainNavigationScreenState
                       Navigator.pop(
                         bottomSheetContext,
                       );
-
                       _openAddProduct();
                     },
                   ),
@@ -540,9 +508,9 @@ class _MainNavigationScreenState
         children: _screens,
       ),
 
-      // --------------------------------------------------------
+      // ==========================================================
       // CENTER ADD BUTTON
-      // --------------------------------------------------------
+      // ==========================================================
 
       floatingActionButton:
           FloatingActionButton(
@@ -556,9 +524,9 @@ class _MainNavigationScreenState
       floatingActionButtonLocation:
           FloatingActionButtonLocation.centerDocked,
 
-      // --------------------------------------------------------
+      // ==========================================================
       // BOTTOM NAVIGATION
-      // --------------------------------------------------------
+      // ==========================================================
 
       bottomNavigationBar:
           NavigationBar(
@@ -567,10 +535,6 @@ class _MainNavigationScreenState
         onDestinationSelected:
             _onNavigationItemTapped,
         destinations: const [
-          // ----------------------------------------------------
-          // HOME
-          // ----------------------------------------------------
-
           NavigationDestination(
             icon: Icon(
               Icons.home_outlined,
@@ -580,10 +544,6 @@ class _MainNavigationScreenState
             ),
             label: 'Home',
           ),
-
-          // ----------------------------------------------------
-          // PRODUCTS
-          // ----------------------------------------------------
 
           NavigationDestination(
             icon: Icon(
@@ -595,10 +555,6 @@ class _MainNavigationScreenState
             label: 'Products',
           ),
 
-          // ----------------------------------------------------
-          // SALES
-          // ----------------------------------------------------
-
           NavigationDestination(
             icon: Icon(
               Icons.point_of_sale_outlined,
@@ -609,10 +565,6 @@ class _MainNavigationScreenState
             label: 'Sales',
           ),
 
-          // ----------------------------------------------------
-          // REPORTS
-          // ----------------------------------------------------
-
           NavigationDestination(
             icon: Icon(
               Icons.bar_chart_outlined,
@@ -622,10 +574,6 @@ class _MainNavigationScreenState
             ),
             label: 'Reports',
           ),
-
-          // ----------------------------------------------------
-          // PROFILE
-          // ----------------------------------------------------
 
           NavigationDestination(
             icon: Icon(
@@ -646,8 +594,7 @@ class _MainNavigationScreenState
 // QUICK ADD TILE
 // ============================================================
 
-class _AddOptionTile
-    extends StatelessWidget {
+class _AddOptionTile extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
@@ -699,126 +646,6 @@ class _AddOptionTile
         Icons.chevron_right_rounded,
       ),
       onTap: onTap,
-    );
-  }
-}
-
-// ============================================================
-// REPORTS PLACEHOLDER
-// ============================================================
-
-class _ReportsPlaceholderScreen
-    extends StatelessWidget {
-  const _ReportsPlaceholderScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Reports',
-        ),
-      ),
-      body: const _PlaceholderContent(
-        icon:
-            Icons.bar_chart_rounded,
-        title:
-            'Reports',
-        message:
-            'Reports and analytics will be added in the upcoming steps.',
-      ),
-    );
-  }
-}
-
-// ============================================================
-// PLACEHOLDER CONTENT
-// ============================================================
-
-class _PlaceholderContent
-    extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String message;
-
-  const _PlaceholderContent({
-    required this.icon,
-    required this.title,
-    required this.message,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme =
-        Theme.of(context);
-
-    return Center(
-      child: Padding(
-        padding:
-            const EdgeInsets.all(24),
-        child: Column(
-          mainAxisAlignment:
-              MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 82,
-              height: 82,
-              decoration:
-                  BoxDecoration(
-                color:
-                    AppColors.primary.withValues(
-                  alpha: 0.10,
-                ),
-                borderRadius:
-                    BorderRadius.circular(
-                  24,
-                ),
-              ),
-              child: Icon(
-                icon,
-                size: 42,
-                color:
-                    AppColors.primary,
-              ),
-            ),
-
-            const SizedBox(
-              height: 20,
-            ),
-
-            Text(
-              title,
-              textAlign:
-                  TextAlign.center,
-              style: theme
-                  .textTheme
-                  .headlineSmall
-                  ?.copyWith(
-                fontWeight:
-                    FontWeight.bold,
-              ),
-            ),
-
-            const SizedBox(
-              height: 8,
-            ),
-
-            Text(
-              message,
-              textAlign:
-                  TextAlign.center,
-              style: theme
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(
-                color: theme
-                    .colorScheme
-                    .onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

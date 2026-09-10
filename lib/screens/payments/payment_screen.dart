@@ -398,97 +398,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   // DELETE PAYMENT
   // ---------------------------------------------------------------------------
 
-  Future<void> _deletePayment(
-    PaymentModel payment,
-  ) async {
-    final bool? shouldDelete =
-        await showDialog<bool>(
-      context: context,
-      builder: (
-        BuildContext context,
-      ) {
-        return AlertDialog(
-          title: const Text(
-            'Delete Payment?',
-          ),
-          content: Text(
-            'Are you sure you want to delete this payment of '
-            '${_currencyFormat.format(payment.amount)} '
-            'received from '
-            '${payment.customerName.trim().isEmpty ? 'Unknown Customer' : payment.customerName}?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(
-                  context,
-                  false,
-                );
-              },
-              child: const Text(
-                'CANCEL',
-              ),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.danger,
-              ),
-              onPressed: () {
-                Navigator.pop(
-                  context,
-                  true,
-                );
-              },
-              child: const Text(
-                'DELETE',
-              ),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (shouldDelete != true ||
-        !mounted) {
-      return;
-    }
-
-    final PaymentProvider paymentProvider =
-        context.read<PaymentProvider>();
-
-    try {
-      await paymentProvider.deletePayment(
-        paymentId: payment.id,
-      );
-
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Payment deleted successfully.',
-          ),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    } catch (e) {
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Failed to delete payment: $e',
-          ),
-          backgroundColor: AppColors.danger,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
-  }
+  
 
   // ---------------------------------------------------------------------------
   // PAYMENT DETAILS
@@ -589,34 +499,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                   const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () {
-                        Navigator.pop(context);
-
-                        _deletePayment(
-                          payment,
-                        );
-                      },
-                      icon: const Icon(
-                        Icons.delete_outline_rounded,
-                      ),
-                      label: const Text(
-                        'DELETE PAYMENT',
-                      ),
-                      style:
-                          OutlinedButton.styleFrom(
-                        foregroundColor:
-                            AppColors.danger,
-                        side: const BorderSide(
-                          color:
-                              AppColors.danger,
-                        ),
-                        padding:
-                            const EdgeInsets.symmetric(
-                          vertical: 14,
-                        ),
-                      ),
-                    ),
+                    
                   ),
                 ],
               ),

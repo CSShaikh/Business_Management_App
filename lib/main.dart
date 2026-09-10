@@ -14,6 +14,7 @@ import 'package:business_management_app/providers/sale_provider.dart';
 import 'package:business_management_app/providers/payment_provider.dart';
 import 'package:business_management_app/providers/expense_provider.dart';
 import 'package:business_management_app/providers/ledger_provider.dart';
+import 'package:business_management_app/providers/theme_provider.dart';
 
 import 'package:business_management_app/screens/splash/splash_screen.dart';
 
@@ -73,20 +74,41 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider<LedgerProvider>(
           create: (_) => LedgerProvider(),
         ),
+
+        ChangeNotifierProvider<ThemeProvider>(
+          create: (_) => ThemeProvider(),
+        ),
       ],
-      child: MaterialApp(
-        title: 'Business Management App',
+      child: const _AppRoot(),
+    );
+  }
+}
 
-        debugShowCheckedModeBanner: false,
+class _AppRoot extends StatelessWidget {
+  const _AppRoot();
 
-        theme: AppTheme.lightTheme,
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<ThemeProvider>(
+      builder: (
+        context,
+        themeProvider,
+        child,
+      ) {
+        return MaterialApp(
+          title: 'Business Management App',
 
-        darkTheme: AppTheme.darkTheme,
+          debugShowCheckedModeBanner: false,
 
-        themeMode: ThemeMode.system,
+          theme: AppTheme.lightTheme,
 
-        home: const SplashScreen(),
-      ),
+          darkTheme: AppTheme.darkTheme,
+
+          themeMode: themeProvider.themeMode,
+
+          home: const SplashScreen(),
+        );
+      },
     );
   }
 }

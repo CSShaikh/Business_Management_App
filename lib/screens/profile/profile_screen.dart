@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 import '../../repositories/auth_repository.dart';
 import '../auth/login_screen.dart';
-
+import '../profile/setting_screen.dart';
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({
     super.key,
@@ -38,6 +38,20 @@ class _ProfileScreenState
 
   String get _email {
     return _user?.email ?? '';
+  }
+
+  Future<void> _openSettings() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const SettingsScreen(),
+      ),
+    );
+  }
+
+  Future<void> _openBusinessProfile() async {
+    _showMessage(
+      'Business Profile settings will be available here.',
+    );
   }
 
   Future<void> _logout() async {
@@ -184,7 +198,10 @@ class _ProfileScreenState
                     height: 8,
                   ),
 
-                  // Profile Header
+                  // ===========================================================
+                  // PROFILE HEADER
+                  // ===========================================================
+
                   Card(
                     child: Padding(
                       padding:
@@ -215,11 +232,9 @@ class _ProfileScreenState
                                   .primary,
                             ),
                           ),
-
                           const SizedBox(
                             height: 16,
                           ),
-
                           Text(
                             _userName,
                             textAlign:
@@ -233,7 +248,6 @@ class _ProfileScreenState
                                       .bold,
                             ),
                           ),
-
                           if (_email
                               .isNotEmpty) ...[
                             const SizedBox(
@@ -262,7 +276,10 @@ class _ProfileScreenState
                     height: 20,
                   ),
 
-                  // Account Information
+                  // ===========================================================
+                  // ACCOUNT INFORMATION
+                  // ===========================================================
+
                   _SectionCard(
                     title:
                         'Account Information',
@@ -291,7 +308,10 @@ class _ProfileScreenState
                     height: 20,
                   ),
 
-                  // Business Information
+                  // ===========================================================
+                  // BUSINESS MANAGEMENT
+                  // ===========================================================
+
                   _SectionCard(
                     title:
                         'Business Management',
@@ -305,11 +325,8 @@ class _ProfileScreenState
                             'Business Profile',
                         subtitle:
                             'Manage your business information',
-                        onTap: () {
-                          _showMessage(
-                            'Business Profile settings will be available here.',
-                          );
-                        },
+                        onTap:
+                            _openBusinessProfile,
                       ),
                       _ActionTile(
                         icon: Icons
@@ -318,11 +335,7 @@ class _ProfileScreenState
                             'Settings',
                         subtitle:
                             'App and business preferences',
-                        onTap: () {
-                          _showMessage(
-                            'Settings will be available here.',
-                          );
-                        },
+                        onTap: _openSettings,
                       ),
                     ],
                   ),
@@ -331,7 +344,10 @@ class _ProfileScreenState
                     height: 20,
                   ),
 
-                  // Logout
+                  // ===========================================================
+                  // LOGOUT
+                  // ===========================================================
+
                   Card(
                     child: Padding(
                       padding:
@@ -387,6 +403,10 @@ class _ProfileScreenState
                     height: 24,
                   ),
 
+                  // ===========================================================
+                  // FOOTER
+                  // ===========================================================
+
                   Text(
                     'Business Management App',
                     textAlign:
@@ -416,6 +436,10 @@ class _ProfileScreenState
                           .onSurfaceVariant,
                     ),
                   ),
+
+                  const SizedBox(
+                    height: 8,
+                  ),
                 ],
               ),
             ),
@@ -425,6 +449,10 @@ class _ProfileScreenState
     );
   }
 }
+
+// =============================================================================
+// SECTION CARD
+// =============================================================================
 
 class _SectionCard extends StatelessWidget {
   final String title;
@@ -477,14 +505,16 @@ class _SectionCard extends StatelessWidget {
                 const SizedBox(
                   width: 12,
                 ),
-                Text(
-                  title,
-                  style: theme
-                      .textTheme
-                      .titleMedium
-                      ?.copyWith(
-                    fontWeight:
-                        FontWeight.bold,
+                Expanded(
+                  child: Text(
+                    title,
+                    style: theme
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(
+                      fontWeight:
+                          FontWeight.bold,
+                    ),
                   ),
                 ),
               ],
@@ -499,6 +529,10 @@ class _SectionCard extends StatelessWidget {
     );
   }
 }
+
+// =============================================================================
+// INFO TILE
+// =============================================================================
 
 class _InfoTile extends StatelessWidget {
   final IconData icon;
@@ -518,6 +552,9 @@ class _InfoTile extends StatelessWidget {
     final ThemeData theme =
         Theme.of(context);
 
+    final ColorScheme colors =
+        theme.colorScheme;
+
     return Padding(
       padding:
           const EdgeInsets.symmetric(
@@ -528,9 +565,8 @@ class _InfoTile extends StatelessWidget {
           Icon(
             icon,
             size: 22,
-            color: theme
-                .colorScheme
-                .onSurfaceVariant,
+            color:
+                colors.onSurfaceVariant,
           ),
           const SizedBox(
             width: 14,
@@ -547,8 +583,7 @@ class _InfoTile extends StatelessWidget {
                       .textTheme
                       .bodySmall
                       ?.copyWith(
-                    color: theme
-                        .colorScheme
+                    color: colors
                         .onSurfaceVariant,
                   ),
                 ),
@@ -573,6 +608,10 @@ class _InfoTile extends StatelessWidget {
     );
   }
 }
+
+// =============================================================================
+// ACTION TILE
+// =============================================================================
 
 class _ActionTile extends StatelessWidget {
   final IconData icon;
@@ -611,8 +650,8 @@ class _ActionTile extends StatelessWidget {
             12,
           ),
         ),
-        child: const Icon(
-          Icons.settings_outlined,
+        child: Icon(
+          icon,
           color: AppColors.primary,
         ),
       ),
