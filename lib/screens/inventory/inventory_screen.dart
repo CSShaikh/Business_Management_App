@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../models/product_model.dart';
 import '../../models/stock_transaction_model.dart';
-import '../../repositories/business_repository.dart';
-import '../../repositories/product_repository.dart';
+import '../../providers/business_provider.dart';
+import '../../providers/product_provider.dart';
 import '../../repositories/stock_repository.dart';
 
 class InventoryScreen extends StatefulWidget {
@@ -14,16 +15,11 @@ class InventoryScreen extends StatefulWidget {
   });
 
   @override
-  State<InventoryScreen> createState() => _InventoryScreenState();
+  State<InventoryScreen> createState() =>
+      _InventoryScreenState();
 }
 
 class _InventoryScreenState extends State<InventoryScreen> {
-  final BusinessRepository _businessRepository =
-      BusinessRepository();
-
-  final ProductRepository _productRepository =
-      ProductRepository();
-
   final StockRepository _stockRepository =
       StockRepository();
 
@@ -47,28 +43,67 @@ class _InventoryScreenState extends State<InventoryScreen> {
   @override
   void initState() {
     super.initState();
-    _loadBusiness();
+
+    _searchController.addListener(
+      _onSearchChanged,
+    );
+
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) {
+        _loadBusiness();
+      },
+    );
   }
 
   @override
   void dispose() {
-    _searchController.dispose();
+    _searchController
+      ..removeListener(_onSearchChanged)
+      ..dispose();
+
     super.dispose();
   }
 
+  // ===========================================================================
+  // BUSINESS / PRODUCT INITIALIZATION
+  // ===========================================================================
+
   Future<void> _loadBusiness() async {
     try {
-      final business =
-          await _businessRepository.getBusinessForCurrentUser();
+      final BusinessProvider businessProvider =
+          context.read<BusinessProvider>();
+
+      final ProductProvider productProvider =
+          context.read<ProductProvider>();
+
+      await businessProvider.loadBusiness();
 
       if (!mounted) {
         return;
       }
 
+      final String businessId =
+          businessProvider.business?.id.trim() ?? '';
+
       setState(() {
-        _businessId = business?.id;
+        _businessId =
+            businessId.isEmpty ? null : businessId;
+
         _isLoadingBusiness = false;
       });
+
+      if (businessId.isEmpty) {
+        productProvider.setBusinessId('');
+        return;
+      }
+
+      productProvider.setBusinessId(
+        businessId,
+      );
+
+      await productProvider.loadAndWatchProducts(
+        businessId,
+      );
     } catch (_) {
       if (!mounted) {
         return;
@@ -80,18 +115,103 @@ class _InventoryScreenState extends State<InventoryScreen> {
     }
   }
 
+  Future<void> _refresh() async {
+    if (!mounted) {
+      return;
+    }
+
+    final BusinessProvider businessProvider =
+        context.read<BusinessProvider>();
+
+    final ProductProvider productProvider =
+        context.read<ProductProvider>();
+
+    try {
+      await businessProvider.refresh();
+
+      if (!mounted) {
+        return;
+      }
+
+      final String businessId =
+          businessProvider.business?.id.trim() ?? '';
+
+      if (businessId.isEmpty) {
+        return;
+      }
+
+      if (_businessId != businessId) {
+        setState(() {
+          _businessId = businessId;
+        });
+
+        productProvider.setBusinessId(
+          businessId,
+        );
+
+        await productProvider.loadAndWatchProducts(
+          businessId,
+        );
+
+        return;
+      }
+
+      await productProvider.refresh();
+    } catch (_) {
+      // Providers maintain their own error state.
+    }
+  }
+
+  // ===========================================================================
+  // SEARCH
+  // ===========================================================================
+
+  void _onSearchChanged() {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _searchQuery =
+          _searchController.text.trim().toLowerCase();
+    });
+  }
+
+  void _clearSearch() {
+    _searchController.clear();
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _searchQuery = '';
+    });
+  }
+
+  // ===========================================================================
+  // FILTER
+  // ===========================================================================
+
   List<ProductModel> _filterProducts(
     List<ProductModel> products,
   ) {
-    final query = _searchQuery.trim().toLowerCase();
+    final String query =
+        _searchQuery.trim().toLowerCase();
 
     return products.where(
       (product) {
-        final matchesSearch =
+        final bool matchesSearch =
             query.isEmpty ||
-                product.name.toLowerCase().contains(query) ||
-                product.category.toLowerCase().contains(query) ||
-                product.unit.toLowerCase().contains(query);
+            product.name
+                .toLowerCase()
+                .contains(query) ||
+            product.category
+                .toLowerCase()
+                .contains(query) ||
+            product.unit
+                .toLowerCase()
+                .contains(query);
 
         if (!matchesSearch) {
           return false;
@@ -99,7 +219,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
         switch (_selectedFilter) {
           case 'Low Stock':
-            return product.currentStock <= product.minimumStock &&
+            return product.currentStock <=
+                    product.minimumStock &&
                 product.currentStock > 0;
 
           case 'Out of Stock':
@@ -113,9 +234,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
     ).toList();
   }
 
+  // ===========================================================================
+  // BUILD
+  // ===========================================================================
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final ThemeData theme =
+        Theme.of(context);
 
     if (_isLoadingBusiness) {
       return const Scaffold(
@@ -125,19 +251,36 @@ class _InventoryScreenState extends State<InventoryScreen> {
       );
     }
 
-    if (_businessId == null || _businessId!.trim().isEmpty) {
+    if (_businessId == null ||
+        _businessId!.trim().isEmpty) {
       return Scaffold(
         appBar: AppBar(
-          title: const Text('Inventory'),
+          title: const Text(
+            'Inventory',
+          ),
         ),
-        body: _buildNoBusinessState(theme),
+        body: _buildNoBusinessState(
+          theme,
+        ),
       );
     }
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Inventory'),
+        title: const Text(
+          'Inventory',
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
         actions: [
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: _refresh,
+            icon: const Icon(
+              Icons.refresh_rounded,
+            ),
+          ),
           IconButton(
             tooltip: 'Stock History',
             onPressed: _openStockHistory,
@@ -147,44 +290,45 @@ class _InventoryScreenState extends State<InventoryScreen> {
           ),
         ],
       ),
-      body: StreamBuilder<List<ProductModel>>(
-        stream: _productRepository.watchProducts(
-          _businessId!,
-        ),
+      body: Consumer<ProductProvider>(
         builder: (
           context,
-          snapshot,
+          productProvider,
+          child,
         ) {
-          if (snapshot.connectionState ==
-                  ConnectionState.waiting &&
-              !snapshot.hasData) {
+          final List<ProductModel> products =
+              productProvider.products;
+
+          if (productProvider.isLoading &&
+              products.isEmpty) {
             return const Center(
               child: CircularProgressIndicator(),
             );
           }
 
-          if (snapshot.hasError) {
+          if (productProvider.errorMessage != null &&
+              products.isEmpty) {
             return _buildErrorState(
               theme,
-              snapshot.error.toString(),
+              productProvider.errorMessage!,
             );
           }
 
-          final products =
-              snapshot.data ?? <ProductModel>[];
-
-          final filteredProducts =
+          final List<ProductModel>
+              filteredProducts =
               _filterProducts(products);
 
           return RefreshIndicator(
             onRefresh: _refresh,
             child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(
+              physics:
+                  const AlwaysScrollableScrollPhysics(),
+              padding:
+                  const EdgeInsets.fromLTRB(
                 20,
                 20,
                 20,
-                100,
+                110,
               ),
               children: [
                 _buildHeader(
@@ -219,55 +363,45 @@ class _InventoryScreenState extends State<InventoryScreen> {
     );
   }
 
-  Future<void> _refresh() async {
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {});
-    await Future<void>.delayed(
-      const Duration(milliseconds: 300),
-    );
-  }
+  // ===========================================================================
+  // HEADER
+  // ===========================================================================
 
   Widget _buildHeader(
     ThemeData theme,
     List<ProductModel> products,
   ) {
-    final activeProducts = products
-        .where(
-          (product) => product.isActive,
-        )
-        .length;
+    final int activeProducts =
+        products.where(
+      (product) => product.isActive,
+    ).length;
 
-    final lowStockProducts = products
-        .where(
-          (product) =>
-              product.isActive &&
-              product.currentStock <= product.minimumStock &&
-              product.currentStock > 0,
-        )
-        .length;
+    final int lowStockProducts =
+        products.where(
+      (product) =>
+          product.isActive &&
+          product.currentStock <=
+              product.minimumStock &&
+          product.currentStock > 0,
+    ).length;
 
-    final outOfStockProducts = products
-        .where(
-          (product) =>
-              product.isActive &&
-              product.currentStock <= 0,
-        )
-        .length;
+    final int outOfStockProducts =
+        products.where(
+      (product) =>
+          product.isActive &&
+          product.currentStock <= 0,
+    ).length;
 
-    final stockValue = products
-        .where(
-          (product) => product.isActive,
-        )
-        .fold<double>(
-          0,
-          (total, product) =>
-              total +
-              (product.currentStock *
-                  product.purchasePrice),
-        );
+    final double stockValue =
+        products.where(
+      (product) => product.isActive,
+    ).fold<double>(
+      0,
+      (total, product) =>
+          total +
+          (product.currentStock *
+              product.purchasePrice),
+    );
 
     return Column(
       crossAxisAlignment:
@@ -275,15 +409,19 @@ class _InventoryScreenState extends State<InventoryScreen> {
       children: [
         Text(
           'Inventory Management',
-          style: theme.textTheme.headlineSmall?.copyWith(
+          style: theme.textTheme.headlineSmall
+              ?.copyWith(
             fontWeight: FontWeight.bold,
           ),
         ),
         const SizedBox(height: 5),
         Text(
           'Monitor stock, low-stock alerts and stock value.',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
+          style: theme.textTheme.bodyMedium
+              ?.copyWith(
+            color: theme
+                .colorScheme
+                .onSurfaceVariant,
           ),
         ),
         const SizedBox(height: 18),
@@ -292,7 +430,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
             context,
             constraints,
           ) {
-            final compact =
+            final bool compact =
                 constraints.maxWidth < 700;
 
             if (compact) {
@@ -305,8 +443,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
                           theme,
                           title: 'Products',
                           value:
-                              activeProducts.toString(),
-                          icon: Icons.inventory_2_outlined,
+                              activeProducts
+                                  .toString(),
+                          icon:
+                              Icons.inventory_2_outlined,
                           iconColor:
                               AppColors.primary,
                         ),
@@ -317,8 +457,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
                           theme,
                           title: 'Low Stock',
                           value:
-                              lowStockProducts.toString(),
-                          icon: Icons.warning_amber_rounded,
+                              lowStockProducts
+                                  .toString(),
+                          icon:
+                              Icons.warning_amber_rounded,
                           iconColor:
                               AppColors.warning,
                         ),
@@ -331,10 +473,13 @@ class _InventoryScreenState extends State<InventoryScreen> {
                       Expanded(
                         child: _buildSummaryCard(
                           theme,
-                          title: 'Out of Stock',
+                          title:
+                              'Out of Stock',
                           value:
-                              outOfStockProducts.toString(),
-                          icon: Icons.remove_shopping_cart_outlined,
+                              outOfStockProducts
+                                  .toString(),
+                          icon: Icons
+                              .remove_shopping_cart_outlined,
                           iconColor:
                               AppColors.danger,
                         ),
@@ -343,10 +488,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
                       Expanded(
                         child: _buildSummaryCard(
                           theme,
-                          title: 'Stock Value',
+                          title:
+                              'Stock Value',
                           value:
-                              _formatCurrency(stockValue),
-                          icon: Icons.currency_rupee_rounded,
+                              _formatCurrency(
+                            stockValue,
+                          ),
+                          icon: Icons
+                              .currency_rupee_rounded,
                           iconColor:
                               AppColors.success,
                         ),
@@ -365,7 +514,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     title: 'Products',
                     value:
                         activeProducts.toString(),
-                    icon: Icons.inventory_2_outlined,
+                    icon: Icons
+                        .inventory_2_outlined,
                     iconColor:
                         AppColors.primary,
                   ),
@@ -377,7 +527,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     title: 'Low Stock',
                     value:
                         lowStockProducts.toString(),
-                    icon: Icons.warning_amber_rounded,
+                    icon: Icons
+                        .warning_amber_rounded,
                     iconColor:
                         AppColors.warning,
                   ),
@@ -388,8 +539,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     theme,
                     title: 'Out of Stock',
                     value:
-                        outOfStockProducts.toString(),
-                    icon: Icons.remove_shopping_cart_outlined,
+                        outOfStockProducts
+                            .toString(),
+                    icon: Icons
+                        .remove_shopping_cart_outlined,
                     iconColor:
                         AppColors.danger,
                   ),
@@ -400,8 +553,11 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     theme,
                     title: 'Stock Value',
                     value:
-                        _formatCurrency(stockValue),
-                    icon: Icons.currency_rupee_rounded,
+                        _formatCurrency(
+                      stockValue,
+                    ),
+                    icon: Icons
+                        .currency_rupee_rounded,
                     iconColor:
                         AppColors.success,
                   ),
@@ -423,7 +579,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding:
+            const EdgeInsets.all(16),
         child: Row(
           children: [
             Container(
@@ -452,8 +609,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     maxLines: 1,
                     overflow:
                         TextOverflow.ellipsis,
-                    style:
-                        theme.textTheme.bodySmall?.copyWith(
+                    style: theme
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(
                       color: theme
                           .colorScheme
                           .onSurfaceVariant,
@@ -465,8 +624,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     maxLines: 1,
                     overflow:
                         TextOverflow.ellipsis,
-                    style:
-                        theme.textTheme.titleLarge?.copyWith(
+                    style: theme
+                        .textTheme
+                        .titleLarge
+                        ?.copyWith(
                       fontWeight:
                           FontWeight.bold,
                     ),
@@ -479,6 +640,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
       ),
     );
   }
+
+  // ===========================================================================
+  // SEARCH + FILTER
+  // ===========================================================================
 
   Widget _buildSearchAndFilter(
     ThemeData theme,
@@ -501,7 +666,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
         return Row(
           children: [
             Expanded(
-              child: _buildSearchField(theme),
+              child:
+                  _buildSearchField(theme),
             ),
             const SizedBox(width: 12),
             SizedBox(
@@ -519,11 +685,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
   ) {
     return TextField(
       controller: _searchController,
-      onChanged: (value) {
-        setState(() {
-          _searchQuery = value;
-        });
-      },
+      textInputAction:
+          TextInputAction.search,
       decoration: InputDecoration(
         hintText:
             'Search product, category or unit...',
@@ -533,13 +696,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
         suffixIcon:
             _searchQuery.isNotEmpty
                 ? IconButton(
-                    onPressed: () {
-                      _searchController.clear();
-
-                      setState(() {
-                        _searchQuery = '';
-                      });
-                    },
+                    tooltip: 'Clear',
+                    onPressed: _clearSearch,
                     icon: const Icon(
                       Icons.clear_rounded,
                     ),
@@ -555,7 +713,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
   ) {
     return DropdownButtonFormField<String>(
       initialValue: _selectedFilter,
-      decoration: const InputDecoration(
+      decoration:
+          const InputDecoration(
         labelText: 'Filter',
         prefixIcon: Icon(
           Icons.filter_list_rounded,
@@ -563,7 +722,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
       ),
       items: _filters
           .map(
-            (filter) => DropdownMenuItem<String>(
+            (filter) =>
+                DropdownMenuItem<String>(
               value: filter,
               child: Text(filter),
             ),
@@ -580,6 +740,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
       },
     );
   }
+
+  // ===========================================================================
+  // INVENTORY LIST
+  // ===========================================================================
 
   Widget _buildInventoryList(
     ThemeData theme,
@@ -603,8 +767,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
             Expanded(
               child: Text(
                 'Stock Overview',
-                style:
-                    theme.textTheme.titleLarge?.copyWith(
+                style: theme
+                    .textTheme
+                    .titleLarge
+                    ?.copyWith(
                   fontWeight:
                       FontWeight.bold,
                 ),
@@ -612,8 +778,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
             ),
             Text(
               '${filteredProducts.length} products',
-              style:
-                  theme.textTheme.bodySmall?.copyWith(
+              style: theme
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(
                 color: theme
                     .colorScheme
                     .onSurfaceVariant,
@@ -641,36 +809,41 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
     final bool lowStock =
         !outOfStock &&
-            product.currentStock <=
-                product.minimumStock;
+        product.currentStock <=
+            product.minimumStock;
 
-    final Color statusColor = outOfStock
-        ? AppColors.danger
-        : lowStock
-            ? AppColors.warning
-            : AppColors.success;
+    final Color statusColor =
+        outOfStock
+            ? AppColors.danger
+            : lowStock
+                ? AppColors.warning
+                : AppColors.success;
 
-    final String statusText = outOfStock
-        ? 'Out of Stock'
-        : lowStock
-            ? 'Low Stock'
-            : 'In Stock';
+    final String statusText =
+        outOfStock
+            ? 'Out of Stock'
+            : lowStock
+                ? 'Low Stock'
+                : 'In Stock';
 
     final double stockValue =
         product.currentStock *
             product.purchasePrice;
 
     return Card(
-      margin: const EdgeInsets.only(
+      margin:
+          const EdgeInsets.only(
         bottom: 12,
       ),
-      clipBehavior: Clip.antiAlias,
+      clipBehavior:
+          Clip.antiAlias,
       child: InkWell(
         onTap: () {
           _openProductDetails(product);
         },
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding:
+              const EdgeInsets.all(16),
           child: Column(
             children: [
               Row(
@@ -680,16 +853,21 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   Container(
                     width: 48,
                     height: 48,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary
+                    decoration:
+                        BoxDecoration(
+                      color: AppColors
+                          .primary
                           .withValues(
                         alpha: 0.10,
                       ),
                       borderRadius:
-                          BorderRadius.circular(14),
+                          BorderRadius.circular(
+                        14,
+                      ),
                     ),
                     child: const Icon(
-                      Icons.inventory_2_outlined,
+                      Icons
+                          .inventory_2_outlined,
                       color:
                           AppColors.primary,
                     ),
@@ -698,13 +876,15 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   Expanded(
                     child: Column(
                       crossAxisAlignment:
-                          CrossAxisAlignment.start,
+                          CrossAxisAlignment
+                              .start,
                       children: [
                         Text(
                           product.name,
                           maxLines: 1,
                           overflow:
-                              TextOverflow.ellipsis,
+                              TextOverflow
+                                  .ellipsis,
                           style: theme
                               .textTheme
                               .titleMedium
@@ -713,16 +893,18 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                 FontWeight.bold,
                           ),
                         ),
-                        if (product
-                            .category
+                        if (product.category
                             .trim()
                             .isNotEmpty) ...[
-                          const SizedBox(height: 3),
+                          const SizedBox(
+                            height: 3,
+                          ),
                           Text(
                             product.category,
                             maxLines: 1,
                             overflow:
-                                TextOverflow.ellipsis,
+                                TextOverflow
+                                    .ellipsis,
                             style: theme
                                 .textTheme
                                 .bodySmall
@@ -749,8 +931,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   context,
                   constraints,
                 ) {
-                  final compact =
-                      constraints.maxWidth < 500;
+                  final bool compact =
+                      constraints.maxWidth <
+                          500;
 
                   if (compact) {
                     return Column(
@@ -763,7 +946,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                 theme,
                                 'Current Stock',
                                 _formatNumber(
-                                  product.currentStock,
+                                  product
+                                      .currentStock,
                                 ),
                                 product.unit,
                                 statusColor,
@@ -775,10 +959,12 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                 theme,
                                 'Minimum',
                                 _formatNumber(
-                                  product.minimumStock,
+                                  product
+                                      .minimumStock,
                                 ),
                                 product.unit,
-                                AppColors.warning,
+                                AppColors
+                                    .warning,
                               ),
                             ),
                           ],
@@ -794,10 +980,12 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                 theme,
                                 'Purchase Price',
                                 _formatCurrency(
-                                  product.purchasePrice,
+                                  product
+                                      .purchasePrice,
                                 ),
                                 '',
-                                AppColors.info,
+                                AppColors
+                                    .info,
                               ),
                             ),
                             Expanded(
@@ -809,7 +997,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                   stockValue,
                                 ),
                                 '',
-                                AppColors.success,
+                                AppColors
+                                    .success,
                               ),
                             ),
                           ],
@@ -821,47 +1010,56 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   return Row(
                     children: [
                       Expanded(
-                        child: _buildStockInfo(
+                        child:
+                            _buildStockInfo(
                           theme,
                           'Current Stock',
                           _formatNumber(
-                            product.currentStock,
+                            product
+                                .currentStock,
                           ),
                           product.unit,
                           statusColor,
                         ),
                       ),
                       Expanded(
-                        child: _buildStockInfo(
+                        child:
+                            _buildStockInfo(
                           theme,
                           'Minimum',
                           _formatNumber(
-                            product.minimumStock,
+                            product
+                                .minimumStock,
                           ),
                           product.unit,
-                          AppColors.warning,
+                          AppColors
+                              .warning,
                         ),
                       ),
                       Expanded(
-                        child: _buildStockInfo(
+                        child:
+                            _buildStockInfo(
                           theme,
                           'Purchase Price',
                           _formatCurrency(
-                            product.purchasePrice,
+                            product
+                                .purchasePrice,
                           ),
                           '',
                           AppColors.info,
                         ),
                       ),
                       Expanded(
-                        child: _buildStockInfo(
+                        child:
+                            _buildStockInfo(
                           theme,
                           'Stock Value',
                           _formatCurrency(
                             stockValue,
                           ),
                           '',
-                          AppColors.success,
+                          AppColors
+                              .success,
                         ),
                       ),
                     ],
@@ -872,14 +1070,16 @@ class _InventoryScreenState extends State<InventoryScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: OutlinedButton.icon(
+                    child:
+                        OutlinedButton.icon(
                       onPressed: () {
                         _openStockAdjustment(
                           product: product,
                         );
                       },
                       icon: const Icon(
-                        Icons.swap_vert_rounded,
+                        Icons
+                            .swap_vert_rounded,
                       ),
                       label: const Text(
                         'Adjust Stock',
@@ -888,7 +1088,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   ),
                   const SizedBox(width: 10),
                   IconButton(
-                    tooltip: 'Stock History',
+                    tooltip:
+                        'Stock History',
                     onPressed: () {
                       _openProductHistory(
                         product,
@@ -912,10 +1113,11 @@ class _InventoryScreenState extends State<InventoryScreen> {
     String label,
     String value,
     String unit,
-    Color iconColor,
+    Color valueColor,
   ) {
     return Padding(
-      padding: const EdgeInsets.only(
+      padding:
+          const EdgeInsets.only(
         right: 8,
       ),
       child: Column(
@@ -925,9 +1127,12 @@ class _InventoryScreenState extends State<InventoryScreen> {
           Text(
             label,
             maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style:
-                theme.textTheme.bodySmall?.copyWith(
+            overflow:
+                TextOverflow.ellipsis,
+            style: theme
+                .textTheme
+                .bodySmall
+                ?.copyWith(
               color: theme
                   .colorScheme
                   .onSurfaceVariant,
@@ -948,7 +1153,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                       ?.copyWith(
                     fontWeight:
                         FontWeight.bold,
-                    color: iconColor,
+                    color: valueColor,
                   ),
                 ),
               ),
@@ -978,11 +1183,13 @@ class _InventoryScreenState extends State<InventoryScreen> {
     Color color,
   ) {
     return Container(
-      padding: const EdgeInsets.symmetric(
+      padding:
+          const EdgeInsets.symmetric(
         horizontal: 10,
         vertical: 6,
       ),
-      decoration: BoxDecoration(
+      decoration:
+          BoxDecoration(
         color: color.withValues(
           alpha: 0.10,
         ),
@@ -993,217 +1200,49 @@ class _InventoryScreenState extends State<InventoryScreen> {
         text,
         style: TextStyle(
           color: color,
-          fontWeight: FontWeight.w600,
+          fontWeight:
+              FontWeight.w600,
           fontSize: 12,
         ),
       ),
     );
   }
 
-  Widget _buildEmptyState(
-    ThemeData theme,
-  ) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 24,
-          vertical: 50,
-        ),
-        child: Column(
-          children: [
-            Icon(
-              Icons.inventory_2_outlined,
-              size: 64,
-              color: theme
-                  .colorScheme
-                  .onSurfaceVariant,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'No products found',
-              style:
-                  theme.textTheme.titleLarge?.copyWith(
-                fontWeight:
-                    FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Add products first to start managing inventory.',
-              textAlign: TextAlign.center,
-              style:
-                  theme.textTheme.bodyMedium?.copyWith(
-                color: theme
-                    .colorScheme
-                    .onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNoResultsState(
-    ThemeData theme,
-  ) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 24,
-          vertical: 40,
-        ),
-        child: Column(
-          children: [
-            Icon(
-              Icons.search_off_rounded,
-              size: 54,
-              color: theme
-                  .colorScheme
-                  .onSurfaceVariant,
-            ),
-            const SizedBox(height: 14),
-            Text(
-              'No matching products',
-              style:
-                  theme.textTheme.titleMedium?.copyWith(
-                fontWeight:
-                    FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Try another search or filter.',
-              style:
-                  theme.textTheme.bodyMedium?.copyWith(
-                color: theme
-                    .colorScheme
-                    .onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildErrorState(
-    ThemeData theme,
-    String error,
-  ) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.error_outline_rounded,
-              size: 56,
-              color: AppColors.danger,
-            ),
-            const SizedBox(height: 14),
-            Text(
-              'Unable to load inventory',
-              style:
-                  theme.textTheme.titleLarge?.copyWith(
-                fontWeight:
-                    FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              error,
-              textAlign: TextAlign.center,
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-              style:
-                  theme.textTheme.bodyMedium?.copyWith(
-                color: theme
-                    .colorScheme
-                    .onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 18),
-            FilledButton.icon(
-              onPressed: _loadBusiness,
-              icon: const Icon(
-                Icons.refresh_rounded,
-              ),
-              label: const Text(
-                'Retry',
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNoBusinessState(
-    ThemeData theme,
-  ) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.business_outlined,
-              size: 60,
-              color: AppColors.warning,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Business not found',
-              style:
-                  theme.textTheme.titleLarge?.copyWith(
-                fontWeight:
-                    FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Please complete your business setup first.',
-              textAlign: TextAlign.center,
-              style:
-                  theme.textTheme.bodyMedium?.copyWith(
-                color: theme
-                    .colorScheme
-                    .onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // STOCK ADJUSTMENT
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   Future<void> _openStockAdjustment({
     ProductModel? product,
   }) async {
-    if (_businessId == null) {
+    final String? businessId =
+        _businessId;
+
+    if (businessId == null ||
+        businessId.trim().isEmpty) {
       return;
     }
 
-    ProductModel? selectedProduct = product;
+    final ProductProvider productProvider =
+        context.read<ProductProvider>();
 
-    final quantityController =
+    ProductModel? selectedProduct =
+        product;
+
+    final TextEditingController
+        quantityController =
         TextEditingController();
 
-    final unitCostController =
+    final TextEditingController
+        unitCostController =
         TextEditingController(
       text: product?.purchasePrice
               .toStringAsFixed(2) ??
           '0',
     );
 
-    final notesController =
+    final TextEditingController
+        notesController =
         TextEditingController();
 
     String operation = 'IN';
@@ -1219,15 +1258,17 @@ class _InventoryScreenState extends State<InventoryScreen> {
               context,
               setDialogState,
             ) {
-              final theme =
+              final ThemeData theme =
                   Theme.of(context);
 
-              final currentStock =
-                  selectedProduct?.currentStock ??
+              final double currentStock =
+                  selectedProduct
+                          ?.currentStock ??
                       0;
 
-              final unit =
-                  selectedProduct?.unit ?? '';
+              final String unit =
+                  selectedProduct?.unit ??
+                      '';
 
               return AlertDialog(
                 title: Row(
@@ -1237,7 +1278,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
                       height: 40,
                       decoration:
                           BoxDecoration(
-                        color: AppColors.primary
+                        color: AppColors
+                            .primary
                             .withValues(
                           alpha: 0.10,
                         ),
@@ -1247,7 +1289,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
                         ),
                       ),
                       child: const Icon(
-                        Icons.swap_vert_rounded,
+                        Icons
+                            .swap_vert_rounded,
                         color:
                             AppColors.primary,
                       ),
@@ -1262,7 +1305,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
                 ),
                 content: SizedBox(
                   width: 460,
-                  child: SingleChildScrollView(
+                  child:
+                      SingleChildScrollView(
                     child: Column(
                       mainAxisSize:
                           MainAxisSize.min,
@@ -1273,17 +1317,20 @@ class _InventoryScreenState extends State<InventoryScreen> {
                             context,
                             selectedProduct,
                             (value) {
-                              setDialogState(() {
-                                selectedProduct =
-                                    value;
+                              setDialogState(
+                                () {
+                                  selectedProduct =
+                                      value;
 
-                                unitCostController
-                                    .text = value
-                                        .purchasePrice
-                                        .toStringAsFixed(
-                                  2,
-                                );
-                              });
+                                  unitCostController
+                                      .text =
+                                      value
+                                          .purchasePrice
+                                          .toStringAsFixed(
+                                    2,
+                                  );
+                                },
+                              );
                             },
                           )
                         else
@@ -1291,7 +1338,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
                             width:
                                 double.infinity,
                             padding:
-                                const EdgeInsets.all(
+                                const EdgeInsets
+                                    .all(
                               14,
                             ),
                             decoration:
@@ -1300,7 +1348,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                   .colorScheme
                                   .surfaceContainerHighest,
                               borderRadius:
-                                  BorderRadius.circular(
+                                  BorderRadius
+                                      .circular(
                                 12,
                               ),
                             ),
@@ -1314,7 +1363,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                   width: 10,
                                 ),
                                 Expanded(
-                                  child: Column(
+                                  child:
+                                      Column(
                                     crossAxisAlignment:
                                         CrossAxisAlignment
                                             .start,
@@ -1346,13 +1396,17 @@ class _InventoryScreenState extends State<InventoryScreen> {
                               ],
                             ),
                           ),
-                        const SizedBox(height: 16),
+                        const SizedBox(
+                          height: 16,
+                        ),
                         SegmentedButton<String>(
                           segments: const [
                             ButtonSegment<String>(
                               value: 'IN',
                               label:
-                                  Text('Stock In'),
+                                  Text(
+                                'Stock In',
+                              ),
                               icon: Icon(
                                 Icons
                                     .arrow_downward_rounded,
@@ -1361,7 +1415,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
                             ButtonSegment<String>(
                               value: 'OUT',
                               label:
-                                  Text('Stock Out'),
+                                  Text(
+                                'Stock Out',
+                              ),
                               icon: Icon(
                                 Icons
                                     .arrow_upward_rounded,
@@ -1373,13 +1429,18 @@ class _InventoryScreenState extends State<InventoryScreen> {
                           },
                           onSelectionChanged:
                               (selection) {
-                            setDialogState(() {
-                              operation =
-                                  selection.first;
-                            });
+                            setDialogState(
+                              () {
+                                operation =
+                                    selection
+                                        .first;
+                              },
+                            );
                           },
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(
+                          height: 16,
+                        ),
                         TextField(
                           controller:
                               quantityController,
@@ -1400,7 +1461,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(
+                          height: 12,
+                        ),
                         TextField(
                           controller:
                               unitCostController,
@@ -1420,7 +1483,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(
+                          height: 12,
+                        ),
                         TextField(
                           controller:
                               notesController,
@@ -1451,7 +1516,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
                               dialogContext,
                             );
                           },
-                    child: const Text(
+                    child:
+                        const Text(
                       'Cancel',
                     ),
                   ),
@@ -1468,7 +1534,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
                               return;
                             }
 
-                            final quantity =
+                            final double
+                                quantity =
                                 double.tryParse(
                                       quantityController
                                           .text
@@ -1476,7 +1543,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                     ) ??
                                     0;
 
-                            final unitCost =
+                            final double
+                                unitCost =
                                 double.tryParse(
                                       unitCostController
                                           .text
@@ -1484,7 +1552,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                     ) ??
                                     0;
 
-                            if (quantity <= 0) {
+                            if (quantity <=
+                                0) {
                               _showMessage(
                                 'Enter a valid quantity.',
                                 isError: true,
@@ -1492,7 +1561,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
                               return;
                             }
 
-                            if (unitCost < 0) {
+                            if (unitCost <
+                                0) {
                               _showMessage(
                                 'Unit cost cannot be negative.',
                                 isError: true,
@@ -1512,9 +1582,12 @@ class _InventoryScreenState extends State<InventoryScreen> {
                               return;
                             }
 
-                            setDialogState(() {
-                              isSaving = true;
-                            });
+                            setDialogState(
+                              () {
+                                isSaving =
+                                    true;
+                              },
+                            );
 
                             try {
                               if (operation ==
@@ -1522,7 +1595,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                 await _stockRepository
                                     .stockIn(
                                   businessId:
-                                      _businessId!,
+                                      businessId,
                                   productId:
                                       selectedProduct!
                                           .id,
@@ -1539,7 +1612,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                 await _stockRepository
                                     .stockOut(
                                   businessId:
-                                      _businessId!,
+                                      businessId,
                                   productId:
                                       selectedProduct!
                                           .id,
@@ -1554,7 +1627,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                 );
                               }
 
-                              if (!context.mounted) {
+                              if (!context
+                                  .mounted) {
                                 return;
                               }
 
@@ -1562,15 +1636,25 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                 dialogContext,
                               );
 
+                              await productProvider
+                                  .refresh();
+
+                              if (!mounted) {
+                                return;
+                              }
+
                               _showMessage(
                                 operation == 'IN'
                                     ? 'Stock added successfully.'
                                     : 'Stock removed successfully.',
                               );
                             } catch (e) {
-                              setDialogState(() {
-                                isSaving = false;
-                              });
+                              setDialogState(
+                                () {
+                                  isSaving =
+                                      false;
+                                },
+                              );
 
                               _showMessage(
                                 _cleanErrorMessage(
@@ -1614,84 +1698,71 @@ class _InventoryScreenState extends State<InventoryScreen> {
   Widget _buildProductSelector(
     BuildContext context,
     ProductModel? selectedProduct,
-    ValueChanged<ProductModel> onSelected,
+    ValueChanged<ProductModel>
+        onSelected,
   ) {
-    return FutureBuilder<List<ProductModel>>(
-      future: _productRepository.getActiveProducts(
-        _businessId!,
+    final ProductProvider
+        productProvider =
+        context.read<ProductProvider>();
+
+    final List<ProductModel> products =
+        productProvider.activeProducts;
+
+    if (products.isEmpty) {
+      return const InputDecorator(
+        decoration: InputDecoration(
+          labelText: 'Product',
+          prefixIcon: Icon(
+            Icons.inventory_2_outlined,
+          ),
+        ),
+        child: Text(
+          'No active products available',
+        ),
+      );
+    }
+
+    return DropdownButtonFormField<String>(
+      initialValue:
+          selectedProduct?.id,
+      decoration:
+          const InputDecoration(
+        labelText: 'Product',
+        prefixIcon: Icon(
+          Icons.inventory_2_outlined,
+        ),
       ),
-      builder: (
-        context,
-        snapshot,
-      ) {
-        if (snapshot.connectionState ==
-            ConnectionState.waiting) {
-          return const InputDecorator(
-            decoration: InputDecoration(
-              labelText: 'Product',
-            ),
-            child: SizedBox(
-              height: 24,
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child:
-                      CircularProgressIndicator(
-                    strokeWidth: 2,
-                  ),
-                ),
+      items: products
+          .map(
+            (product) =>
+                DropdownMenuItem<String>(
+              value: product.id,
+              child: Text(
+                product.name,
+                overflow:
+                    TextOverflow.ellipsis,
               ),
             ),
-          );
+          )
+          .toList(),
+      onChanged: (value) {
+        if (value == null) {
+          return;
         }
 
-        final products =
-            snapshot.data ?? <ProductModel>[];
-
-        return DropdownButtonFormField<String>(
-          initialValue:
-              selectedProduct?.id,
-          decoration: const InputDecoration(
-            labelText: 'Product',
-            prefixIcon: Icon(
-              Icons.inventory_2_outlined,
-            ),
-          ),
-          items: products
-              .map(
-                (product) =>
-                    DropdownMenuItem<String>(
-                  value: product.id,
-                  child: Text(
-                    product.name,
-                    overflow:
-                        TextOverflow.ellipsis,
-                  ),
-                ),
-              )
-              .toList(),
-          onChanged: (value) {
-            if (value == null) {
-              return;
-            }
-
-            final selected =
-                products.firstWhere(
-              (item) => item.id == value,
-            );
-
-            onSelected(selected);
-          },
+        final ProductModel selected =
+            products.firstWhere(
+          (item) => item.id == value,
         );
+
+        onSelected(selected);
       },
     );
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // PRODUCT DETAILS
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   Future<void> _openProductDetails(
     ProductModel product,
@@ -1701,15 +1772,16 @@ class _InventoryScreenState extends State<InventoryScreen> {
       isScrollControlled: true,
       showDragHandle: true,
       builder: (context) {
-        final theme = Theme.of(context);
+        final ThemeData theme =
+            Theme.of(context);
 
         final bool outOfStock =
             product.currentStock <= 0;
 
         final bool lowStock =
             !outOfStock &&
-                product.currentStock <=
-                    product.minimumStock;
+            product.currentStock <=
+                product.minimumStock;
 
         final Color statusColor =
             outOfStock
@@ -1720,14 +1792,16 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
         return SafeArea(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(
+            padding:
+                const EdgeInsets.fromLTRB(
               20,
               8,
               20,
               24,
             ),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
+              mainAxisSize:
+                  MainAxisSize.min,
               crossAxisAlignment:
                   CrossAxisAlignment.start,
               children: [
@@ -1738,26 +1812,32 @@ class _InventoryScreenState extends State<InventoryScreen> {
                       height: 50,
                       decoration:
                           BoxDecoration(
-                        color: AppColors.primary
+                        color: AppColors
+                            .primary
                             .withValues(
                           alpha: 0.10,
                         ),
                         borderRadius:
-                            BorderRadius.circular(
+                            BorderRadius
+                                .circular(
                           14,
                         ),
                       ),
                       child: const Icon(
-                        Icons.inventory_2_outlined,
+                        Icons
+                            .inventory_2_outlined,
                         color:
                             AppColors.primary,
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(
+                      width: 12,
+                    ),
                     Expanded(
                       child: Column(
                         crossAxisAlignment:
-                            CrossAxisAlignment.start,
+                            CrossAxisAlignment
+                                .start,
                         children: [
                           Text(
                             product.name,
@@ -1769,7 +1849,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                   FontWeight.bold,
                             ),
                           ),
-                          if (product.category
+                          if (product
+                              .category
                               .trim()
                               .isNotEmpty)
                             Text(
@@ -1791,7 +1872,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 22),
+                const SizedBox(
+                  height: 22,
+                ),
                 _buildDetailRow(
                   theme,
                   'Current Stock',
@@ -1824,7 +1907,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
                         product.purchasePrice,
                   ),
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(
+                  height: 18,
+                ),
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
@@ -1832,12 +1917,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
                       Navigator.pop(
                         context,
                       );
+
                       _openStockAdjustment(
                         product: product,
                       );
                     },
                     icon: const Icon(
-                      Icons.swap_vert_rounded,
+                      Icons
+                          .swap_vert_rounded,
                     ),
                     label: const Text(
                       'Adjust Stock',
@@ -1858,7 +1945,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
     String value,
   ) {
     return Padding(
-      padding: const EdgeInsets.only(
+      padding:
+          const EdgeInsets.only(
         bottom: 12,
       ),
       child: Row(
@@ -1866,18 +1954,23 @@ class _InventoryScreenState extends State<InventoryScreen> {
           Expanded(
             child: Text(
               label,
-              style:
-                  theme.textTheme.bodyMedium?.copyWith(
+              style: theme
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(
                 color: theme
                     .colorScheme
                     .onSurfaceVariant,
               ),
             ),
           ),
+          const SizedBox(width: 12),
           Text(
             value,
-            style:
-                theme.textTheme.bodyMedium?.copyWith(
+            style: theme
+                .textTheme
+                .bodyMedium
+                ?.copyWith(
               fontWeight:
                   FontWeight.w600,
             ),
@@ -1887,12 +1980,16 @@ class _InventoryScreenState extends State<InventoryScreen> {
     );
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // STOCK HISTORY
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   Future<void> _openStockHistory() async {
-    if (_businessId == null) {
+    final String? businessId =
+        _businessId;
+
+    if (businessId == null ||
+        businessId.trim().isEmpty) {
       return;
     }
 
@@ -1903,11 +2000,13 @@ class _InventoryScreenState extends State<InventoryScreen> {
       builder: (context) {
         return SizedBox(
           height:
-              MediaQuery.sizeOf(context).height *
+              MediaQuery.sizeOf(context)
+                  .height *
                   0.85,
           child: _StockHistorySheet(
-            repository: _stockRepository,
-            businessId: _businessId!,
+            repository:
+                _stockRepository,
+            businessId: businessId,
           ),
         );
       },
@@ -1917,7 +2016,11 @@ class _InventoryScreenState extends State<InventoryScreen> {
   Future<void> _openProductHistory(
     ProductModel product,
   ) async {
-    if (_businessId == null) {
+    final String? businessId =
+        _businessId;
+
+    if (businessId == null ||
+        businessId.trim().isEmpty) {
       return;
     }
 
@@ -1928,11 +2031,13 @@ class _InventoryScreenState extends State<InventoryScreen> {
       builder: (context) {
         return SizedBox(
           height:
-              MediaQuery.sizeOf(context).height *
+              MediaQuery.sizeOf(context)
+                  .height *
                   0.85,
           child: _StockHistorySheet(
-            repository: _stockRepository,
-            businessId: _businessId!,
+            repository:
+                _stockRepository,
+            businessId: businessId,
             productId: product.id,
             productName: product.name,
           ),
@@ -1941,9 +2046,220 @@ class _InventoryScreenState extends State<InventoryScreen> {
     );
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // EMPTY / ERROR STATES
+  // ===========================================================================
+
+  Widget _buildEmptyState(
+    ThemeData theme,
+  ) {
+    return Card(
+      child: Padding(
+        padding:
+            const EdgeInsets.symmetric(
+          horizontal: 24,
+          vertical: 50,
+        ),
+        child: Column(
+          children: [
+            Icon(
+              Icons.inventory_2_outlined,
+              size: 64,
+              color: theme
+                  .colorScheme
+                  .onSurfaceVariant,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'No products found',
+              style: theme
+                  .textTheme
+                  .titleLarge
+                  ?.copyWith(
+                fontWeight:
+                    FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Add products first to start managing inventory.',
+              textAlign:
+                  TextAlign.center,
+              style: theme
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(
+                color: theme
+                    .colorScheme
+                    .onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoResultsState(
+    ThemeData theme,
+  ) {
+    return Card(
+      child: Padding(
+        padding:
+            const EdgeInsets.symmetric(
+          horizontal: 24,
+          vertical: 40,
+        ),
+        child: Column(
+          children: [
+            Icon(
+              Icons.search_off_rounded,
+              size: 54,
+              color: theme
+                  .colorScheme
+                  .onSurfaceVariant,
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'No matching products',
+              style: theme
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(
+                fontWeight:
+                    FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Try another search or filter.',
+              style: theme
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(
+                color: theme
+                    .colorScheme
+                    .onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorState(
+    ThemeData theme,
+    String error,
+  ) {
+    return Center(
+      child: Padding(
+        padding:
+            const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize:
+              MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.error_outline_rounded,
+              size: 56,
+              color: AppColors.danger,
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Unable to load inventory',
+              style: theme
+                  .textTheme
+                  .titleLarge
+                  ?.copyWith(
+                fontWeight:
+                    FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              error,
+              textAlign:
+                  TextAlign.center,
+              maxLines: 3,
+              overflow:
+                  TextOverflow.ellipsis,
+              style: theme
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(
+                color: theme
+                    .colorScheme
+                    .onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 18),
+            FilledButton.icon(
+              onPressed:
+                  _loadBusiness,
+              icon: const Icon(
+                Icons.refresh_rounded,
+              ),
+              label: const Text(
+                'Retry',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoBusinessState(
+    ThemeData theme,
+  ) {
+    return Center(
+      child: Padding(
+        padding:
+            const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize:
+              MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.business_outlined,
+              size: 60,
+              color: AppColors.warning,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Business not found',
+              style: theme
+                  .textTheme
+                  .titleLarge
+                  ?.copyWith(
+                fontWeight:
+                    FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Please complete your business setup first.',
+              textAlign:
+                  TextAlign.center,
+              style: theme
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(
+                color: theme
+                    .colorScheme
+                    .onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ===========================================================================
   // HELPERS
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   String _formatCurrency(
     double value,
@@ -1958,7 +2274,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
   String _formatNumber(
     double value,
   ) {
-    if (value == value.roundToDouble()) {
+    if (value ==
+        value.roundToDouble()) {
       return value.toInt().toString();
     }
 
@@ -1968,7 +2285,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
   String _cleanErrorMessage(
     Object error,
   ) {
-    final message = error.toString();
+    final String message =
+        error.toString();
 
     if (message.startsWith(
       'Bad state:',
@@ -2006,9 +2324,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
           content: Text(message),
           behavior:
               SnackBarBehavior.floating,
-          backgroundColor: isError
-              ? AppColors.danger
-              : null,
+          backgroundColor:
+              isError
+                  ? AppColors.danger
+                  : null,
         ),
       );
   }
@@ -2018,7 +2337,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
 // STOCK HISTORY SHEET
 // =============================================================================
 
-class _StockHistorySheet extends StatelessWidget {
+class _StockHistorySheet
+    extends StatelessWidget {
   final StockRepository repository;
   final String businessId;
   final String? productId;
@@ -2033,23 +2353,31 @@ class _StockHistorySheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final ThemeData theme =
+        Theme.of(context);
 
-    final Stream<List<StockTransactionModel>>
-        stream = productId == null
-            ? repository.watchStockTransactions(
-                businessId: businessId,
+    final Stream<
+            List<StockTransactionModel>>
+        stream =
+        productId == null
+            ? repository
+                .watchStockTransactions(
+                businessId:
+                    businessId,
               )
             : repository
                 .watchProductStockTransactions(
-                businessId: businessId,
-                productId: productId!,
+                businessId:
+                    businessId,
+                productId:
+                    productId!,
               );
 
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(
+          padding:
+              const EdgeInsets.fromLTRB(
             20,
             4,
             20,
@@ -2066,8 +2394,10 @@ class _StockHistorySheet extends StatelessWidget {
                   productName == null
                       ? 'Stock History'
                       : '${productName!} History',
-                  style:
-                      theme.textTheme.titleLarge?.copyWith(
+                  style: theme
+                      .textTheme
+                      .titleLarge
+                      ?.copyWith(
                     fontWeight:
                         FontWeight.bold,
                   ),
@@ -2076,7 +2406,9 @@ class _StockHistorySheet extends StatelessWidget {
             ],
           ),
         ),
-        const Divider(height: 1),
+        const Divider(
+          height: 1,
+        ),
         Expanded(
           child: StreamBuilder<
               List<StockTransactionModel>>(
@@ -2086,7 +2418,8 @@ class _StockHistorySheet extends StatelessWidget {
               snapshot,
             ) {
               if (snapshot.connectionState ==
-                      ConnectionState.waiting &&
+                      ConnectionState
+                          .waiting &&
                   !snapshot.hasData) {
                 return const Center(
                   child:
@@ -2098,9 +2431,12 @@ class _StockHistorySheet extends StatelessWidget {
                 return Center(
                   child: Padding(
                     padding:
-                        const EdgeInsets.all(24),
+                        const EdgeInsets.all(
+                      24,
+                    ),
                     child: Text(
-                      snapshot.error.toString(),
+                      snapshot.error
+                          .toString(),
                       textAlign:
                           TextAlign.center,
                     ),
@@ -2108,7 +2444,9 @@ class _StockHistorySheet extends StatelessWidget {
                 );
               }
 
-              final transactions =
+              final List<
+                      StockTransactionModel>
+                  transactions =
                   snapshot.data ??
                       <StockTransactionModel>[];
 
@@ -2119,7 +2457,8 @@ class _StockHistorySheet extends StatelessWidget {
                         MainAxisSize.min,
                     children: [
                       Icon(
-                        Icons.history_toggle_off_rounded,
+                        Icons
+                            .history_toggle_off_rounded,
                         size: 56,
                         color: theme
                             .colorScheme
@@ -2156,7 +2495,8 @@ class _StockHistorySheet extends StatelessWidget {
                 ),
                 itemBuilder:
                     (context, index) {
-                  final transaction =
+                  final StockTransactionModel
+                      transaction =
                       transactions[index];
 
                   return _buildTransactionCard(
@@ -2176,39 +2516,49 @@ class _StockHistorySheet extends StatelessWidget {
     BuildContext context,
     StockTransactionModel transaction,
   ) {
-    final theme = Theme.of(context);
+    final ThemeData theme =
+        Theme.of(context);
 
     final bool isIn =
         transaction.transactionType ==
-                StockRepository.stockInType ||
+                StockRepository
+                    .stockInType ||
             transaction.transactionType ==
                 '${StockRepository.adjustmentType} IN';
 
-    final Color color = isIn
-        ? AppColors.success
-        : AppColors.danger;
+    final Color color =
+        isIn
+            ? AppColors.success
+            : AppColors.danger;
 
-    final IconData icon = isIn
-        ? Icons.arrow_downward_rounded
-        : Icons.arrow_upward_rounded;
+    final IconData icon =
+        isIn
+            ? Icons.arrow_downward_rounded
+            : Icons.arrow_upward_rounded;
 
-    final dateFormat =
-        DateFormat('dd MMM yyyy, hh:mm a');
+    final DateFormat dateFormat =
+        DateFormat(
+      'dd MMM yyyy, hh:mm a',
+    );
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding:
+            const EdgeInsets.all(14),
         child: Row(
           children: [
             Container(
               width: 42,
               height: 42,
-              decoration: BoxDecoration(
+              decoration:
+                  BoxDecoration(
                 color: color.withValues(
                   alpha: 0.10,
                 ),
                 borderRadius:
-                    BorderRadius.circular(12),
+                    BorderRadius.circular(
+                  12,
+                ),
               ),
               child: Icon(
                 icon,
@@ -2236,7 +2586,8 @@ class _StockHistorySheet extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    transaction.transactionType,
+                    transaction
+                        .transactionType,
                     style: theme
                         .textTheme
                         .bodySmall
@@ -2302,7 +2653,8 @@ class _StockHistorySheet extends StatelessWidget {
   String _formatNumber(
     double value,
   ) {
-    if (value == value.roundToDouble()) {
+    if (value ==
+        value.roundToDouble()) {
       return value.toInt().toString();
     }
 

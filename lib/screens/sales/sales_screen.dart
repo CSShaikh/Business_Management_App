@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 
+import '../../core/services/sale_stock_service.dart';
 import '../../core/theme/app_colors.dart';
-import '../../models/business_model.dart';
 import '../../models/sale_model.dart';
-import '../../repositories/business_repository.dart';
-import '../../repositories/sale_repository.dart';
+import '../../providers/business_provider.dart';
+import '../../providers/sale_provider.dart';
 import 'add_sale_screen.dart';
 
 class SalesScreen extends StatefulWidget {
@@ -18,329 +19,370 @@ class SalesScreen extends StatefulWidget {
 }
 
 class _SalesScreenState extends State<SalesScreen> {
-  final BusinessRepository _businessRepository = BusinessRepository();
-
-  final SaleRepository _saleRepository = SaleRepository();
-
   final TextEditingController _searchController =
       TextEditingController();
 
-  BusinessModel? _business;
-
-  bool _loadingBusiness = true;
-  String? _businessError;
+  final SaleStockService _saleStockService =
+      SaleStockService();
 
   String _searchQuery = '';
+
+  String _paymentFilter = 'All';
+
+  DateTime? _startDate;
+  DateTime? _endDate;
+
+  bool _initialized = false;
 
   @override
   void initState() {
     super.initState();
-    _loadBusiness();
 
-    _searchController.addListener(() {
-      if (!mounted) return;
+    _searchController.addListener(
+      _onSearchChanged,
+    );
 
-      setState(() {
-        _searchQuery =
-            _searchController.text.trim().toLowerCase();
-      });
-    });
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) {
+        _initialize();
+      },
+    );
   }
 
   @override
   void dispose() {
-    _searchController.dispose();
+    _searchController
+      ..removeListener(_onSearchChanged)
+      ..dispose();
+
     super.dispose();
   }
 
   // ===========================================================================
-  // BUSINESS
+  // INITIALIZE
   // ===========================================================================
 
-  Future<void> _loadBusiness() async {
+  Future<void> _initialize() async {
     if (!mounted) return;
 
-    setState(() {
-      _loadingBusiness = true;
-      _businessError = null;
-    });
+    final BusinessProvider businessProvider =
+        context.read<BusinessProvider>();
+
+    final SaleProvider saleProvider =
+        context.read<SaleProvider>();
 
     try {
-      final BusinessModel? business =
-          await _businessRepository.getBusinessForCurrentUser();
+      await businessProvider.loadBusiness();
 
       if (!mounted) return;
 
-      if (business == null) {
+      final String businessId =
+          businessProvider.business?.id.trim() ?? '';
+
+      if (businessId.isEmpty) {
         setState(() {
-          _business = null;
-          _loadingBusiness = false;
-          _businessError =
-              'Business profile not found. Please complete business setup.';
+          _initialized = true;
         });
+
+        saleProvider.setBusinessId('');
+
         return;
       }
 
-      setState(() {
-        _business = business;
-        _loadingBusiness = false;
-      });
-    } catch (e) {
+      saleProvider.setBusinessId(
+        businessId,
+      );
+
+      await saleProvider.loadAndWatchSales(
+        businessId: businessId,
+      );
+
       if (!mounted) return;
 
       setState(() {
-        _loadingBusiness = false;
-        _businessError = e.toString();
+        _initialized = true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        _initialized = true;
       });
     }
   }
 
   // ===========================================================================
-  // ADD SALE
+  // REFRESH
+  // ===========================================================================
+
+  Future<void> _refresh() async {
+    final BusinessProvider businessProvider =
+        context.read<BusinessProvider>();
+
+    final SaleProvider saleProvider =
+        context.read<SaleProvider>();
+
+    try {
+      await businessProvider.refresh();
+
+      if (!mounted) return;
+
+      final String businessId =
+          businessProvider.business?.id.trim() ?? '';
+
+      if (businessId.isEmpty) {
+        saleProvider.setBusinessId('');
+        return;
+      }
+
+      saleProvider.setBusinessId(
+        businessId,
+      );
+
+      await saleProvider.refresh();
+    } catch (e) {
+      if (!mounted) return;
+
+      _showMessage(
+        'Unable to refresh sales.',
+        isError: true,
+      );
+    }
+  }
+
+  // ===========================================================================
+  // SEARCH
+  // ===========================================================================
+
+  void _onSearchChanged() {
+    if (!mounted) return;
+
+    setState(() {
+      _searchQuery =
+          _searchController.text.trim().toLowerCase();
+    });
+  }
+
+  // ===========================================================================
+  // FILTER SALES
+  // ===========================================================================
+
+  List<SaleModel> _filteredSales(
+    List<SaleModel> sales,
+  ) {
+    return sales.where(
+      (sale) {
+        // ---------------------------------------------------------------------
+        // SEARCH
+        // ---------------------------------------------------------------------
+
+        if (_searchQuery.isNotEmpty) {
+          final String invoice =
+              sale.invoiceNumber
+                  .trim()
+                  .toLowerCase();
+
+          final String customer =
+              sale.customerName
+                  .trim()
+                  .toLowerCase();
+
+          final String notes =
+              sale.notes
+                  .trim()
+                  .toLowerCase();
+
+          final bool productMatch =
+              sale.items.any(
+            (item) {
+              return item.productName
+                  .trim()
+                  .toLowerCase()
+                  .contains(_searchQuery);
+            },
+          );
+
+          final bool searchMatch =
+              invoice.contains(_searchQuery) ||
+                  customer.contains(_searchQuery) ||
+                  notes.contains(_searchQuery) ||
+                  productMatch;
+
+          if (!searchMatch) {
+            return false;
+          }
+        }
+
+        // ---------------------------------------------------------------------
+        // PAYMENT STATUS
+        // ---------------------------------------------------------------------
+
+        if (_paymentFilter != 'All') {
+          final String status =
+              sale.paymentStatus
+                  .trim()
+                  .toLowerCase();
+
+          if (status !=
+              _paymentFilter.toLowerCase()) {
+            return false;
+          }
+        }
+
+        // ---------------------------------------------------------------------
+        // DATE RANGE
+        // ---------------------------------------------------------------------
+
+        final DateTime saleDate =
+            DateTime(
+          sale.date.year,
+          sale.date.month,
+          sale.date.day,
+        );
+
+        if (_startDate != null) {
+          final DateTime start =
+              DateTime(
+            _startDate!.year,
+            _startDate!.month,
+            _startDate!.day,
+          );
+
+          if (saleDate.isBefore(start)) {
+            return false;
+          }
+        }
+
+        if (_endDate != null) {
+          final DateTime end =
+              DateTime(
+            _endDate!.year,
+            _endDate!.month,
+            _endDate!.day,
+          );
+
+          if (saleDate.isAfter(end)) {
+            return false;
+          }
+        }
+
+        return true;
+      },
+    ).toList();
+  }
+
+  // ===========================================================================
+  // OPEN ADD SALE
   // ===========================================================================
 
   Future<void> _openAddSale() async {
-    if (_business == null) {
+    final BusinessProvider businessProvider =
+        context.read<BusinessProvider>();
+
+    if (businessProvider.business == null) {
       _showMessage(
         'Business information is not available.',
         isError: true,
       );
+
       return;
     }
 
-    await Navigator.push(
+    final dynamic result =
+        await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => const AddSaleScreen(),
       ),
     );
+
+    if (!mounted) return;
+
+    if (result == true) {
+      await context.read<SaleProvider>().refresh();
+
+      if (!mounted) return;
+
+      _showMessage(
+        'Sale created successfully.',
+      );
+    }
   }
 
   // ===========================================================================
-  // SALE DETAILS
+  // OPEN EDIT SALE
   // ===========================================================================
 
-  void _showSaleDetails(
+  Future<void> _openEditSale(
     SaleModel sale,
-  ) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(
-              20,
-              4,
-              20,
-              24,
-            ),
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 46,
-                        height: 46,
-                        decoration: BoxDecoration(
-                          color: AppColors.success.withValues(
-                            alpha: 0.12,
-                          ),
-                          borderRadius:
-                              BorderRadius.circular(14),
-                        ),
-                        child: const Icon(
-                          Icons.receipt_long_rounded,
-                          color: AppColors.success,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              sale.invoiceNumber.isEmpty
-                                  ? 'Sale'
-                                  : sale.invoiceNumber,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleLarge
-                                  ?.copyWith(
-                                    fontWeight:
-                                        FontWeight.bold,
-                                  ),
-                            ),
-                            const SizedBox(height: 3),
-                            Text(
-                              DateFormat(
-                                'dd MMM yyyy, hh:mm a',
-                              ).format(sale.date),
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
-                                  ?.copyWith(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
-                                  ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      _StatusChip(
-                        status: sale.paymentStatus,
-                      ),
-                    ],
-                  ),
+  ) async {
+    final BusinessProvider businessProvider =
+        context.read<BusinessProvider>();
 
-                  const SizedBox(height: 22),
+    if (businessProvider.business == null) {
+      _showMessage(
+        'Business information is not available.',
+        isError: true,
+      );
 
-                  _DetailSection(
-                    title: 'Customer',
-                    child: Row(
-                      children: [
-                        const CircleAvatar(
-                          radius: 20,
-                          child: Icon(
-                            Icons.person_outline_rounded,
-                            size: 21,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            sale.customerName.isEmpty
-                                ? 'Walk-in Customer'
-                                : sale.customerName,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+      return;
+    }
 
-                  const SizedBox(height: 18),
-
-                  _DetailSection(
-                    title: 'Items',
-                    child: Column(
-                      children: sale.items.map(
-                        (item) {
-                          return Padding(
-                            padding:
-                                const EdgeInsets.only(
-                              bottom: 12,
-                            ),
-                            child: Row(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        item.productName,
-                                        style:
-                                            const TextStyle(
-                                          fontWeight:
-                                              FontWeight.w600,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 3),
-                                      Text(
-                                        '${_formatNumber(item.quantity)} ${item.unit} × ${_formatCurrency(item.sellingRate)}',
-                                        style:
-                                            Theme.of(context)
-                                                .textTheme
-                                                .bodySmall
-                                                ?.copyWith(
-                                                  color: Theme.of(
-                                                    context,
-                                                  )
-                                                      .colorScheme
-                                                      .onSurfaceVariant,
-                                                ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Text(
-                                  _formatCurrency(item.total),
-                                  style: const TextStyle(
-                                    fontWeight:
-                                        FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ).toList(),
-                    ),
-                  ),
-
-                  const SizedBox(height: 6),
-
-                  _SummaryCard(
-                    subtotal: sale.subtotal,
-                    discount: sale.discount,
-                    tax: sale.tax,
-                    total: sale.total,
-                    paid: sale.paidAmount,
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  _InfoRow(
-                    icon: Icons.payments_outlined,
-                    label: 'Payment Method',
-                    value: sale.paymentMethod.isEmpty
-                        ? 'Not specified'
-                        : sale.paymentMethod,
-                  ),
-
-                  if (sale.notes.trim().isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    _InfoRow(
-                      icon: Icons.notes_rounded,
-                      label: 'Notes',
-                      value: sale.notes,
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        );
-      },
+    final dynamic result =
+        await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddSaleScreen(
+          sale: sale,
+        ),
+      ),
     );
+
+    if (!mounted) return;
+
+    if (result == true) {
+      await context.read<SaleProvider>().refresh();
+
+      if (!mounted) return;
+
+      _showMessage(
+        'Sale updated successfully.',
+      );
+    }
   }
 
   // ===========================================================================
-  // DELETE
+  // DELETE SALE
   // ===========================================================================
 
   Future<void> _deleteSale(
     SaleModel sale,
   ) async {
-    final BusinessModel? business = _business;
+    final BusinessProvider businessProvider =
+        context.read<BusinessProvider>();
 
-    if (business == null) {
+    final SaleProvider saleProvider =
+        context.read<SaleProvider>();
+
+    final String businessId =
+        businessProvider.business?.id.trim() ?? '';
+
+    if (businessId.isEmpty) {
+      _showMessage(
+        'Business information is not available.',
+        isError: true,
+      );
+
       return;
     }
 
-    final bool? confirmed = await showDialog<bool>(
+    final String saleName =
+        sale.invoiceNumber.trim().isEmpty
+            ? 'this sale'
+            : sale.invoiceNumber.trim();
+
+    final bool? confirmed =
+        await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
@@ -348,8 +390,8 @@ class _SalesScreenState extends State<SalesScreen> {
             'Delete Sale?',
           ),
           content: Text(
-            'Are you sure you want to delete '
-            '${sale.invoiceNumber.isEmpty ? 'this sale' : sale.invoiceNumber}?',
+            'Are you sure you want to delete $saleName?\n\n'
+            'The stock deducted by this sale will be restored.',
           ),
           actions: [
             TextButton(
@@ -359,7 +401,9 @@ class _SalesScreenState extends State<SalesScreen> {
                   false,
                 );
               },
-              child: const Text('Cancel'),
+              child: const Text(
+                'Cancel',
+              ),
             ),
             FilledButton(
               style: FilledButton.styleFrom(
@@ -371,7 +415,9 @@ class _SalesScreenState extends State<SalesScreen> {
                   true,
                 );
               },
-              child: const Text('Delete'),
+              child: const Text(
+                'Delete',
+              ),
             ),
           ],
         );
@@ -383,60 +429,157 @@ class _SalesScreenState extends State<SalesScreen> {
     }
 
     try {
-      await _saleRepository.deleteSale(
-        businessId: business.id,
+      // -----------------------------------------------------------------------
+      // IMPORTANT:
+      // Sale stock was deducted during sale creation.
+      // Restore it before deleting the sale.
+      // -----------------------------------------------------------------------
+
+      await _saleStockService.reverseSaleStock(
+        sale: sale,
+      );
+
+      // -----------------------------------------------------------------------
+      // DELETE SALE
+      // -----------------------------------------------------------------------
+
+      await saleProvider.deleteSale(
         saleId: sale.id,
       );
 
       if (!mounted) return;
 
       _showMessage(
-        'Sale deleted successfully.',
+        'Sale deleted and stock restored successfully.',
       );
     } catch (e) {
       if (!mounted) return;
 
       _showMessage(
-        'Unable to delete sale: $e',
+        'Unable to delete sale: ${_cleanError(e)}',
         isError: true,
       );
     }
   }
 
   // ===========================================================================
-  // SEARCH
+  // PAYMENT FILTER
   // ===========================================================================
 
-  List<SaleModel> _filterSales(
-    List<SaleModel> sales,
+  void _setPaymentFilter(
+    String value,
   ) {
-    if (_searchQuery.isEmpty) {
-      return sales;
+    setState(() {
+      _paymentFilter = value;
+    });
+  }
+
+  // ===========================================================================
+  // DATE FILTER
+  // ===========================================================================
+
+  Future<void> _selectStartDate() async {
+    final DateTime initialDate =
+        _startDate ?? DateTime.now();
+
+    final DateTime? selected =
+        await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+    );
+
+    if (selected == null) {
+      return;
     }
 
-    return sales.where(
-      (sale) {
-        final String invoice =
-            sale.invoiceNumber.toLowerCase();
+    setState(() {
+      _startDate = selected;
 
-        final String customer =
-            sale.customerName.toLowerCase();
+      if (_endDate != null &&
+          _endDate!.isBefore(selected)) {
+        _endDate = selected;
+      }
+    });
+  }
 
-        final String notes =
-            sale.notes.toLowerCase();
+  Future<void> _selectEndDate() async {
+    final DateTime initialDate =
+        _endDate ??
+            _startDate ??
+            DateTime.now();
 
-        final bool productMatch = sale.items.any(
-          (item) => item.productName
-              .toLowerCase()
-              .contains(_searchQuery),
+    final DateTime? selected =
+        await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: _startDate ?? DateTime(2020),
+      lastDate: DateTime.now(),
+    );
+
+    if (selected == null) {
+      return;
+    }
+
+    setState(() {
+      _endDate = selected;
+    });
+  }
+
+  void _clearFilters() {
+    _searchController.clear();
+
+    setState(() {
+      _paymentFilter = 'All';
+      _startDate = null;
+      _endDate = null;
+    });
+  }
+
+  // ===========================================================================
+  // SHOW DETAILS
+  // ===========================================================================
+
+  void _showSaleDetails(
+    SaleModel sale,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor:
+          Theme.of(context).colorScheme.surface,
+      builder: (_) {
+        return _SaleDetailsSheet(
+          sale: sale,
+          onEdit: () {
+            Navigator.pop(context);
+
+            Future<void>.delayed(
+              Duration.zero,
+              () {
+                if (mounted) {
+                  _openEditSale(sale);
+                }
+              },
+            );
+          },
+          onDelete: () {
+            Navigator.pop(context);
+
+            Future<void>.delayed(
+              Duration.zero,
+              () {
+                if (mounted) {
+                  _deleteSale(sale);
+                }
+              },
+            );
+          },
         );
-
-        return invoice.contains(_searchQuery) ||
-            customer.contains(_searchQuery) ||
-            notes.contains(_searchQuery) ||
-            productMatch;
       },
-    ).toList();
+    );
   }
 
   // ===========================================================================
@@ -453,13 +596,38 @@ class _SalesScreenState extends State<SalesScreen> {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(message),
-          backgroundColor: isError
-              ? AppColors.danger
-              : AppColors.success,
-          behavior: SnackBarBehavior.floating,
+          content: Text(
+            message,
+          ),
+          backgroundColor:
+              isError
+                  ? AppColors.danger
+                  : AppColors.success,
+          behavior:
+              SnackBarBehavior.floating,
         ),
       );
+  }
+
+  // ===========================================================================
+  // ERROR CLEANER
+  // ===========================================================================
+
+  String _cleanError(
+    Object error,
+  ) {
+    final String message =
+        error.toString();
+
+    if (message.startsWith(
+      'Exception: ',
+    )) {
+      return message.substring(
+        'Exception: '.length,
+      );
+    }
+
+    return message;
   }
 
   // ===========================================================================
@@ -467,107 +635,112 @@ class _SalesScreenState extends State<SalesScreen> {
   // ===========================================================================
 
   @override
-  Widget build(BuildContext context) {
-    if (_loadingBusiness) {
+  Widget build(
+    BuildContext context,
+  ) {
+    final BusinessProvider businessProvider =
+        context.watch<BusinessProvider>();
+
+    final SaleProvider saleProvider =
+        context.watch<SaleProvider>();
+
+    if (!_initialized ||
+        businessProvider.isLoading) {
       return const Center(
         child: CircularProgressIndicator(),
       );
     }
 
-    if (_businessError != null) {
-      return _buildErrorState();
+    if (businessProvider.errorMessage != null) {
+      return _buildErrorState(
+        businessProvider.errorMessage!,
+      );
     }
 
-    final BusinessModel? business = _business;
-
-    if (business == null) {
+    if (businessProvider.business == null) {
       return _buildNoBusinessState();
     }
 
-    return StreamBuilder<List<SaleModel>>(
-      stream: _saleRepository.watchSales(
-        businessId: business.id,
+    if (saleProvider.isLoading &&
+        saleProvider.sales.isEmpty) {
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
+    }
+
+    if (saleProvider.errorMessage != null &&
+        saleProvider.sales.isEmpty) {
+      return _buildErrorState(
+        saleProvider.errorMessage!,
+      );
+    }
+
+    final List<SaleModel> filteredSales =
+        _filteredSales(
+      saleProvider.sales,
+    );
+
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      child: LayoutBuilder(
+        builder: (
+          context,
+          constraints,
+        ) {
+          final bool isDesktop =
+              constraints.maxWidth >= 1000;
+
+          return SingleChildScrollView(
+            physics:
+                const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.symmetric(
+              horizontal:
+                  isDesktop ? 28 : 16,
+              vertical: 20,
+            ),
+            child: Center(
+              child: ConstrainedBox(
+                constraints:
+                    const BoxConstraints(
+                  maxWidth: 1250,
+                ),
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    _buildHeader(
+                      isDesktop,
+                    ),
+
+                    const SizedBox(
+                      height: 20,
+                    ),
+
+                    _buildSummary(
+                      saleProvider,
+                      isDesktop,
+                    ),
+
+                    const SizedBox(
+                      height: 20,
+                    ),
+
+                    _buildFilterSection(),
+
+                    const SizedBox(
+                      height: 20,
+                    ),
+
+                    _buildSalesSection(
+                      filteredSales,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
       ),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState ==
-                ConnectionState.waiting &&
-            !snapshot.hasData) {
-          return const Center(
-            child: CircularProgressIndicator(),
-          );
-        }
-
-        if (snapshot.hasError) {
-          return _buildStreamErrorState(
-            snapshot.error.toString(),
-          );
-        }
-
-        final List<SaleModel> sales =
-            _filterSales(
-          snapshot.data ?? <SaleModel>[],
-        );
-
-        return RefreshIndicator(
-          onRefresh: () async {
-            await _loadBusiness();
-          },
-          child: LayoutBuilder(
-            builder: (
-              context,
-              constraints,
-            ) {
-              final bool isDesktop =
-                  constraints.maxWidth >= 900;
-
-              return SingleChildScrollView(
-                physics:
-                    const AlwaysScrollableScrollPhysics(),
-                padding: EdgeInsets.symmetric(
-                  horizontal:
-                      isDesktop ? 28 : 16,
-                  vertical: 20,
-                ),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints:
-                        const BoxConstraints(
-                      maxWidth: 1200,
-                    ),
-                    child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.start,
-                      children: [
-                        _buildHeader(
-                          isDesktop,
-                        ),
-
-                        const SizedBox(height: 20),
-
-                        _buildSummary(
-                          snapshot.data ??
-                              <SaleModel>[],
-                          isDesktop,
-                        ),
-
-                        const SizedBox(height: 20),
-
-                        _buildSearchCard(),
-
-                        const SizedBox(height: 20),
-
-                        _buildSalesSection(
-                          sales,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        );
-      },
     );
   }
 
@@ -578,15 +751,19 @@ class _SalesScreenState extends State<SalesScreen> {
   Widget _buildHeader(
     bool isDesktop,
   ) {
+    final ThemeData theme =
+        Theme.of(context);
+
     return Row(
       crossAxisAlignment:
           CrossAxisAlignment.center,
       children: [
         Container(
-          width: 52,
-          height: 52,
+          width: 54,
+          height: 54,
           decoration: BoxDecoration(
-            color: AppColors.success.withValues(
+            color:
+                AppColors.success.withValues(
               alpha: 0.12,
             ),
             borderRadius:
@@ -595,11 +772,13 @@ class _SalesScreenState extends State<SalesScreen> {
           child: const Icon(
             Icons.point_of_sale_rounded,
             color: AppColors.success,
-            size: 27,
+            size: 28,
           ),
         ),
 
-        const SizedBox(width: 14),
+        const SizedBox(
+          width: 14,
+        ),
 
         Expanded(
           child: Column(
@@ -608,25 +787,27 @@ class _SalesScreenState extends State<SalesScreen> {
             children: [
               Text(
                 'Sales',
-                style: Theme.of(context)
+                style: theme
                     .textTheme
                     .headlineSmall
                     ?.copyWith(
-                      fontWeight:
-                          FontWeight.bold,
-                    ),
+                  fontWeight:
+                      FontWeight.w800,
+                ),
               ),
-              const SizedBox(height: 3),
+              const SizedBox(
+                height: 4,
+              ),
               Text(
-                'Manage sales, invoices and payments.',
-                style: Theme.of(context)
+                'Manage sales, invoices, customers and payments.',
+                style: theme
                     .textTheme
                     .bodyMedium
                     ?.copyWith(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurfaceVariant,
-                    ),
+                  color: theme
+                      .colorScheme
+                      .onSurfaceVariant,
+                ),
               ),
             ],
           ),
@@ -651,83 +832,88 @@ class _SalesScreenState extends State<SalesScreen> {
   // ===========================================================================
 
   Widget _buildSummary(
-    List<SaleModel> sales,
+    SaleProvider provider,
     bool isDesktop,
   ) {
-    double total = 0;
-    double paid = 0;
-    double outstanding = 0;
-
-    for (final SaleModel sale in sales) {
-      total += sale.total;
-      paid += sale.paidAmount;
-
-      final double balance =
-          sale.total - sale.paidAmount;
-
-      if (balance > 0) {
-        outstanding += balance;
-      }
-    }
-
-    final int count = sales.length;
-
-    final List<Widget> cards = [
-      _SummaryMetricCard(
-        icon: Icons.receipt_long_rounded,
+    final List<_SummaryData> items = [
+      _SummaryData(
         title: 'Total Sales',
-        value: _formatCurrency(total),
+        value: _formatCurrency(
+          provider.totalSalesAmount,
+        ),
         subtitle:
-            '$count invoice${count == 1 ? '' : 's'}',
+            '${provider.saleCount} invoice${provider.saleCount == 1 ? '' : 's'}',
+        icon:
+            Icons.receipt_long_rounded,
         color: AppColors.primary,
       ),
-      _SummaryMetricCard(
-        icon: Icons.payments_rounded,
+      _SummaryData(
         title: 'Collected',
-        value: _formatCurrency(paid),
+        value: _formatCurrency(
+          provider.totalReceivedAmount,
+        ),
         subtitle: 'Amount received',
+        icon:
+            Icons.payments_rounded,
         color: AppColors.success,
       ),
-      _SummaryMetricCard(
+      _SummaryData(
+        title: 'Outstanding',
+        value: _formatCurrency(
+          provider.todayPendingAmount,
+        ),
+        subtitle: 'Amount pending',
         icon:
             Icons.account_balance_wallet_outlined,
-        title: 'Outstanding',
-        value: _formatCurrency(outstanding),
-        subtitle: 'Amount pending',
         color: AppColors.warning,
       ),
     ];
 
     if (isDesktop) {
       return Row(
-        children: cards
-            .map(
-              (card) => Expanded(
-                child: Padding(
-                  padding:
-                      const EdgeInsets.only(
-                    right: 12,
-                  ),
-                  child: card,
+        children: items.map(
+          (item) {
+            return Expanded(
+              child: Padding(
+                padding:
+                    const EdgeInsets.only(
+                  right: 12,
+                ),
+                child:
+                    _SummaryMetricCard(
+                  data: item,
                 ),
               ),
-            )
-            .toList(),
+            );
+          },
+        ).toList(),
       );
     }
 
     return Column(
       children: [
-        cards[0],
-        const SizedBox(height: 12),
+        _SummaryMetricCard(
+          data: items[0],
+        ),
+        const SizedBox(
+          height: 12,
+        ),
         Row(
           children: [
             Expanded(
-              child: cards[1],
+              child:
+                  _SummaryMetricCard(
+                data: items[1],
+              ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(
+              width: 12,
+            ),
             Expanded(
-              child: cards[2],
+              child:
+                  _SummaryMetricCard(
+                data: items[2],
+              ),
             ),
           ],
         ),
@@ -736,45 +922,327 @@ class _SalesScreenState extends State<SalesScreen> {
   }
 
   // ===========================================================================
-  // SEARCH
+  // FILTER SECTION
   // ===========================================================================
 
-  Widget _buildSearchCard() {
+  Widget _buildFilterSection() {
+    final bool hasFilters =
+        _searchQuery.isNotEmpty ||
+            _paymentFilter != 'All' ||
+            _startDate != null ||
+            _endDate != null;
+
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: TextField(
-          controller: _searchController,
-          textInputAction:
-              TextInputAction.search,
-          decoration: InputDecoration(
-            hintText:
-                'Search invoice, customer or product...',
-            prefixIcon: const Icon(
-              Icons.search_rounded,
+        padding:
+            const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(
+                  Icons.filter_alt_outlined,
+                ),
+                const SizedBox(
+                  width: 8,
+                ),
+                Text(
+                  'Search & Filters',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(
+                    fontWeight:
+                        FontWeight.w700,
+                  ),
+                ),
+                const Spacer(),
+                if (hasFilters)
+                  TextButton(
+                    onPressed:
+                        _clearFilters,
+                    child: const Text(
+                      'Clear',
+                    ),
+                  ),
+              ],
             ),
-            suffixIcon:
-                _searchController.text.isEmpty
-                    ? null
-                    : IconButton(
-                        tooltip: 'Clear search',
-                        onPressed: () {
-                          _searchController.clear();
-                        },
-                        icon: const Icon(
-                          Icons.close_rounded,
-                        ),
+
+            const SizedBox(
+              height: 14,
+            ),
+
+            TextField(
+              controller:
+                  _searchController,
+              textInputAction:
+                  TextInputAction.search,
+              decoration:
+                  InputDecoration(
+                hintText:
+                    'Search invoice, customer, product...',
+                prefixIcon:
+                    const Icon(
+                  Icons.search_rounded,
+                ),
+                suffixIcon:
+                    _searchController
+                            .text
+                            .isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip:
+                                'Clear search',
+                            onPressed: () {
+                              _searchController
+                                  .clear();
+                            },
+                            icon:
+                                const Icon(
+                              Icons
+                                  .close_rounded,
+                            ),
+                          ),
+              ),
+            ),
+
+            const SizedBox(
+              height: 14,
+            ),
+
+            LayoutBuilder(
+              builder: (
+                context,
+                constraints,
+              ) {
+                if (constraints.maxWidth >=
+                    700) {
+                  return Row(
+                    children: [
+                      Expanded(
+                        child:
+                            _buildPaymentFilter(),
                       ),
-            border: InputBorder.none,
-            filled: false,
-          ),
+                      const SizedBox(
+                        width: 12,
+                      ),
+                      Expanded(
+                        child:
+                            _buildStartDateButton(),
+                      ),
+                      const SizedBox(
+                        width: 12,
+                      ),
+                      Expanded(
+                        child:
+                            _buildEndDateButton(),
+                      ),
+                    ],
+                  );
+                }
+
+                return Column(
+                  children: [
+                    _buildPaymentFilter(),
+                    const SizedBox(
+                      height: 12,
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child:
+                              _buildStartDateButton(),
+                        ),
+                        const SizedBox(
+                          width: 12,
+                        ),
+                        Expanded(
+                          child:
+                              _buildEndDateButton(),
+                        ),
+                      ],
+                    ),
+                  ],
+                );
+              },
+            ),
+
+            if (_startDate != null ||
+                _endDate != null) ...[
+              const SizedBox(
+                height: 12,
+              ),
+              _buildDateSummary(),
+            ],
+          ],
         ),
       ),
     );
   }
 
   // ===========================================================================
-  // SALES LIST
+  // PAYMENT FILTER
+  // ===========================================================================
+
+  Widget _buildPaymentFilter() {
+    return DropdownButtonFormField<String>(
+      initialValue: _paymentFilter,
+      decoration:
+          const InputDecoration(
+        labelText: 'Payment Status',
+        prefixIcon:
+            Icon(
+          Icons.payments_outlined,
+        ),
+      ),
+      items: const [
+        DropdownMenuItem(
+          value: 'All',
+          child: Text(
+            'All Payments',
+          ),
+        ),
+        DropdownMenuItem(
+          value: 'Paid',
+          child: Text(
+            'Paid',
+          ),
+        ),
+        DropdownMenuItem(
+          value: 'Partial',
+          child: Text(
+            'Partial',
+          ),
+        ),
+        DropdownMenuItem(
+          value: 'Unpaid',
+          child: Text(
+            'Unpaid',
+          ),
+        ),
+      ],
+      onChanged: (value) {
+        if (value == null) return;
+
+        _setPaymentFilter(
+          value,
+        );
+      },
+    );
+  }
+
+  // ===========================================================================
+  // START DATE
+  // ===========================================================================
+
+  Widget _buildStartDateButton() {
+    return OutlinedButton.icon(
+      onPressed: _selectStartDate,
+      icon: const Icon(
+        Icons.calendar_today_outlined,
+      ),
+      label: Text(
+        _startDate == null
+            ? 'Start Date'
+            : DateFormat(
+                'dd MMM yyyy',
+              ).format(
+                _startDate!,
+              ),
+        overflow:
+            TextOverflow.ellipsis,
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // END DATE
+  // ===========================================================================
+
+  Widget _buildEndDateButton() {
+    return OutlinedButton.icon(
+      onPressed: _selectEndDate,
+      icon: const Icon(
+        Icons.event_outlined,
+      ),
+      label: Text(
+        _endDate == null
+            ? 'End Date'
+            : DateFormat(
+                'dd MMM yyyy',
+              ).format(
+                _endDate!,
+              ),
+        overflow:
+            TextOverflow.ellipsis,
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // DATE SUMMARY
+  // ===========================================================================
+
+  Widget _buildDateSummary() {
+    String text = 'Date: ';
+
+    if (_startDate != null &&
+        _endDate != null) {
+      text +=
+          '${DateFormat('dd MMM yyyy').format(_startDate!)}'
+          ' → '
+          '${DateFormat('dd MMM yyyy').format(_endDate!)}';
+    } else if (_startDate != null) {
+      text +=
+          'From ${DateFormat('dd MMM yyyy').format(_startDate!)}';
+    } else if (_endDate != null) {
+      text +=
+          'Until ${DateFormat('dd MMM yyyy').format(_endDate!)}';
+    }
+
+    return Container(
+      width: double.infinity,
+      padding:
+          const EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: 10,
+      ),
+      decoration: BoxDecoration(
+        color:
+            AppColors.primary.withValues(
+          alpha: 0.08,
+        ),
+        borderRadius:
+            BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.date_range_rounded,
+            size: 18,
+            color: AppColors.primary,
+          ),
+          const SizedBox(
+            width: 8,
+          ),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                fontWeight:
+                    FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // SALES SECTION
   // ===========================================================================
 
   Widget _buildSalesSection(
@@ -782,7 +1250,8 @@ class _SalesScreenState extends State<SalesScreen> {
   ) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(
+        padding:
+            const EdgeInsets.fromLTRB(
           16,
           18,
           16,
@@ -796,53 +1265,91 @@ class _SalesScreenState extends State<SalesScreen> {
               children: [
                 Expanded(
                   child: Text(
-                    _searchQuery.isEmpty
-                        ? 'Recent Sales'
-                        : 'Search Results',
+                    _searchQuery.isNotEmpty ||
+                            _paymentFilter !=
+                                'All' ||
+                            _startDate !=
+                                null ||
+                            _endDate != null
+                        ? 'Filtered Sales'
+                        : 'Recent Sales',
                     style: Theme.of(context)
                         .textTheme
                         .titleLarge
                         ?.copyWith(
-                          fontWeight:
-                              FontWeight.bold,
-                        ),
+                      fontWeight:
+                          FontWeight.w800,
+                    ),
                   ),
                 ),
-                Text(
-                  '${sales.length}',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(
-                        fontWeight:
-                            FontWeight.w600,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .primary,
-                      ),
+                Container(
+                  padding:
+                      const EdgeInsets
+                          .symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration:
+                      BoxDecoration(
+                    color: AppColors
+                        .primary
+                        .withValues(
+                      alpha: 0.10,
+                    ),
+                    borderRadius:
+                        BorderRadius.circular(
+                      20,
+                    ),
+                  ),
+                  child: Text(
+                    '${sales.length}',
+                    style: const TextStyle(
+                      color:
+                          AppColors.primary,
+                      fontWeight:
+                          FontWeight.w700,
+                    ),
+                  ),
                 ),
               ],
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(
+              height: 16,
+            ),
 
             if (sales.isEmpty)
               _buildEmptyState()
             else
               ...sales.map(
-                (sale) => _SaleListTile(
-                  sale: sale,
-                  onTap: () {
-                    _showSaleDetails(
-                      sale,
-                    );
-                  },
-                  onDelete: () {
-                    _deleteSale(
-                      sale,
-                    );
-                  },
-                ),
+                (sale) {
+                  return Padding(
+                    padding:
+                        const EdgeInsets
+                            .only(
+                      bottom: 10,
+                    ),
+                    child:
+                        _SaleListTile(
+                      sale: sale,
+                      onTap: () {
+                        _showSaleDetails(
+                          sale,
+                        );
+                      },
+                      onEdit: () {
+                        _openEditSale(
+                          sale,
+                        );
+                      },
+                      onDelete: () {
+                        _deleteSale(
+                          sale,
+                        );
+                      },
+                    ),
+                  );
+                },
               ),
           ],
         ),
@@ -855,65 +1362,88 @@ class _SalesScreenState extends State<SalesScreen> {
   // ===========================================================================
 
   Widget _buildEmptyState() {
-    final bool searching =
-        _searchQuery.isNotEmpty;
+    final bool hasFilters =
+        _searchQuery.isNotEmpty ||
+            _paymentFilter != 'All' ||
+            _startDate != null ||
+            _endDate != null;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(
-        vertical: 46,
+      padding:
+          const EdgeInsets.symmetric(
+        vertical: 50,
       ),
       child: Center(
         child: Column(
           children: [
             Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(
+              width: 78,
+              height: 78,
+              decoration:
+                  BoxDecoration(
+                color:
+                    AppColors.primary
+                        .withValues(
                   alpha: 0.10,
                 ),
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                searching
-                    ? Icons.search_off_rounded
-                    : Icons.receipt_long_outlined,
-                size: 34,
-                color: AppColors.primary,
+                hasFilters
+                    ? Icons
+                        .search_off_rounded
+                    : Icons
+                        .receipt_long_outlined,
+                size: 36,
+                color:
+                    AppColors.primary,
               ),
             ),
-            const SizedBox(height: 16),
+
+            const SizedBox(
+              height: 16,
+            ),
+
             Text(
-              searching
+              hasFilters
                   ? 'No sales found'
                   : 'No sales yet',
               style: Theme.of(context)
                   .textTheme
                   .titleMedium
                   ?.copyWith(
-                    fontWeight:
-                        FontWeight.bold,
-                  ),
+                fontWeight:
+                    FontWeight.w800,
+              ),
             ),
-            const SizedBox(height: 6),
+
+            const SizedBox(
+              height: 7,
+            ),
+
             Text(
-              searching
-                  ? 'Try a different invoice, customer or product.'
+              hasFilters
+                  ? 'Try changing the search or filters.'
                   : 'Create your first sale to see it here.',
-              textAlign: TextAlign.center,
+              textAlign:
+                  TextAlign.center,
               style: Theme.of(context)
                   .textTheme
                   .bodyMedium
                   ?.copyWith(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurfaceVariant,
-                  ),
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurfaceVariant,
+              ),
             ),
-            if (!searching) ...[
-              const SizedBox(height: 18),
+
+            if (!hasFilters) ...[
+              const SizedBox(
+                height: 18,
+              ),
               FilledButton.icon(
-                onPressed: _openAddSale,
+                onPressed:
+                    _openAddSale,
                 icon: const Icon(
                   Icons.add_rounded,
                 ),
@@ -929,102 +1459,60 @@ class _SalesScreenState extends State<SalesScreen> {
   }
 
   // ===========================================================================
-  // ERROR STATES
+  // ERROR STATE
   // ===========================================================================
 
-  Widget _buildErrorState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.error_outline_rounded,
-              size: 52,
-              color: AppColors.danger,
-            ),
-            const SizedBox(height: 14),
-            const Text(
-              'Unable to load business',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _businessError ??
-                  'Something went wrong.',
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 18),
-            FilledButton.icon(
-              onPressed: _loadBusiness,
-              icon: const Icon(
-                Icons.refresh_rounded,
-              ),
-              label: const Text(
-                'Try Again',
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNoBusinessState() {
-    return const Center(
-      child: Padding(
-        padding: EdgeInsets.all(24),
-        child: Text(
-          'Business profile not found.\n'
-          'Please complete business setup.',
-          textAlign: TextAlign.center,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStreamErrorState(
-    String error,
+  Widget _buildErrorState(
+    String message,
   ) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding:
+            const EdgeInsets.all(24),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisSize:
+              MainAxisSize.min,
           children: [
             const Icon(
-              Icons.cloud_off_rounded,
-              size: 52,
+              Icons.error_outline_rounded,
+              size: 54,
               color: AppColors.danger,
             ),
-            const SizedBox(height: 14),
+
+            const SizedBox(
+              height: 14,
+            ),
+
             Text(
               'Unable to load sales',
               style: Theme.of(context)
                   .textTheme
-                  .titleMedium
+                  .titleLarge
                   ?.copyWith(
-                    fontWeight:
-                        FontWeight.bold,
-                  ),
+                fontWeight:
+                    FontWeight.w800,
+              ),
             ),
-            const SizedBox(height: 8),
+
+            const SizedBox(
+              height: 8,
+            ),
+
             Text(
-              error,
-              textAlign: TextAlign.center,
-              maxLines: 4,
-              overflow:
-                  TextOverflow.ellipsis,
+              message,
+              textAlign:
+                  TextAlign.center,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyMedium,
             ),
-            const SizedBox(height: 18),
-            OutlinedButton.icon(
-              onPressed: () {
-                setState(() {});
-              },
+
+            const SizedBox(
+              height: 18,
+            ),
+
+            FilledButton.icon(
+              onPressed: _initialize,
               icon: const Icon(
                 Icons.refresh_rounded,
               ),
@@ -1039,7 +1527,56 @@ class _SalesScreenState extends State<SalesScreen> {
   }
 
   // ===========================================================================
-  // FORMATTERS
+  // NO BUSINESS
+  // ===========================================================================
+
+  Widget _buildNoBusinessState() {
+    return Center(
+      child: Padding(
+        padding:
+            const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize:
+              MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.business_outlined,
+              size: 58,
+              color: AppColors.warning,
+            ),
+
+            const SizedBox(
+              height: 14,
+            ),
+
+            Text(
+              'Business profile not found',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleLarge
+                  ?.copyWith(
+                fontWeight:
+                    FontWeight.w800,
+              ),
+            ),
+
+            const SizedBox(
+              height: 8,
+            ),
+
+            const Text(
+              'Please complete your business setup first.',
+              textAlign:
+                  TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // FORMAT CURRENCY
   // ===========================================================================
 
   String _formatCurrency(
@@ -1048,108 +1585,136 @@ class _SalesScreenState extends State<SalesScreen> {
     return NumberFormat.currency(
       locale: 'en_IN',
       symbol: '₹',
-      decimalDigits:
-          value.truncateToDouble() == value
-              ? 0
-              : 2,
+      decimalDigits: 2,
     ).format(value);
-  }
-
-  String _formatNumber(
-    double value,
-  ) {
-    return value.truncateToDouble() == value
-        ? value.toInt().toString()
-        : value.toStringAsFixed(2);
   }
 }
 
 // =============================================================================
-// SUMMARY METRIC CARD
+// SUMMARY DATA
 // =============================================================================
 
-class _SummaryMetricCard extends StatelessWidget {
-  final IconData icon;
+class _SummaryData {
   final String title;
   final String value;
   final String subtitle;
+  final IconData icon;
   final Color color;
 
-  const _SummaryMetricCard({
-    required this.icon,
+  const _SummaryData({
     required this.title,
     required this.value,
     required this.subtitle,
+    required this.icon,
     required this.color,
+  });
+}
+
+// =============================================================================
+// SUMMARY CARD
+// =============================================================================
+
+class _SummaryMetricCard
+    extends StatelessWidget {
+  final _SummaryData data;
+
+  const _SummaryMetricCard({
+    required this.data,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
+    final ThemeData theme =
+        Theme.of(context);
+
     return Card(
+      clipBehavior:
+          Clip.antiAlias,
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding:
+            const EdgeInsets.all(18),
         child: Row(
           children: [
             Container(
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(
-                color: color.withValues(
+              width: 48,
+              height: 48,
+              decoration:
+                  BoxDecoration(
+                color:
+                    data.color.withValues(
                   alpha: 0.12,
                 ),
                 borderRadius:
-                    BorderRadius.circular(14),
+                    BorderRadius.circular(
+                  14,
+                ),
               ),
               child: Icon(
-                icon,
-                color: color,
+                data.icon,
+                color: data.color,
               ),
             ),
-            const SizedBox(width: 12),
+
+            const SizedBox(
+              width: 13,
+            ),
+
             Expanded(
               child: Column(
                 crossAxisAlignment:
                     CrossAxisAlignment.start,
                 children: [
                   Text(
-                    title,
-                    style: Theme.of(context)
+                    data.title,
+                    style: theme
                         .textTheme
                         .bodySmall
                         ?.copyWith(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurfaceVariant,
-                        ),
+                      color: theme
+                          .colorScheme
+                          .onSurfaceVariant,
+                      fontWeight:
+                          FontWeight.w600,
+                    ),
                   ),
-                  const SizedBox(height: 3),
+
+                  const SizedBox(
+                    height: 4,
+                  ),
+
                   Text(
-                    value,
+                    data.value,
                     maxLines: 1,
                     overflow:
                         TextOverflow.ellipsis,
-                    style: Theme.of(context)
+                    style: theme
                         .textTheme
-                        .titleMedium
+                        .titleLarge
                         ?.copyWith(
-                          fontWeight:
-                              FontWeight.bold,
-                        ),
+                      fontWeight:
+                          FontWeight.w800,
+                    ),
                   ),
-                  const SizedBox(height: 2),
+
+                  const SizedBox(
+                    height: 3,
+                  ),
+
                   Text(
-                    subtitle,
+                    data.subtitle,
                     maxLines: 1,
                     overflow:
                         TextOverflow.ellipsis,
-                    style: Theme.of(context)
+                    style: theme
                         .textTheme
                         .bodySmall
                         ?.copyWith(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurfaceVariant,
-                        ),
+                      color: theme
+                          .colorScheme
+                          .onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
@@ -1165,14 +1730,402 @@ class _SummaryMetricCard extends StatelessWidget {
 // SALE LIST TILE
 // =============================================================================
 
-class _SaleListTile extends StatelessWidget {
+class _SaleListTile
+    extends StatelessWidget {
   final SaleModel sale;
   final VoidCallback onTap;
+  final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   const _SaleListTile({
     required this.sale,
     required this.onTap,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  Color _statusColor() {
+    switch (sale.paymentStatus
+        .trim()
+        .toLowerCase()) {
+      case 'paid':
+        return AppColors.success;
+
+      case 'partial':
+        return AppColors.warning;
+
+      case 'unpaid':
+        return AppColors.danger;
+
+      default:
+        return AppColors.info;
+    }
+  }
+
+  String _statusText() {
+    final String value =
+        sale.paymentStatus.trim();
+
+    if (value.isEmpty) {
+      return 'Unknown';
+    }
+
+    return value[0].toUpperCase() +
+        value.substring(1).toLowerCase();
+  }
+
+  String _formatCurrency(
+    double value,
+  ) {
+    return NumberFormat.currency(
+      locale: 'en_IN',
+      symbol: '₹',
+      decimalDigits: 2,
+    ).format(value);
+  }
+
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    final ThemeData theme =
+        Theme.of(context);
+
+    final Color statusColor =
+        _statusColor();
+
+    final double outstanding =
+        (sale.total -
+                sale.paidAmount)
+            .clamp(
+      0,
+      double.infinity,
+    );
+
+    return Card(
+      margin: EdgeInsets.zero,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius:
+            BorderRadius.circular(16),
+        child: Padding(
+          padding:
+              const EdgeInsets.all(15),
+          child: Column(
+            children: [
+              Row(
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration:
+                        BoxDecoration(
+                      color: AppColors
+                          .success
+                          .withValues(
+                        alpha: 0.10,
+                      ),
+                      borderRadius:
+                          BorderRadius.circular(
+                        13,
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons
+                          .receipt_long_rounded,
+                      color:
+                          AppColors.success,
+                    ),
+                  ),
+
+                  const SizedBox(
+                    width: 12,
+                  ),
+
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment:
+                          CrossAxisAlignment
+                              .start,
+                      children: [
+                        Text(
+                          sale.invoiceNumber
+                                  .trim()
+                                  .isEmpty
+                              ? 'Sale'
+                              : sale
+                                  .invoiceNumber,
+                          maxLines: 1,
+                          overflow:
+                              TextOverflow
+                                  .ellipsis,
+                          style: theme
+                              .textTheme
+                              .titleMedium
+                              ?.copyWith(
+                            fontWeight:
+                                FontWeight.w800,
+                          ),
+                        ),
+
+                        const SizedBox(
+                          height: 4,
+                        ),
+
+                        Text(
+                          sale.customerName
+                                  .trim()
+                                  .isEmpty
+                              ? 'Walk-in Customer'
+                              : sale
+                                  .customerName,
+                          maxLines: 1,
+                          overflow:
+                              TextOverflow
+                                  .ellipsis,
+                          style: theme
+                              .textTheme
+                              .bodyMedium
+                              ?.copyWith(
+                            color: theme
+                                .colorScheme
+                                .onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(
+                    width: 10,
+                  ),
+
+                  Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        _formatCurrency(
+                          sale.total,
+                        ),
+                        style: theme
+                            .textTheme
+                            .titleMedium
+                            ?.copyWith(
+                          fontWeight:
+                              FontWeight.w800,
+                        ),
+                      ),
+
+                      const SizedBox(
+                        height: 6,
+                      ),
+
+                      Container(
+                        padding:
+                            const EdgeInsets
+                                .symmetric(
+                          horizontal: 9,
+                          vertical: 5,
+                        ),
+                        decoration:
+                            BoxDecoration(
+                          color: statusColor
+                              .withValues(
+                            alpha: 0.10,
+                          ),
+                          borderRadius:
+                              BorderRadius
+                                  .circular(
+                            20,
+                          ),
+                        ),
+                        child: Text(
+                          _statusText(),
+                          style: TextStyle(
+                            color:
+                                statusColor,
+                            fontSize: 11,
+                            fontWeight:
+                                FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+
+              const SizedBox(
+                height: 14,
+              ),
+
+              Divider(
+                height: 1,
+                color: theme
+                    .dividerColor
+                    .withValues(
+                  alpha: 0.6,
+                ),
+              ),
+
+              const SizedBox(
+                height: 12,
+              ),
+
+              Wrap(
+                spacing: 16,
+                runSpacing: 8,
+                children: [
+                  _MiniInfo(
+                    icon:
+                        Icons.calendar_today_outlined,
+                    text: DateFormat(
+                      'dd MMM yyyy',
+                    ).format(
+                      sale.date,
+                    ),
+                  ),
+                  _MiniInfo(
+                    icon:
+                        Icons.inventory_2_outlined,
+                    text:
+                        '${sale.items.length} item${sale.items.length == 1 ? '' : 's'}',
+                  ),
+                  _MiniInfo(
+                    icon:
+                        Icons.payments_outlined,
+                    text:
+                        'Paid ${_formatCurrency(sale.paidAmount)}',
+                  ),
+                  if (outstanding > 0)
+                    _MiniInfo(
+                      icon: Icons
+                          .account_balance_wallet_outlined,
+                      text:
+                          'Due ${_formatCurrency(outstanding)}',
+                    ),
+                ],
+              ),
+
+              const SizedBox(
+                height: 10,
+              ),
+
+              Row(
+                mainAxisAlignment:
+                    MainAxisAlignment.end,
+                children: [
+                  TextButton.icon(
+                    onPressed: onTap,
+                    icon: const Icon(
+                      Icons
+                          .visibility_outlined,
+                      size: 18,
+                    ),
+                    label:
+                        const Text(
+                      'View',
+                    ),
+                  ),
+
+                  TextButton.icon(
+                    onPressed: onEdit,
+                    icon: const Icon(
+                      Icons.edit_outlined,
+                      size: 18,
+                    ),
+                    label:
+                        const Text(
+                      'Edit',
+                    ),
+                  ),
+
+                  IconButton(
+                    tooltip:
+                        'Delete sale',
+                    onPressed: onDelete,
+                    icon: const Icon(
+                      Icons
+                          .delete_outline_rounded,
+                      color:
+                          AppColors.danger,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// MINI INFO
+// =============================================================================
+
+class _MiniInfo
+    extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _MiniInfo({
+    required this.icon,
+    required this.text,
+  });
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    return Row(
+      mainAxisSize:
+          MainAxisSize.min,
+      children: [
+        Icon(
+          icon,
+          size: 15,
+          color: Theme.of(context)
+              .colorScheme
+              .onSurfaceVariant,
+        ),
+        const SizedBox(
+          width: 5,
+        ),
+        Text(
+          text,
+          style: Theme.of(context)
+              .textTheme
+              .bodySmall
+              ?.copyWith(
+            color: Theme.of(context)
+                .colorScheme
+                .onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// =============================================================================
+// SALE DETAILS SHEET
+// =============================================================================
+
+class _SaleDetailsSheet
+    extends StatelessWidget {
+  final SaleModel sale;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  const _SaleDetailsSheet({
+    required this.sale,
+    required this.onEdit,
     required this.onDelete,
   });
 
@@ -1182,242 +2135,486 @@ class _SaleListTile extends StatelessWidget {
     return NumberFormat.currency(
       locale: 'en_IN',
       symbol: '₹',
-      decimalDigits:
-          value.truncateToDouble() == value
-              ? 0
-              : 2,
+      decimalDigits: 2,
     ).format(value);
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final double outstanding =
-        sale.total - sale.paidAmount;
+  String _formatNumber(
+    double value,
+  ) {
+    if (value == value.roundToDouble()) {
+      return value.toInt().toString();
+    }
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius:
-          BorderRadius.circular(14),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          vertical: 12,
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(
-                color: AppColors.success.withValues(
-                  alpha: 0.10,
-                ),
-                borderRadius:
-                    BorderRadius.circular(13),
-              ),
-              child: const Icon(
-                Icons.receipt_long_rounded,
-                color: AppColors.success,
-              ),
-            ),
-
-            const SizedBox(width: 12),
-
-            Expanded(
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          sale.invoiceNumber.isEmpty
-                              ? 'Sale'
-                              : sale.invoiceNumber,
-                          maxLines: 1,
-                          overflow:
-                              TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontWeight:
-                                FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      _StatusChip(
-                        status:
-                            sale.paymentStatus,
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 4),
-
-                  Text(
-                    sale.customerName.isEmpty
-                        ? 'Walk-in Customer'
-                        : sale.customerName,
-                    maxLines: 1,
-                    overflow:
-                        TextOverflow.ellipsis,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurfaceVariant,
-                        ),
-                  ),
-
-                  const SizedBox(height: 3),
-
-                  Text(
-                    '${DateFormat('dd MMM yyyy').format(sale.date)} • ${sale.items.length} item${sale.items.length == 1 ? '' : 's'}',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurfaceVariant,
-                        ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(width: 12),
-
-            Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.end,
-              children: [
-                Text(
-                  _formatCurrency(
-                    sale.total,
-                  ),
-                  style: const TextStyle(
-                    fontWeight:
-                        FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  outstanding > 0
-                      ? 'Due ${_formatCurrency(outstanding)}'
-                      : 'Paid',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight:
-                        FontWeight.w600,
-                    color: outstanding > 0
-                        ? AppColors.warning
-                        : AppColors.success,
-                  ),
-                ),
-              ],
-            ),
-
-            PopupMenuButton<String>(
-              tooltip: 'More options',
-              onSelected: (value) {
-                if (value == 'delete') {
-                  onDelete();
-                }
-              },
-              itemBuilder: (context) {
-                return const [
-                  PopupMenuItem<String>(
-                    value: 'delete',
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.delete_outline_rounded,
-                          color:
-                              AppColors.danger,
-                        ),
-                        SizedBox(width: 10),
-                        Text('Delete'),
-                      ],
-                    ),
-                  ),
-                ];
-              },
-            ),
-          ],
-        ),
-      ),
-    );
+    return value.toStringAsFixed(2);
   }
-}
 
-// =============================================================================
-// STATUS CHIP
-// =============================================================================
-
-class _StatusChip extends StatelessWidget {
-  final String status;
-
-  const _StatusChip({
-    required this.status,
-  });
-
-  Color _color() {
-    switch (status.toLowerCase()) {
+  Color _statusColor() {
+    switch (sale.paymentStatus
+        .trim()
+        .toLowerCase()) {
       case 'paid':
         return AppColors.success;
+
       case 'partial':
         return AppColors.warning;
+
       case 'unpaid':
         return AppColors.danger;
+
       default:
         return AppColors.info;
     }
   }
 
-  String _label() {
-    switch (status.toLowerCase()) {
-      case 'paid':
-        return 'Paid';
-      case 'partial':
-        return 'Partial';
-      case 'unpaid':
-        return 'Unpaid';
-      default:
-        if (status.trim().isEmpty) {
-          return 'Unknown';
-        }
+  String _statusText() {
+    final String value =
+        sale.paymentStatus.trim();
 
-        return status[0].toUpperCase() +
-            status.substring(1);
+    if (value.isEmpty) {
+      return 'Unknown';
     }
+
+    return value[0].toUpperCase() +
+        value.substring(1).toLowerCase();
   }
 
   @override
-  Widget build(BuildContext context) {
-    final Color color = _color();
+  Widget build(
+    BuildContext context,
+  ) {
+    final ThemeData theme =
+        Theme.of(context);
 
-    return Container(
-      padding:
-          const EdgeInsets.symmetric(
-        horizontal: 8,
-        vertical: 4,
-      ),
-      decoration: BoxDecoration(
-        color: color.withValues(
-          alpha: 0.10,
+    final Color statusColor =
+        _statusColor();
+
+    final double outstanding =
+        (sale.total -
+                sale.paidAmount)
+            .clamp(
+      0,
+      double.infinity,
+    );
+
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding:
+            const EdgeInsets.fromLTRB(
+          20,
+          4,
+          20,
+          28,
         ),
-        borderRadius:
-            BorderRadius.circular(20),
-      ),
-      child: Text(
-        _label(),
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight:
-              FontWeight.w700,
-          color: color,
+        child: Column(
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
+          children: [
+            // -------------------------------------------------------------------
+            // HEADER
+            // -------------------------------------------------------------------
+
+            Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration:
+                      BoxDecoration(
+                    color: AppColors
+                        .success
+                        .withValues(
+                      alpha: 0.12,
+                    ),
+                    borderRadius:
+                        BorderRadius.circular(
+                      14,
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons
+                        .receipt_long_rounded,
+                    color:
+                        AppColors.success,
+                  ),
+                ),
+
+                const SizedBox(
+                  width: 12,
+                ),
+
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment
+                            .start,
+                    children: [
+                      Text(
+                        sale.invoiceNumber
+                                .trim()
+                                .isEmpty
+                            ? 'Sale Details'
+                            : sale
+                                .invoiceNumber,
+                        style: theme
+                            .textTheme
+                            .titleLarge
+                            ?.copyWith(
+                          fontWeight:
+                              FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(
+                        height: 4,
+                      ),
+                      Text(
+                        DateFormat(
+                          'dd MMM yyyy, hh:mm a',
+                        ).format(
+                          sale.date,
+                        ),
+                        style: theme
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(
+                          color: theme
+                              .colorScheme
+                              .onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                Container(
+                  padding:
+                      const EdgeInsets
+                          .symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration:
+                      BoxDecoration(
+                    color: statusColor
+                        .withValues(
+                      alpha: 0.10,
+                    ),
+                    borderRadius:
+                        BorderRadius.circular(
+                      20,
+                    ),
+                  ),
+                  child: Text(
+                    _statusText(),
+                    style: TextStyle(
+                      color:
+                          statusColor,
+                      fontWeight:
+                          FontWeight.w800,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(
+              height: 22,
+            ),
+
+            // -------------------------------------------------------------------
+            // CUSTOMER
+            // -------------------------------------------------------------------
+
+            _DetailSection(
+              title: 'Customer',
+              child: Row(
+                children: [
+                  const CircleAvatar(
+                    radius: 21,
+                    child: Icon(
+                      Icons
+                          .person_outline_rounded,
+                    ),
+                  ),
+                  const SizedBox(
+                    width: 11,
+                  ),
+                  Expanded(
+                    child: Text(
+                      sale.customerName
+                              .trim()
+                              .isEmpty
+                          ? 'Walk-in Customer'
+                          : sale
+                              .customerName,
+                      style:
+                          const TextStyle(
+                        fontWeight:
+                            FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(
+              height: 18,
+            ),
+
+            // -------------------------------------------------------------------
+            // ITEMS
+            // -------------------------------------------------------------------
+
+            _DetailSection(
+              title: 'Items',
+              child: Column(
+                children:
+                    sale.items.map(
+                  (item) {
+                    return Padding(
+                      padding:
+                          const EdgeInsets
+                              .only(
+                        bottom: 13,
+                      ),
+                      child: Row(
+                        crossAxisAlignment:
+                            CrossAxisAlignment
+                                .start,
+                        children: [
+                          Expanded(
+                            child:
+                                Column(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment
+                                      .start,
+                              children: [
+                                Text(
+                                  item.productName,
+                                  style:
+                                      const TextStyle(
+                                    fontWeight:
+                                        FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(
+                                  height: 4,
+                                ),
+                                Text(
+                                  '${_formatNumber(item.quantity)} ${item.unit} × ${_formatCurrency(item.sellingRate)}',
+                                  style:
+                                      theme
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                    color: theme
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(
+                            width: 12,
+                          ),
+                          Text(
+                            _formatCurrency(
+                              item.total,
+                            ),
+                            style:
+                                const TextStyle(
+                              fontWeight:
+                                  FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ).toList(),
+              ),
+            ),
+
+            const SizedBox(
+              height: 14,
+            ),
+
+            // -------------------------------------------------------------------
+            // AMOUNT SUMMARY
+            // -------------------------------------------------------------------
+
+            Container(
+              width: double.infinity,
+              padding:
+                  const EdgeInsets.all(
+                16,
+              ),
+              decoration:
+                  BoxDecoration(
+                color: theme
+                    .colorScheme
+                    .surfaceContainerHighest
+                    .withValues(
+                  alpha: 0.45,
+                ),
+                borderRadius:
+                    BorderRadius.circular(
+                  14,
+                ),
+              ),
+              child: Column(
+                children: [
+                  _AmountRow(
+                    label: 'Subtotal',
+                    value:
+                        _formatCurrency(
+                      sale.subtotal,
+                    ),
+                  ),
+                  const SizedBox(
+                    height: 8,
+                  ),
+                  _AmountRow(
+                    label: 'Discount',
+                    value:
+                        '- ${_formatCurrency(sale.discount)}',
+                  ),
+                  const SizedBox(
+                    height: 8,
+                  ),
+                  _AmountRow(
+                    label: 'Tax',
+                    value:
+                        _formatCurrency(
+                      sale.tax,
+                    ),
+                  ),
+                  const Divider(
+                    height: 20,
+                  ),
+                  _AmountRow(
+                    label: 'Total',
+                    value:
+                        _formatCurrency(
+                      sale.total,
+                    ),
+                    bold: true,
+                  ),
+                  const SizedBox(
+                    height: 8,
+                  ),
+                  _AmountRow(
+                    label: 'Paid',
+                    value:
+                        _formatCurrency(
+                      sale.paidAmount,
+                    ),
+                    valueColor:
+                        AppColors.success,
+                  ),
+                  if (outstanding > 0) ...[
+                    const SizedBox(
+                      height: 8,
+                    ),
+                    _AmountRow(
+                      label:
+                          'Outstanding',
+                      value:
+                          _formatCurrency(
+                        outstanding,
+                      ),
+                      valueColor:
+                          AppColors.warning,
+                      bold: true,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+
+            const SizedBox(
+              height: 16,
+            ),
+
+            // -------------------------------------------------------------------
+            // PAYMENT METHOD
+            // -------------------------------------------------------------------
+
+            _InfoRow(
+              icon:
+                  Icons.payments_outlined,
+              label: 'Payment Method',
+              value:
+                  sale.paymentMethod
+                          .trim()
+                          .isEmpty
+                      ? 'Not specified'
+                      : sale.paymentMethod,
+            ),
+
+            if (sale.notes
+                .trim()
+                .isNotEmpty) ...[
+              const SizedBox(
+                height: 12,
+              ),
+              _InfoRow(
+                icon:
+                    Icons.notes_rounded,
+                label: 'Notes',
+                value: sale.notes,
+              ),
+            ],
+
+            const SizedBox(
+              height: 22,
+            ),
+
+            // -------------------------------------------------------------------
+            // ACTIONS
+            // -------------------------------------------------------------------
+
+            Row(
+              children: [
+                Expanded(
+                  child:
+                      OutlinedButton.icon(
+                    onPressed: onEdit,
+                    icon: const Icon(
+                      Icons.edit_outlined,
+                    ),
+                    label: const Text(
+                      'Edit Sale',
+                    ),
+                  ),
+                ),
+                const SizedBox(
+                  width: 12,
+                ),
+                Expanded(
+                  child:
+                      FilledButton.icon(
+                    style: FilledButton
+                        .styleFrom(
+                      backgroundColor:
+                          AppColors.danger,
+                    ),
+                    onPressed: onDelete,
+                    icon: const Icon(
+                      Icons
+                          .delete_outline_rounded,
+                    ),
+                    label: const Text(
+                      'Delete',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -1428,7 +2625,8 @@ class _StatusChip extends StatelessWidget {
 // DETAIL SECTION
 // =============================================================================
 
-class _DetailSection extends StatelessWidget {
+class _DetailSection
+    extends StatelessWidget {
   final String title;
   final Widget child;
 
@@ -1438,7 +2636,9 @@ class _DetailSection extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return Column(
       crossAxisAlignment:
           CrossAxisAlignment.start,
@@ -1449,11 +2649,13 @@ class _DetailSection extends StatelessWidget {
               .textTheme
               .titleSmall
               ?.copyWith(
-                fontWeight:
-                    FontWeight.bold,
-              ),
+            fontWeight:
+                FontWeight.w800,
+          ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(
+          height: 10,
+        ),
         child,
       ],
     );
@@ -1461,134 +2663,52 @@ class _DetailSection extends StatelessWidget {
 }
 
 // =============================================================================
-// SUMMARY CARD
+// AMOUNT ROW
 // =============================================================================
 
-class _SummaryCard extends StatelessWidget {
-  final double subtotal;
-  final double discount;
-  final double tax;
-  final double total;
-  final double paid;
+class _AmountRow
+    extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color? valueColor;
+  final bool bold;
 
-  const _SummaryCard({
-    required this.subtotal,
-    required this.discount,
-    required this.tax,
-    required this.total,
-    required this.paid,
+  const _AmountRow({
+    required this.label,
+    required this.value,
+    this.valueColor,
+    this.bold = false,
   });
 
-  String _currency(
-    double value,
-  ) {
-    return NumberFormat.currency(
-      locale: 'en_IN',
-      symbol: '₹',
-      decimalDigits:
-          value.truncateToDouble() == value
-              ? 0
-              : 2,
-    ).format(value);
-  }
-
   @override
-  Widget build(BuildContext context) {
-    final double outstanding =
-        total - paid;
-
-    return Container(
-      padding:
-          const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context)
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(alpha: 0.45),
-        borderRadius:
-            BorderRadius.circular(14),
-      ),
-      child: Column(
-        children: [
-          _row(
-            context,
-            'Subtotal',
-            _currency(subtotal),
-          ),
-          if (discount > 0)
-            _row(
-              context,
-              'Discount',
-              '- ${_currency(discount)}',
-            ),
-          if (tax > 0)
-            _row(
-              context,
-              'Tax',
-              _currency(tax),
-            ),
-          const Divider(height: 20),
-          _row(
-            context,
-            'Total',
-            _currency(total),
-            bold: true,
-          ),
-          const SizedBox(height: 8),
-          _row(
-            context,
-            'Paid',
-            _currency(paid),
-            valueColor:
-                AppColors.success,
-          ),
-          const SizedBox(height: 8),
-          _row(
-            context,
-            'Outstanding',
-            _currency(
-              outstanding > 0
-                  ? outstanding
-                  : 0,
-            ),
-            valueColor:
-                outstanding > 0
-                    ? AppColors.warning
-                    : AppColors.success,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _row(
+  Widget build(
     BuildContext context,
-    String label,
-    String value, {
-    bool bold = false,
-    Color? valueColor,
-  }) {
+  ) {
     return Row(
       children: [
         Expanded(
           child: Text(
             label,
-            style: TextStyle(
-              fontWeight:
-                  bold
-                      ? FontWeight.bold
-                      : FontWeight.normal,
+            style: Theme.of(context)
+                .textTheme
+                .bodyMedium
+                ?.copyWith(
+              fontWeight: bold
+                  ? FontWeight.w700
+                  : FontWeight.w500,
             ),
           ),
         ),
         Text(
           value,
-          style: TextStyle(
-            fontWeight:
-                bold
-                    ? FontWeight.bold
-                    : FontWeight.w600,
+          style: Theme.of(context)
+              .textTheme
+              .bodyMedium
+              ?.copyWith(
             color: valueColor,
+            fontWeight: bold
+                ? FontWeight.w800
+                : FontWeight.w600,
           ),
         ),
       ],
@@ -1600,7 +2720,8 @@ class _SummaryCard extends StatelessWidget {
 // INFO ROW
 // =============================================================================
 
-class _InfoRow extends StatelessWidget {
+class _InfoRow
+    extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
@@ -1612,7 +2733,9 @@ class _InfoRow extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return Row(
       crossAxisAlignment:
           CrossAxisAlignment.start,
@@ -1624,17 +2747,38 @@ class _InfoRow extends StatelessWidget {
               .colorScheme
               .primary,
         ),
-        const SizedBox(width: 10),
-        Text(
-          '$label: ',
-          style: const TextStyle(
-            fontWeight:
-                FontWeight.w600,
-          ),
+        const SizedBox(
+          width: 10,
         ),
         Expanded(
-          child: Text(
-            value,
+          child: Column(
+            crossAxisAlignment:
+                CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurfaceVariant,
+                  fontWeight:
+                      FontWeight.w600,
+                ),
+              ),
+              const SizedBox(
+                height: 3,
+              ),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontWeight:
+                      FontWeight.w600,
+                ),
+              ),
+            ],
           ),
         ),
       ],

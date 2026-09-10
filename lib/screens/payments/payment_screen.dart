@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
-import 'add_payment_screen.dart';
-import '../../models/business_model.dart';
 import '../../models/payment_model.dart';
-import '../../repositories/business_repository.dart';
-import '../../repositories/payment_repository.dart';
+import '../../providers/business_provider.dart';
+import '../../providers/payment_provider.dart';
+import 'add_payment_screen.dart';
 
 class PaymentsScreen extends StatefulWidget {
   const PaymentsScreen({
@@ -18,12 +18,6 @@ class PaymentsScreen extends StatefulWidget {
 }
 
 class _PaymentsScreenState extends State<PaymentsScreen> {
-  final BusinessRepository _businessRepository =
-      BusinessRepository();
-
-  final PaymentRepository _paymentRepository =
-      PaymentRepository();
-
   final TextEditingController _searchController =
       TextEditingController();
 
@@ -37,10 +31,12 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   final DateFormat _dateFormat =
       DateFormat('dd MMM yyyy');
 
-  BusinessModel? _business;
+  String? _businessId;
 
-  bool _isLoadingBusiness = true;
-  String? _businessError;
+  bool _isInitializing = true;
+  bool _initialized = false;
+
+  String? _pageError;
 
   String _searchQuery = '';
   String _selectedPaymentMethod = 'All';
@@ -58,7 +54,10 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   @override
   void initState() {
     super.initState();
-    _loadBusiness();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initialize();
+    });
   }
 
   @override
@@ -67,34 +66,65 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     super.dispose();
   }
 
-  Future<void> _loadBusiness() async {
+  // ---------------------------------------------------------------------------
+  // INITIALIZATION
+  // ---------------------------------------------------------------------------
+
+  Future<void> _initialize() async {
+    if (!mounted) {
+      return;
+    }
+
     setState(() {
-      _isLoadingBusiness = true;
-      _businessError = null;
+      _isInitializing = true;
+      _pageError = null;
     });
 
     try {
-      final business =
-          await _businessRepository
-              .getBusinessForCurrentUser();
+      final BusinessProvider businessProvider =
+          context.read<BusinessProvider>();
+
+      final PaymentProvider paymentProvider =
+          context.read<PaymentProvider>();
+
+      await businessProvider.loadBusiness();
 
       if (!mounted) {
         return;
       }
 
-      if (business == null) {
+      final String businessId =
+          businessProvider.business?.id.trim() ?? '';
+
+      if (businessId.isEmpty) {
         setState(() {
-          _business = null;
-          _businessError =
-              'Business profile not found.';
-          _isLoadingBusiness = false;
+          _businessId = null;
+          _isInitializing = false;
+          _initialized = false;
+          _pageError =
+              'Business profile not found. Please complete your business setup.';
         });
         return;
       }
 
+      _businessId = businessId;
+
+      paymentProvider.setBusinessId(
+        businessId,
+      );
+
+      await paymentProvider.loadAndWatchPayments(
+        businessId: businessId,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
       setState(() {
-        _business = business;
-        _isLoadingBusiness = false;
+        _isInitializing = false;
+        _initialized = true;
+        _pageError = null;
       });
     } catch (e) {
       if (!mounted) {
@@ -102,37 +132,108 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
       }
 
       setState(() {
-        _businessError =
-            'Unable to load business details.';
-        _isLoadingBusiness = false;
+        _isInitializing = false;
+        _initialized = false;
+        _pageError =
+            'Unable to load payments. Please try again.';
       });
     }
   }
 
+  Future<void> _refresh() async {
+    if (!mounted) {
+      return;
+    }
+
+    try {
+      final BusinessProvider businessProvider =
+          context.read<BusinessProvider>();
+
+      final PaymentProvider paymentProvider =
+          context.read<PaymentProvider>();
+
+      await businessProvider.refresh();
+
+      if (!mounted) {
+        return;
+      }
+
+      final String businessId =
+          businessProvider.business?.id.trim() ?? '';
+
+      if (businessId.isEmpty) {
+        setState(() {
+          _businessId = null;
+          _pageError =
+              'Business profile not found.';
+        });
+        return;
+      }
+
+      if (_businessId != businessId) {
+        _businessId = businessId;
+
+        paymentProvider.setBusinessId(
+          businessId,
+        );
+
+        await paymentProvider.loadAndWatchPayments(
+          businessId: businessId,
+        );
+      } else {
+        await paymentProvider.refresh();
+      }
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'Unable to refresh payments.',
+          ),
+          backgroundColor: AppColors.danger,
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: 'RETRY',
+            textColor: Colors.white,
+            onPressed: _refresh,
+          ),
+        ),
+      );
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // FILTERING
+  // ---------------------------------------------------------------------------
+
   List<PaymentModel> _filterPayments(
     List<PaymentModel> payments,
   ) {
-    final query = _searchQuery.trim().toLowerCase();
+    final String query =
+        _searchQuery.trim().toLowerCase();
 
     return payments.where((payment) {
+      // Search
       if (query.isNotEmpty) {
-        final customerName =
+        final String customerName =
             payment.customerName.toLowerCase();
 
-        final method =
+        final String method =
             payment.paymentMethod.toLowerCase();
 
-        final reference =
-            payment.transactionReference
-                .toLowerCase();
+        final String reference =
+            payment.transactionReference.toLowerCase();
 
-        final notes =
+        final String notes =
             payment.notes.toLowerCase();
 
-        final amount =
+        final String amount =
             payment.amount.toStringAsFixed(2);
 
-        final matchesSearch =
+        final bool matchesSearch =
             customerName.contains(query) ||
                 method.contains(query) ||
                 reference.contains(query) ||
@@ -144,22 +245,22 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
         }
       }
 
+      // Payment method
       if (_selectedPaymentMethod != 'All' &&
           payment.paymentMethod !=
               _selectedPaymentMethod) {
         return false;
       }
 
+      // Date range
       if (_selectedDateRange != null) {
-        final date = payment.date;
-
-        final start = DateTime(
+        final DateTime start = DateTime(
           _selectedDateRange!.start.year,
           _selectedDateRange!.start.month,
           _selectedDateRange!.start.day,
         );
 
-        final end = DateTime(
+        final DateTime end = DateTime(
           _selectedDateRange!.end.year,
           _selectedDateRange!.end.month,
           _selectedDateRange!.end.day,
@@ -169,8 +270,8 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
           999,
         );
 
-        if (date.isBefore(start) ||
-            date.isAfter(end)) {
+        if (payment.date.isBefore(start) ||
+            payment.date.isAfter(end)) {
           return false;
         }
       }
@@ -184,15 +285,44 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   ) {
     return payments.fold<double>(
       0,
-      (total, payment) =>
-          total + payment.amount,
+      (double total, PaymentModel payment) {
+        return total + payment.amount;
+      },
     );
   }
 
-  Future<void> _selectDateRange() async {
-    final now = DateTime.now();
+  double _calculateTodayTotal(
+    List<PaymentModel> payments,
+  ) {
+    final DateTime now = DateTime.now();
 
-    final selected =
+    return payments.fold<double>(
+      0,
+      (double total, PaymentModel payment) {
+        final DateTime date = payment.date;
+
+        final bool isToday =
+            date.year == now.year &&
+                date.month == now.month &&
+                date.day == now.day;
+
+        if (isToday) {
+          return total + payment.amount;
+        }
+
+        return total;
+      },
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // DATE FILTER
+  // ---------------------------------------------------------------------------
+
+  Future<void> _selectDateRange() async {
+    final DateTime now = DateTime.now();
+
+    final DateTimeRange? selected =
         await showDateRangePicker(
       context: context,
       firstDate: DateTime(2020),
@@ -201,20 +331,19 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
         12,
         31,
       ),
-      initialDateRange:
-          _selectedDateRange,
-      builder: (context, child) {
+      initialDateRange: _selectedDateRange,
+      builder: (
+        BuildContext context,
+        Widget? child,
+      ) {
         return Theme(
           data: Theme.of(context).copyWith(
             colorScheme:
-                Theme.of(context)
-                    .colorScheme
-                    .copyWith(
-                      primary:
-                          AppColors.primary,
-                    ),
+                Theme.of(context).colorScheme.copyWith(
+              primary: AppColors.primary,
+            ),
           ),
-          child: child!,
+          child: child ?? const SizedBox.shrink(),
         );
       },
     );
@@ -238,6 +367,16 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     });
   }
 
+  bool get _hasFilters {
+    return _searchQuery.trim().isNotEmpty ||
+        _selectedPaymentMethod != 'All' ||
+        _selectedDateRange != null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // ADD PAYMENT
+  // ---------------------------------------------------------------------------
+
   Future<void> _openAddPayment() async {
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -249,16 +388,25 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
       return;
     }
 
-    setState(() {});
+    final PaymentProvider paymentProvider =
+        context.read<PaymentProvider>();
+
+    await paymentProvider.refresh();
   }
+
+  // ---------------------------------------------------------------------------
+  // DELETE PAYMENT
+  // ---------------------------------------------------------------------------
 
   Future<void> _deletePayment(
     PaymentModel payment,
   ) async {
-    final shouldDelete =
+    final bool? shouldDelete =
         await showDialog<bool>(
       context: context,
-      builder: (context) {
+      builder: (
+        BuildContext context,
+      ) {
         return AlertDialog(
           title: const Text(
             'Delete Payment?',
@@ -266,7 +414,8 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
           content: Text(
             'Are you sure you want to delete this payment of '
             '${_currencyFormat.format(payment.amount)} '
-            'received from ${payment.customerName}?',
+            'received from '
+            '${payment.customerName.trim().isEmpty ? 'Unknown Customer' : payment.customerName}?',
           ),
           actions: [
             TextButton(
@@ -276,12 +425,13 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                   false,
                 );
               },
-              child: const Text('CANCEL'),
+              child: const Text(
+                'CANCEL',
+              ),
             ),
             FilledButton(
               style: FilledButton.styleFrom(
-                backgroundColor:
-                    AppColors.danger,
+                backgroundColor: AppColors.danger,
               ),
               onPressed: () {
                 Navigator.pop(
@@ -289,7 +439,9 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                   true,
                 );
               },
-              child: const Text('DELETE'),
+              child: const Text(
+                'DELETE',
+              ),
             ),
           ],
         );
@@ -301,9 +453,11 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
       return;
     }
 
+    final PaymentProvider paymentProvider =
+        context.read<PaymentProvider>();
+
     try {
-      await _paymentRepository.deletePayment(
-        businessId: payment.businessId,
+      await paymentProvider.deletePayment(
         paymentId: payment.id,
       );
 
@@ -311,12 +465,12 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
         return;
       }
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
             'Payment deleted successfully.',
           ),
+          behavior: SnackBarBehavior.floating,
         ),
       );
     } catch (e) {
@@ -324,18 +478,21 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
         return;
       }
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             'Failed to delete payment: $e',
           ),
-          backgroundColor:
-              AppColors.danger,
+          backgroundColor: AppColors.danger,
+          behavior: SnackBarBehavior.floating,
         ),
       );
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // PAYMENT DETAILS
+  // ---------------------------------------------------------------------------
 
   void _showPaymentDetails(
     PaymentModel payment,
@@ -344,15 +501,16 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) {
+      builder: (
+        BuildContext context,
+      ) {
         return SafeArea(
           child: Container(
             margin: const EdgeInsets.all(12),
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: Theme.of(context)
-                  .colorScheme
-                  .surface,
+              color:
+                  Theme.of(context).colorScheme.surface,
               borderRadius:
                   BorderRadius.circular(24),
             ),
@@ -362,91 +520,24 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                     CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: AppColors.success
-                              .withValues(alpha: 0.12),
-                          borderRadius:
-                              BorderRadius.circular(
-                            14,
-                          ),
-                        ),
-                        child: const Icon(
-                          Icons
-                              .payments_rounded,
-                          color:
-                              AppColors.success,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment
-                                  .start,
-                          children: [
-                            Text(
-                              'Payment Details',
-                              style: Theme.of(
-                                context,
-                              )
-                                  .textTheme
-                                  .titleLarge
-                                  ?.copyWith(
-                                    fontWeight:
-                                        FontWeight
-                                            .w700,
-                                  ),
-                            ),
-                            const SizedBox(
-                              height: 2,
-                            ),
-                            Text(
-                              _dateFormat.format(
-                                payment.date,
-                              ),
-                              style: Theme.of(
-                                context,
-                              )
-                                  .textTheme
-                                  .bodySmall,
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () {
-                          Navigator.pop(
-                            context,
-                          );
-                        },
-                        icon: const Icon(
-                          Icons.close_rounded,
-                        ),
-                      ),
-                    ],
+                  _buildDetailsHeader(
+                    context,
+                    payment,
                   ),
                   const SizedBox(height: 20),
                   _detailTile(
                     context,
-                    icon: Icons
-                        .person_rounded,
+                    icon: Icons.person_rounded,
                     label: 'Customer',
                     value:
-                        payment.customerName
-                                .trim()
-                                .isEmpty
+                        payment.customerName.trim().isEmpty
                             ? 'Unknown Customer'
                             : payment.customerName,
                   ),
                   _detailTile(
                     context,
-                    icon: Icons
-                        .currency_rupee_rounded,
+                    icon:
+                        Icons.currency_rupee_rounded,
                     label: 'Amount',
                     value:
                         _currencyFormat.format(
@@ -465,8 +556,8 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                   ),
                   _detailTile(
                     context,
-                    icon: Icons
-                        .calendar_today_rounded,
+                    icon:
+                        Icons.calendar_today_rounded,
                     label: 'Payment Date',
                     value:
                         _dateFormat.format(
@@ -479,39 +570,35 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                       .isNotEmpty)
                     _detailTile(
                       context,
-                      icon: Icons
-                          .receipt_long_rounded,
+                      icon:
+                          Icons.receipt_long_rounded,
                       label:
                           'Transaction Reference',
-                      value: payment
-                          .transactionReference,
+                      value:
+                          payment.transactionReference,
                     ),
                   if (payment.notes
                       .trim()
                       .isNotEmpty)
                     _detailTile(
                       context,
-                      icon: Icons
-                          .notes_rounded,
+                      icon: Icons.notes_rounded,
                       label: 'Notes',
-                      value:
-                          payment.notes,
+                      value: payment.notes,
                     ),
                   const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
                       onPressed: () {
-                        Navigator.pop(
-                          context,
-                        );
+                        Navigator.pop(context);
+
                         _deletePayment(
                           payment,
                         );
                       },
                       icon: const Icon(
-                        Icons
-                            .delete_outline_rounded,
+                        Icons.delete_outline_rounded,
                       ),
                       label: const Text(
                         'DELETE PAYMENT',
@@ -525,8 +612,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                               AppColors.danger,
                         ),
                         padding:
-                            const EdgeInsets
-                                .symmetric(
+                            const EdgeInsets.symmetric(
                           vertical: 14,
                         ),
                       ),
@@ -541,6 +627,68 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     );
   }
 
+  Widget _buildDetailsHeader(
+    BuildContext context,
+    PaymentModel payment,
+  ) {
+    return Row(
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color:
+                AppColors.success.withValues(
+              alpha: 0.12,
+            ),
+            borderRadius:
+                BorderRadius.circular(14),
+          ),
+          child: const Icon(
+            Icons.payments_rounded,
+            color: AppColors.success,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment:
+                CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Payment Details',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleLarge
+                    ?.copyWith(
+                      fontWeight:
+                          FontWeight.w700,
+                    ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                _dateFormat.format(
+                  payment.date,
+                ),
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall,
+              ),
+            ],
+          ),
+        ),
+        IconButton(
+          onPressed: () {
+            Navigator.pop(context);
+          },
+          icon: const Icon(
+            Icons.close_rounded,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _detailTile(
     BuildContext context, {
     required IconData icon,
@@ -550,9 +698,8 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   }) {
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.only(
-        bottom: 10,
-      ),
+      margin:
+          const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
         color: Theme.of(context)
@@ -610,9 +757,15 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // MAIN BUILD
+  // ---------------------------------------------------------------------------
+
   @override
-  Widget build(BuildContext context) {
-    if (_isLoadingBusiness) {
+  Widget build(
+    BuildContext context,
+  ) {
+    if (_isInitializing) {
       return const Scaffold(
         body: Center(
           child: CircularProgressIndicator(),
@@ -620,73 +773,20 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
       );
     }
 
-    if (_businessError != null ||
-        _business == null) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('Payments'),
-        ),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(
-              24,
-            ),
-            child: Column(
-              mainAxisSize:
-                  MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons
-                      .business_center_outlined,
-                  size: 56,
-                  color:
-                      AppColors.warning,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  _businessError ??
-                      'Business profile not found.',
-                  textAlign:
-                      TextAlign.center,
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleMedium,
-                ),
-                const SizedBox(height: 16),
-                FilledButton.icon(
-                  onPressed: _loadBusiness,
-                  icon: const Icon(
-                    Icons.refresh_rounded,
-                  ),
-                  label:
-                      const Text('RETRY'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
+    if (_pageError != null ||
+        _businessId == null ||
+        !_initialized) {
+      return _buildPageError();
     }
 
-    return StreamBuilder<
-        List<PaymentModel>>(
-      stream:
-          _paymentRepository.watchPayments(
-        businessId: _business!.id,
-      ),
+    return Consumer<PaymentProvider>(
       builder: (
-        context,
-        snapshot,
+        BuildContext context,
+        PaymentProvider paymentProvider,
+        Widget? child,
       ) {
-        if (snapshot.hasError) {
-          return _buildErrorState(
-            snapshot.error.toString(),
-          );
-        }
-
-        if (snapshot.connectionState ==
-                ConnectionState.waiting &&
-            !snapshot.hasData) {
+        if (paymentProvider.isLoading &&
+            paymentProvider.payments.isEmpty) {
           return const Scaffold(
             body: Center(
               child:
@@ -695,22 +795,34 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
           );
         }
 
-        final allPayments =
-            snapshot.data ?? <PaymentModel>[];
+        if (paymentProvider.errorMessage != null &&
+            paymentProvider.payments.isEmpty) {
+          return _buildProviderError(
+            paymentProvider.errorMessage!,
+          );
+        }
 
-        final filteredPayments =
+        final List<PaymentModel> allPayments =
+            paymentProvider.payments;
+
+        final List<PaymentModel> filteredPayments =
             _filterPayments(
           allPayments,
         );
 
-        final totalReceived =
+        final double totalReceived =
             _calculateTotal(
           allPayments,
         );
 
-        final filteredTotal =
+        final double filteredTotal =
             _calculateTotal(
           filteredPayments,
+        );
+
+        final double todayTotal =
+            _calculateTodayTotal(
+          allPayments,
         );
 
         return _buildScreen(
@@ -719,10 +831,130 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
               filteredPayments,
           totalReceived: totalReceived,
           filteredTotal: filteredTotal,
+          todayTotal: todayTotal,
         );
       },
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // ERROR STATES
+  // ---------------------------------------------------------------------------
+
+  Widget _buildPageError() {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Payments',
+        ),
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize:
+                MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.business_center_outlined,
+                size: 56,
+                color: AppColors.warning,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                _pageError ??
+                    'Business profile not found.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(
+                      fontWeight:
+                          FontWeight.w700,
+                    ),
+              ),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: _initialize,
+                icon: const Icon(
+                  Icons.refresh_rounded,
+                ),
+                label: const Text(
+                  'RETRY',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProviderError(
+    String error,
+  ) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Payments',
+        ),
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize:
+                MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.cloud_off_rounded,
+                size: 56,
+                color: AppColors.danger,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Unable to load payments.',
+                textAlign:
+                    TextAlign.center,
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(
+                      fontWeight:
+                          FontWeight.w700,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                error,
+                textAlign:
+                    TextAlign.center,
+                maxLines: 3,
+                overflow:
+                    TextOverflow.ellipsis,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall,
+              ),
+              const SizedBox(height: 18),
+              FilledButton.icon(
+                onPressed: _refresh,
+                icon: const Icon(
+                  Icons.refresh_rounded,
+                ),
+                label:
+                    const Text('RETRY'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // SCREEN
+  // ---------------------------------------------------------------------------
 
   Widget _buildScreen({
     required List<PaymentModel> allPayments,
@@ -730,20 +962,15 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
         filteredPayments,
     required double totalReceived,
     required double filteredTotal,
+    required double todayTotal,
   }) {
-    final hasFilters =
-        _searchQuery.isNotEmpty ||
-            _selectedPaymentMethod !=
-                'All' ||
-            _selectedDateRange != null;
-
     return Scaffold(
       appBar: AppBar(
         title: const Text(
           'Payments',
         ),
         actions: [
-          if (hasFilters)
+          if (_hasFilters)
             IconButton(
               tooltip: 'Clear filters',
               onPressed: _clearFilters,
@@ -751,6 +978,13 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                 Icons.filter_alt_off_rounded,
               ),
             ),
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: _refresh,
+            icon: const Icon(
+              Icons.refresh_rounded,
+            ),
+          ),
         ],
       ),
       floatingActionButton:
@@ -764,88 +998,90 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
         ),
       ),
       body: SafeArea(
-        child: LayoutBuilder(
-          builder: (
-            context,
-            constraints,
-          ) {
-            final isDesktop =
-                constraints.maxWidth >=
-                    1000;
+        child: RefreshIndicator(
+          onRefresh: _refresh,
+          child: LayoutBuilder(
+            builder: (
+              BuildContext context,
+              BoxConstraints constraints,
+            ) {
+              final bool isDesktop =
+                  constraints.maxWidth >= 1000;
 
-            return Center(
-              child: ConstrainedBox(
-                constraints:
-                    BoxConstraints(
-                  maxWidth: isDesktop
-                      ? 1250
-                      : double.infinity,
-                ),
-                child: SingleChildScrollView(
-                  padding:
-                      const EdgeInsets.fromLTRB(
-                    16,
-                    16,
-                    16,
-                    100,
+              return Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: isDesktop
+                        ? 1250
+                        : double.infinity,
                   ),
-                  child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment
-                            .start,
-                    children: [
-                      _buildHeader(
-                        allPayments.length,
-                      ),
-                      const SizedBox(
-                        height: 16,
-                      ),
-                      _buildSummaryCards(
-                        totalReceived:
-                            totalReceived,
-                        filteredTotal:
-                            filteredTotal,
-                        filteredCount:
-                            filteredPayments
-                                .length,
-                        totalCount:
-                            allPayments.length,
-                        isDesktop:
-                            isDesktop,
-                      ),
-                      const SizedBox(
-                        height: 16,
-                      ),
-                      _buildFilters(
-                        isDesktop:
-                            isDesktop,
-                      ),
-                      const SizedBox(
-                        height: 16,
-                      ),
-                      _buildPaymentList(
-                        filteredPayments,
-                        isDesktop,
-                      ),
-                    ],
+                  child: SingleChildScrollView(
+                    physics:
+                        const AlwaysScrollableScrollPhysics(),
+                    padding:
+                        const EdgeInsets.fromLTRB(
+                      16,
+                      16,
+                      16,
+                      110,
+                    ),
+                    child: Column(
+                      crossAxisAlignment:
+                          CrossAxisAlignment.start,
+                      children: [
+                        _buildHeader(
+                          allPayments.length,
+                          todayTotal,
+                        ),
+                        const SizedBox(height: 16),
+                        _buildSummaryCards(
+                          totalReceived:
+                              totalReceived,
+                          filteredTotal:
+                              filteredTotal,
+                          todayTotal:
+                              todayTotal,
+                          filteredCount:
+                              filteredPayments.length,
+                          totalCount:
+                              allPayments.length,
+                          isDesktop:
+                              isDesktop,
+                        ),
+                        const SizedBox(height: 16),
+                        _buildFilters(
+                          isDesktop:
+                              isDesktop,
+                        ),
+                        const SizedBox(height: 16),
+                        _buildPaymentList(
+                          filteredPayments,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            );
-          },
+              );
+            },
+          ),
         ),
       ),
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // HEADER
+  // ---------------------------------------------------------------------------
+
   Widget _buildHeader(
     int paymentCount,
+    double todayTotal,
   ) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
+        gradient: const LinearGradient(
           colors: [
             AppColors.primary,
             AppColors.primaryDark,
@@ -857,19 +1093,20 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
       child: Row(
         children: [
           Container(
-            width: 52,
-            height: 52,
+            width: 54,
+            height: 54,
             decoration: BoxDecoration(
-              color: Colors.white
-                  .withValues(alpha: 0.15),
+              color:
+                  Colors.white.withValues(
+                alpha: 0.15,
+              ),
               borderRadius:
                   BorderRadius.circular(16),
             ),
             child: const Icon(
-              Icons
-                  .account_balance_wallet_rounded,
+              Icons.account_balance_wallet_rounded,
               color: Colors.white,
-              size: 27,
+              size: 28,
             ),
           ),
           const SizedBox(width: 14),
@@ -896,8 +1133,8 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                       .textTheme
                       .bodyMedium
                       ?.copyWith(
-                        color: Colors.white
-                            .withValues(
+                        color:
+                            Colors.white.withValues(
                           alpha: 0.82,
                         ),
                       ),
@@ -905,22 +1142,69 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
               ],
             ),
           ),
+          if (todayTotal > 0)
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 9,
+              ),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(
+                  alpha: 0.13,
+                ),
+                borderRadius:
+                    BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment:
+                    CrossAxisAlignment.end,
+                children: [
+                  const Text(
+                    'TODAY',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 9,
+                      fontWeight:
+                          FontWeight.w700,
+                      letterSpacing: 0.7,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    _currencyFormat.format(
+                      todayTotal,
+                    ),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight:
+                          FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // SUMMARY
+  // ---------------------------------------------------------------------------
+
   Widget _buildSummaryCards({
     required double totalReceived,
     required double filteredTotal,
+    required double todayTotal,
     required int filteredCount,
     required int totalCount,
     required bool isDesktop,
   }) {
-    final cards = [
+    final List<Widget> cards = [
       _summaryCard(
-        icon: Icons
-            .payments_rounded,
+        icon: Icons.payments_rounded,
         title: 'Total Received',
         value:
             _currencyFormat.format(
@@ -931,9 +1215,19 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
         color: AppColors.success,
       ),
       _summaryCard(
-        icon: Icons
-            .filter_alt_rounded,
-        title: 'Filtered Amount',
+        icon: Icons.today_rounded,
+        title: 'Today',
+        value:
+            _currencyFormat.format(
+          todayTotal,
+        ),
+        subtitle:
+            'Received today',
+        color: AppColors.info,
+      ),
+      _summaryCard(
+        icon: Icons.filter_alt_rounded,
+        title: 'Filtered',
         value:
             _currencyFormat.format(
           filteredTotal,
@@ -942,32 +1236,23 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
             '$filteredCount matching',
         color: AppColors.primary,
       ),
-      _summaryCard(
-        icon: Icons
-            .today_rounded,
-        title: 'Today',
-        value: 'View',
-        subtitle:
-            'Use date filter',
-        color: AppColors.info,
-      ),
     ];
 
     if (isDesktop) {
       return Row(
-        children: cards
-            .map(
-              (card) => Expanded(
-                child: Padding(
-                  padding:
-                      const EdgeInsets.only(
-                    right: 10,
-                  ),
-                  child: card,
+        children: cards.map(
+          (Widget card) {
+            return Expanded(
+              child: Padding(
+                padding:
+                    const EdgeInsets.only(
+                  right: 10,
                 ),
+                child: card,
               ),
-            )
-            .toList(),
+            );
+          },
+        ).toList(),
       );
     }
 
@@ -1000,9 +1285,10 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Theme.of(context)
-            .colorScheme
-            .surface,
+        color:
+            Theme.of(context)
+                .colorScheme
+                .surface,
         borderRadius:
             BorderRadius.circular(18),
         border: Border.all(
@@ -1067,8 +1353,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                       .textTheme
                       .bodySmall
                       ?.copyWith(
-                        color:
-                            color,
+                        color: color,
                       ),
                 ),
               ],
@@ -1079,6 +1364,10 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // FILTERS
+  // ---------------------------------------------------------------------------
+
   Widget _buildFilters({
     required bool isDesktop,
   }) {
@@ -1086,9 +1375,10 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Theme.of(context)
-            .colorScheme
-            .surface,
+        color:
+            Theme.of(context)
+                .colorScheme
+                .surface,
         borderRadius:
             BorderRadius.circular(18),
         border: Border.all(
@@ -1119,6 +1409,13 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                           FontWeight.w700,
                     ),
               ),
+              const Spacer(),
+              if (_hasFilters)
+                TextButton(
+                  onPressed: _clearFilters,
+                  child:
+                      const Text('CLEAR'),
+                ),
             ],
           ),
           const SizedBox(height: 14),
@@ -1166,7 +1463,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   Widget _searchField() {
     return TextField(
       controller: _searchController,
-      onChanged: (value) {
+      onChanged: (String value) {
         setState(() {
           _searchQuery = value;
         });
@@ -1181,8 +1478,8 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
             _searchQuery.isNotEmpty
                 ? IconButton(
                     onPressed: () {
-                      _searchController
-                          .clear();
+                      _searchController.clear();
+
                       setState(() {
                         _searchQuery = '';
                       });
@@ -1197,41 +1494,37 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   }
 
   Widget _paymentMethodDropdown() {
-    return DropdownButtonFormField<
-        String>(
+    return DropdownButtonFormField<String>(
       initialValue:
           _selectedPaymentMethod,
       decoration: const InputDecoration(
         labelText: 'Payment Method',
         prefixIcon: Icon(
-          Icons
-              .account_balance_wallet_outlined,
+          Icons.account_balance_wallet_outlined,
         ),
       ),
-      items: _paymentMethods
-          .map(
-            (method) =>
-                DropdownMenuItem(
-              value: method,
-              child: Text(method),
-            ),
-          )
-          .toList(),
-      onChanged: (value) {
+      items: _paymentMethods.map(
+        (String method) {
+          return DropdownMenuItem<String>(
+            value: method,
+            child: Text(method),
+          );
+        },
+      ).toList(),
+      onChanged: (String? value) {
         if (value == null) {
           return;
         }
 
         setState(() {
-          _selectedPaymentMethod =
-              value;
+          _selectedPaymentMethod = value;
         });
       },
     );
   }
 
   Widget _dateFilterButton() {
-    final hasDate =
+    final bool hasDate =
         _selectedDateRange != null;
 
     return OutlinedButton.icon(
@@ -1254,9 +1547,12 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // PAYMENT LIST
+  // ---------------------------------------------------------------------------
+
   Widget _buildPaymentList(
     List<PaymentModel> payments,
-    bool isDesktop,
   ) {
     if (payments.isEmpty) {
       return _buildEmptyState();
@@ -1286,8 +1582,10 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                 vertical: 4,
               ),
               decoration: BoxDecoration(
-                color: AppColors.primary
-                    .withValues(alpha: 0.1),
+                color:
+                    AppColors.primary.withValues(
+                  alpha: 0.1,
+                ),
                 borderRadius:
                     BorderRadius.circular(20),
               ),
@@ -1305,7 +1603,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
         ),
         const SizedBox(height: 12),
         ...payments.map(
-          (payment) =>
+          (PaymentModel payment) =>
               _paymentCard(payment),
         ),
       ],
@@ -1315,37 +1613,38 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   Widget _paymentCard(
     PaymentModel payment,
   ) {
+    final String customerName =
+        payment.customerName.trim().isEmpty
+            ? 'Unknown Customer'
+            : payment.customerName;
+
     return Card(
-      margin: const EdgeInsets.only(
-        bottom: 10,
-      ),
+      margin:
+          const EdgeInsets.only(bottom: 10),
       elevation: 0,
       child: InkWell(
         borderRadius:
             BorderRadius.circular(16),
         onTap: () {
-          _showPaymentDetails(
-            payment,
-          );
+          _showPaymentDetails(payment);
         },
         child: Padding(
-          padding: const EdgeInsets.all(
-            14,
-          ),
+          padding: const EdgeInsets.all(14),
           child: Row(
             children: [
               Container(
                 width: 46,
                 height: 46,
                 decoration: BoxDecoration(
-                  color: AppColors.success
-                      .withValues(alpha: 0.1),
+                  color:
+                      AppColors.success.withValues(
+                    alpha: 0.1,
+                  ),
                   borderRadius:
                       BorderRadius.circular(14),
                 ),
                 child: const Icon(
-                  Icons
-                      .arrow_downward_rounded,
+                  Icons.arrow_downward_rounded,
                   color:
                       AppColors.success,
                 ),
@@ -1357,11 +1656,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                       CrossAxisAlignment.start,
                   children: [
                     Text(
-                      payment.customerName
-                              .trim()
-                              .isEmpty
-                          ? 'Unknown Customer'
-                          : payment.customerName,
+                      customerName,
                       maxLines: 1,
                       overflow:
                           TextOverflow.ellipsis,
@@ -1379,17 +1674,14 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                       runSpacing: 5,
                       children: [
                         _smallTag(
-                          payment
-                              .paymentMethod,
+                          payment.paymentMethod,
                           AppColors.primary,
                         ),
                         Text(
                           _dateFormat.format(
                             payment.date,
                           ),
-                          style: Theme.of(
-                            context,
-                          )
+                          style: Theme.of(context)
                               .textTheme
                               .bodySmall,
                         ),
@@ -1405,9 +1697,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                         maxLines: 1,
                         overflow:
                             TextOverflow.ellipsis,
-                        style: Theme.of(
-                          context,
-                        )
+                        style: Theme.of(context)
                             .textTheme
                             .bodySmall
                             ?.copyWith(
@@ -1457,8 +1747,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
               ),
               const SizedBox(width: 4),
               const Icon(
-                Icons
-                    .chevron_right_rounded,
+                Icons.chevron_right_rounded,
                 color: Colors.grey,
               ),
             ],
@@ -1496,23 +1785,26 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // EMPTY STATE
+  // ---------------------------------------------------------------------------
+
   Widget _buildEmptyState() {
-    final hasFilters =
-        _searchQuery.isNotEmpty ||
-            _selectedPaymentMethod !=
-                'All' ||
-            _selectedDateRange != null;
+    final bool hasFilters =
+        _hasFilters;
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(
+      padding:
+          const EdgeInsets.symmetric(
         horizontal: 24,
         vertical: 50,
       ),
       decoration: BoxDecoration(
-        color: Theme.of(context)
-            .colorScheme
-            .surface,
+        color:
+            Theme.of(context)
+                .colorScheme
+                .surface,
         borderRadius:
             BorderRadius.circular(20),
         border: Border.all(
@@ -1527,19 +1819,18 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
             width: 72,
             height: 72,
             decoration: BoxDecoration(
-              color: AppColors.primary
-                  .withValues(alpha: 0.1),
+              color:
+                  AppColors.primary.withValues(
+                alpha: 0.1,
+              ),
               shape: BoxShape.circle,
             ),
             child: Icon(
               hasFilters
-                  ? Icons
-                      .search_off_rounded
-                  : Icons
-                      .payments_outlined,
+                  ? Icons.search_off_rounded
+                  : Icons.payments_outlined,
               size: 34,
-              color:
-                  AppColors.primary,
+              color: AppColors.primary,
             ),
           ),
           const SizedBox(height: 16),
@@ -1560,15 +1851,12 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
             hasFilters
                 ? 'Try changing your search or filters.'
                 : 'Payment transactions will appear here.',
-            textAlign:
-                TextAlign.center,
+            textAlign: TextAlign.center,
             style: Theme.of(context)
                 .textTheme
                 .bodyMedium
                 ?.copyWith(
-                  color: Theme.of(
-                    context,
-                  )
+                  color: Theme.of(context)
                       .colorScheme
                       .onSurfaceVariant,
                 ),
@@ -1578,83 +1866,23 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
             OutlinedButton.icon(
               onPressed: _clearFilters,
               icon: const Icon(
-                Icons
-                    .filter_alt_off_rounded,
+                Icons.filter_alt_off_rounded,
               ),
-              label: const Text(
-                'CLEAR FILTERS',
+              label:
+                  const Text('CLEAR FILTERS'),
+            ),
+          ] else ...[
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: _openAddPayment,
+              icon: const Icon(
+                Icons.add_rounded,
               ),
+              label:
+                  const Text('ADD PAYMENT'),
             ),
           ],
         ],
-      ),
-    );
-  }
-
-  Widget _buildErrorState(
-    String error,
-  ) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Payments',
-        ),
-      ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(
-            24,
-          ),
-          child: Column(
-            mainAxisSize:
-                MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons
-                    .cloud_off_rounded,
-                size: 56,
-                color:
-                    AppColors.danger,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Unable to load payments.',
-                textAlign:
-                    TextAlign.center,
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(
-                      fontWeight:
-                          FontWeight.w700,
-                    ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                error,
-                textAlign:
-                    TextAlign.center,
-                maxLines: 3,
-                overflow:
-                    TextOverflow.ellipsis,
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall,
-              ),
-              const SizedBox(height: 18),
-              FilledButton.icon(
-                onPressed: () {
-                  setState(() {});
-                },
-                icon: const Icon(
-                  Icons.refresh_rounded,
-                ),
-                label:
-                    const Text('RETRY'),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

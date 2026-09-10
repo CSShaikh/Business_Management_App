@@ -1,11 +1,10 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
-import '../../models/business_model.dart';
 import '../../models/supplier_model.dart';
-import '../../repositories/business_repository.dart';
-import '../../repositories/supplier_repository.dart';
+import '../../providers/business_provider.dart';
+import '../../providers/supplier_provider.dart';
 import 'add_supplier_screen.dart';
 
 class SuppliersScreen extends StatefulWidget {
@@ -20,20 +19,11 @@ class SuppliersScreen extends StatefulWidget {
 
 class _SuppliersScreenState
     extends State<SuppliersScreen> {
-  final SupplierRepository _supplierRepository =
-      SupplierRepository();
-
-  final BusinessRepository _businessRepository =
-      BusinessRepository();
-
   final TextEditingController _searchController =
       TextEditingController();
 
   String _searchQuery = '';
-
-  BusinessModel? _business;
-  bool _loadingBusiness = true;
-  String? _businessError;
+  bool _initialized = false;
 
   @override
   void initState() {
@@ -43,7 +33,11 @@ class _SuppliersScreenState
       _onSearchChanged,
     );
 
-    _loadBusiness();
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) {
+        _initialize();
+      },
+    );
   }
 
   @override
@@ -56,7 +50,9 @@ class _SuppliersScreenState
   }
 
   void _onSearchChanged() {
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
     setState(() {
       _searchQuery =
@@ -64,76 +60,81 @@ class _SuppliersScreenState
     });
   }
 
-  String? get _businessId => _business?.id;
-
-  Future<void> _loadBusiness() async {
-    final User? user =
-        FirebaseAuth.instance.currentUser;
-
-    if (user == null) {
-      if (!mounted) return;
-
-      setState(() {
-        _loadingBusiness = false;
-        _businessError =
-            'User session not found.';
-      });
-
+  Future<void> _initialize() async {
+    if (_initialized) {
       return;
     }
 
-    setState(() {
-      _loadingBusiness = true;
-      _businessError = null;
-    });
+    _initialized = true;
 
-    try {
-      final BusinessModel? business =
-          await _businessRepository
-              .getBusinessForOwner(
-        user.uid,
-      );
+    final BusinessProvider businessProvider =
+        context.read<BusinessProvider>();
 
-      if (!mounted) return;
+    final SupplierProvider supplierProvider =
+        context.read<SupplierProvider>();
 
-      if (business == null) {
-        setState(() {
-          _loadingBusiness = false;
-          _businessError =
-              'Business profile not found. Please complete business setup.';
-        });
+    await businessProvider.loadBusiness();
 
-        return;
-      }
-
-      setState(() {
-        _business = business;
-        _loadingBusiness = false;
-        _businessError = null;
-      });
-    } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        _loadingBusiness = false;
-        _businessError =
-            'Unable to load business information.';
-      });
+    if (!mounted) {
+      return;
     }
+
+    final String businessId =
+        businessProvider.business?.id.trim() ?? '';
+
+    if (businessId.isEmpty) {
+      return;
+    }
+
+    supplierProvider.setBusinessId(
+      businessId,
+    );
+
+    await supplierProvider.loadAndWatchSuppliers();
+
+    if (!mounted) {
+      return;
+    }
+
   }
 
-  // ---------------------------------------------------------------------------
-  // Add Supplier
-  // ---------------------------------------------------------------------------
+  Future<void> _refresh() async {
+    final BusinessProvider businessProvider =
+        context.read<BusinessProvider>();
+
+    final SupplierProvider supplierProvider =
+        context.read<SupplierProvider>();
+
+    await businessProvider.refresh();
+
+    if (!mounted) {
+      return;
+    }
+
+    final String businessId =
+        businessProvider.business?.id.trim() ?? '';
+
+    if (businessId.isEmpty) {
+      return;
+    }
+
+    supplierProvider.setBusinessId(
+      businessId,
+    );
+
+    await supplierProvider.loadAndWatchSuppliers();
+  }
 
   Future<void> _openAddSupplier() async {
-    final String? businessId =
-        _businessId;
+    final BusinessProvider businessProvider =
+        context.read<BusinessProvider>();
 
-    if (businessId == null ||
-        businessId.trim().isEmpty) {
+    final String businessId =
+        businessProvider.business?.id.trim() ?? '';
+
+    if (businessId.isEmpty) {
       _showMessage(
-        'Business information not available.',
+        'Business information is not available.',
         isError: true,
       );
       return;
@@ -149,20 +150,18 @@ class _SuppliersScreenState
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Edit Supplier
-  // ---------------------------------------------------------------------------
-
   Future<void> _openEditSupplier(
     SupplierModel supplier,
   ) async {
-    final String? businessId =
-        _businessId;
+    final BusinessProvider businessProvider =
+        context.read<BusinessProvider>();
 
-    if (businessId == null ||
-        businessId.trim().isEmpty) {
+    final String businessId =
+        businessProvider.business?.id.trim() ?? '';
+
+    if (businessId.isEmpty) {
       _showMessage(
-        'Business information not available.',
+        'Business information is not available.',
         isError: true,
       );
       return;
@@ -179,10 +178,6 @@ class _SuppliersScreenState
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Delete Supplier
-  // ---------------------------------------------------------------------------
-
   Future<void> _deleteSupplier(
     SupplierModel supplier,
   ) async {
@@ -195,7 +190,8 @@ class _SuppliersScreenState
             'Delete Supplier?',
           ),
           content: Text(
-            'Are you sure you want to delete "${supplier.name}"?',
+            'Are you sure you want to delete '
+            '"${supplier.name}"?',
           ),
           actions: [
             TextButton(
@@ -213,6 +209,8 @@ class _SuppliersScreenState
               style: FilledButton.styleFrom(
                 backgroundColor:
                     AppColors.danger,
+                foregroundColor:
+                    Colors.white,
               ),
               onPressed: () {
                 Navigator.pop(
@@ -229,47 +227,41 @@ class _SuppliersScreenState
       },
     );
 
+    if (!mounted) {
+      return;
+    }
+
     if (confirmed != true) {
       return;
     }
 
-    final String? businessId =
-        _businessId;
-
-    if (businessId == null ||
-        businessId.trim().isEmpty) {
-      _showMessage(
-        'Business information not available.',
-        isError: true,
-      );
-      return;
-    }
+    final SupplierProvider supplierProvider =
+        context.read<SupplierProvider>();
 
     try {
-      await _supplierRepository
-          .deleteSupplier(
-        businessId: businessId,
+      await supplierProvider.deleteSupplier(
         supplierId: supplier.id,
       );
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       _showMessage(
         'Supplier deleted successfully.',
       );
-    } catch (e) {
-      if (!mounted) return;
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
 
       _showMessage(
-        'Unable to delete supplier.',
+        supplierProvider.errorMessage ??
+            'Unable to delete supplier.',
         isError: true,
       );
     }
   }
-
-  // ---------------------------------------------------------------------------
-  // Search
-  // ---------------------------------------------------------------------------
 
   List<SupplierModel> _filterSuppliers(
     List<SupplierModel> suppliers,
@@ -292,6 +284,9 @@ class _SuppliersScreenState
             supplier.email
                 .toLowerCase()
                 .contains(_searchQuery) ||
+            supplier.address
+                .toLowerCase()
+                .contains(_searchQuery) ||
             supplier.gstNumber
                 .toLowerCase()
                 .contains(_searchQuery);
@@ -299,15 +294,17 @@ class _SuppliersScreenState
     ).toList();
   }
 
-  // ---------------------------------------------------------------------------
-  // Snackbar
-  // ---------------------------------------------------------------------------
+  void _clearSearch() {
+    _searchController.clear();
+  }
 
   void _showMessage(
     String message, {
     bool isError = false,
   }) {
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -323,16 +320,19 @@ class _SuppliersScreenState
       );
   }
 
-  // ---------------------------------------------------------------------------
-  // Build
-  // ---------------------------------------------------------------------------
-
   @override
   Widget build(BuildContext context) {
     final ThemeData theme =
         Theme.of(context);
 
-    if (_loadingBusiness) {
+    final BusinessProvider businessProvider =
+        context.watch<BusinessProvider>();
+
+    final SupplierProvider supplierProvider =
+        context.watch<SupplierProvider>();
+
+    if (businessProvider.isLoading &&
+        businessProvider.business == null) {
       return Scaffold(
         backgroundColor:
             theme.scaffoldBackgroundColor,
@@ -342,22 +342,37 @@ class _SuppliersScreenState
           ),
         ),
         body: const Center(
-          child:
-              CircularProgressIndicator(),
+          child: CircularProgressIndicator(),
         ),
       );
     }
 
-    if (_businessError != null ||
-        _business == null) {
+    if (businessProvider.errorMessage != null &&
+        businessProvider.business == null) {
       return _buildBusinessError(
         context,
         theme,
+        businessProvider.errorMessage!,
       );
     }
 
-    final String businessId =
-        _business!.id;
+    if (businessProvider.business == null) {
+      return _buildBusinessError(
+        context,
+        theme,
+        'Business profile not found. '
+            'Please complete business setup.',
+      );
+    }
+
+    final List<SupplierModel> allSuppliers =
+        supplierProvider.suppliers;
+
+    final List<SupplierModel>
+        filteredSuppliers =
+        _filterSuppliers(
+      allSuppliers,
+    );
 
     return Scaffold(
       backgroundColor:
@@ -369,7 +384,10 @@ class _SuppliersScreenState
         actions: [
           IconButton(
             tooltip: 'Refresh',
-            onPressed: _loadBusiness,
+            onPressed:
+                supplierProvider.isLoading
+                    ? null
+                    : _refresh,
             icon: const Icon(
               Icons.refresh_rounded,
             ),
@@ -377,48 +395,12 @@ class _SuppliersScreenState
           const SizedBox(width: 4),
         ],
       ),
-      body: StreamBuilder<
-          List<SupplierModel>>(
-        stream:
-            _supplierRepository.watchSuppliers(
-          businessId,
-        ),
-        builder: (
-          context,
-          snapshot,
-        ) {
-          if (snapshot.connectionState ==
-              ConnectionState.waiting) {
-            return const Center(
-              child:
-                  CircularProgressIndicator(),
-            );
-          }
-
-          if (snapshot.hasError) {
-            return _buildErrorState(
-              context,
-              theme,
-            );
-          }
-
-          final List<SupplierModel>
-              allSuppliers =
-              snapshot.data ?? [];
-
-          final List<SupplierModel>
-              filteredSuppliers =
-              _filterSuppliers(
-            allSuppliers,
-          );
-
-          return _buildContent(
-            context,
-            theme,
-            allSuppliers,
-            filteredSuppliers,
-          );
-        },
+      body: _buildBody(
+        context,
+        theme,
+        supplierProvider,
+        allSuppliers,
+        filteredSuppliers,
       ),
       floatingActionButton:
           FloatingActionButton.extended(
@@ -433,18 +415,31 @@ class _SuppliersScreenState
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Content
-  // ---------------------------------------------------------------------------
-
-  Widget _buildContent(
+  Widget _buildBody(
     BuildContext context,
     ThemeData theme,
+    SupplierProvider provider,
     List<SupplierModel> allSuppliers,
     List<SupplierModel> filteredSuppliers,
   ) {
+    if (provider.isLoading &&
+        allSuppliers.isEmpty) {
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
+    }
+
+    if (provider.errorMessage != null &&
+        allSuppliers.isEmpty) {
+      return _buildErrorState(
+        context,
+        theme,
+        provider.errorMessage!,
+      );
+    }
+
     return RefreshIndicator(
-      onRefresh: _loadBusiness,
+      onRefresh: _refresh,
       child: ListView(
         physics:
             const AlwaysScrollableScrollPhysics(),
@@ -453,20 +448,16 @@ class _SuppliersScreenState
           20,
           16,
           20,
-          100,
+          110,
         ),
         children: [
           _buildHeader(
             theme,
             allSuppliers.length,
           ),
-          const SizedBox(
-            height: 18,
-          ),
+          const SizedBox(height: 18),
           _buildSearchField(theme),
-          const SizedBox(
-            height: 20,
-          ),
+          const SizedBox(height: 20),
           if (allSuppliers.isEmpty)
             _buildEmptyState(
               context,
@@ -492,181 +483,157 @@ class _SuppliersScreenState
     ThemeData theme,
     int totalSuppliers,
   ) {
-    return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Supplier Management',
-          style: theme
-              .textTheme
-              .headlineSmall
-              ?.copyWith(
-            fontWeight:
-                FontWeight.bold,
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.primary.withValues(
+              alpha: 0.12,
+            ),
+            AppColors.secondary.withValues(
+              alpha: 0.08,
+            ),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius:
+            BorderRadius.circular(20),
+        border: Border.all(
+          color: AppColors.primary.withValues(
+            alpha: 0.12,
           ),
         ),
-        const SizedBox(
-          height: 5,
-        ),
-        Text(
-          'Manage your suppliers and their contact details.',
-          style: theme
-              .textTheme
-              .bodyMedium
-              ?.copyWith(
-            color: theme
-                .colorScheme
-                .onSurfaceVariant,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color:
+                  AppColors.primary.withValues(
+                alpha: 0.12,
+              ),
+              borderRadius:
+                  BorderRadius.circular(16),
+            ),
+            child: const Icon(
+              Icons.local_shipping_outlined,
+              color: AppColors.primary,
+              size: 30,
+            ),
           ),
-        ),
-        const SizedBox(
-          height: 18,
-        ),
-        Card(
-          child: Padding(
-            padding:
-                const EdgeInsets.all(16),
-            child: Row(
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 46,
-                  height: 46,
-                  decoration:
-                      BoxDecoration(
-                    color:
-                        AppColors.primary
-                            .withValues(
-                      alpha: 0.10,
-                    ),
-                    borderRadius:
-                        BorderRadius.circular(
-                      13,
-                    ),
-                  ),
-                  child: const Icon(
-                    Icons.local_shipping_outlined,
-                    color:
-                        AppColors.primary,
+                Text(
+                  'Supplier Management',
+                  style: theme
+                      .textTheme
+                      .titleLarge
+                      ?.copyWith(
+                    fontWeight:
+                        FontWeight.w800,
                   ),
                 ),
-                const SizedBox(
-                  width: 13,
-                ),
-                Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      totalSuppliers
-                          .toString(),
-                      style: theme
-                          .textTheme
-                          .titleLarge
-                          ?.copyWith(
-                        fontWeight:
-                            FontWeight.bold,
-                      ),
-                    ),
-                    Text(
-                      'Total Suppliers',
-                      style: theme
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(
-                        color: theme
-                            .colorScheme
-                            .onSurfaceVariant,
-                      ),
-                    ),
-                  ],
+                const SizedBox(height: 4),
+                Text(
+                  'Manage your suppliers and supplier details',
+                  style: theme
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(
+                    color: theme
+                        .textTheme
+                        .bodyMedium
+                        ?.color
+                        ?.withValues(
+                          alpha: 0.65,
+                        ),
+                  ),
                 ),
               ],
             ),
           ),
-        ),
-      ],
+          const SizedBox(width: 10),
+          Container(
+            padding:
+                const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 9,
+            ),
+            decoration: BoxDecoration(
+              color: theme.cardColor,
+              borderRadius:
+                  BorderRadius.circular(14),
+              border: Border.all(
+                color: theme.dividerColor
+                    .withValues(
+                  alpha: 0.5,
+                ),
+              ),
+            ),
+            child: Column(
+              children: [
+                Text(
+                  totalSuppliers.toString(),
+                  style: theme
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(
+                    fontWeight:
+                        FontWeight.w800,
+                    color:
+                        AppColors.primary,
+                  ),
+                ),
+                Text(
+                  'Suppliers',
+                  style:
+                      theme.textTheme.labelSmall,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Search Field
-  // ---------------------------------------------------------------------------
 
   Widget _buildSearchField(
     ThemeData theme,
   ) {
     return TextField(
-      controller:
-          _searchController,
+      controller: _searchController,
       textInputAction:
           TextInputAction.search,
-      decoration:
-          InputDecoration(
+      decoration: InputDecoration(
         hintText:
-            'Search suppliers...',
+            'Search by name, contact, mobile or GST...',
         prefixIcon: const Icon(
           Icons.search_rounded,
         ),
         suffixIcon:
-            _searchQuery.isNotEmpty
-                ? IconButton(
+            _searchQuery.isEmpty
+                ? null
+                : IconButton(
                     tooltip: 'Clear',
-                    onPressed: () {
-                      _searchController
-                          .clear();
-                    },
+                    onPressed:
+                        _clearSearch,
                     icon: const Icon(
                       Icons.clear_rounded,
                     ),
-                  )
-                : null,
+                  ),
         filled: true,
-        fillColor:
-            theme.colorScheme.surface,
-        border: OutlineInputBorder(
-          borderRadius:
-              BorderRadius.circular(14),
-          borderSide: BorderSide(
-            color: theme
-                .colorScheme
-                .outline
-                .withValues(
-              alpha: 0.15,
-            ),
-          ),
-        ),
-        enabledBorder:
-            OutlineInputBorder(
-          borderRadius:
-              BorderRadius.circular(14),
-          borderSide: BorderSide(
-            color: theme
-                .colorScheme
-                .outline
-                .withValues(
-              alpha: 0.15,
-            ),
-          ),
-        ),
-        focusedBorder:
-            OutlineInputBorder(
-          borderRadius:
-              BorderRadius.circular(14),
-          borderSide:
-              const BorderSide(
-            color:
-                AppColors.primary,
-            width: 1.5,
-          ),
-        ),
+        fillColor: theme.cardColor,
       ),
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Supplier List
-  // ---------------------------------------------------------------------------
 
   Widget _buildSupplierList(
     BuildContext context,
@@ -674,242 +641,183 @@ class _SuppliersScreenState
     List<SupplierModel> suppliers,
   ) {
     return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
       children: [
-        Text(
-          '${suppliers.length} supplier${suppliers.length == 1 ? '' : 's'}',
-          style: theme
-              .textTheme
-              .titleMedium
-              ?.copyWith(
-            fontWeight:
-                FontWeight.w700,
-          ),
-        ),
-        const SizedBox(
-          height: 12,
-        ),
-        ...suppliers.map(
-          (supplier) =>
-              _buildSupplierCard(
+        for (int index = 0;
+            index < suppliers.length;
+            index++) ...[
+          _buildSupplierCard(
             context,
             theme,
-            supplier,
+            suppliers[index],
           ),
-        ),
+          if (index !=
+              suppliers.length - 1)
+            const SizedBox(height: 12),
+        ],
       ],
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Supplier Card
-  // ---------------------------------------------------------------------------
 
   Widget _buildSupplierCard(
     BuildContext context,
     ThemeData theme,
     SupplierModel supplier,
   ) {
+    final String initials =
+        _getInitials(supplier.name);
+
     return Card(
-      margin:
-          const EdgeInsets.only(
-        bottom: 12,
-      ),
+      elevation: 0,
+      margin: EdgeInsets.zero,
       child: InkWell(
         borderRadius:
             BorderRadius.circular(16),
         onTap: () {
-          _openEditSupplier(
+          _showSupplierDetails(
+            context,
             supplier,
           );
         },
         child: Padding(
           padding:
               const EdgeInsets.all(16),
-          child: Column(
+          child: Row(
+            crossAxisAlignment:
+                CrossAxisAlignment.start,
             children: [
-              Row(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  _buildSupplierIcon(
-                    supplier,
-                  ),
-                  const SizedBox(
-                    width: 13,
-                  ),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment
-                              .start,
-                      children: [
-                        Text(
-                          supplier.name,
-                          maxLines: 1,
-                          overflow:
-                              TextOverflow
-                                  .ellipsis,
-                          style: theme
+              _buildSupplierAvatar(
+                initials,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      supplier.name,
+                      maxLines: 1,
+                      overflow:
+                          TextOverflow.ellipsis,
+                      style: theme
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(
+                        fontWeight:
+                            FontWeight.w800,
+                      ),
+                    ),
+                    if (supplier
+                        .contactPerson
+                        .isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        supplier.contactPerson,
+                        maxLines: 1,
+                        overflow:
+                            TextOverflow.ellipsis,
+                        style: theme
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(
+                          color: theme
                               .textTheme
-                              .titleMedium
-                              ?.copyWith(
-                            fontWeight:
-                                FontWeight.bold,
-                          ),
+                              .bodySmall
+                              ?.color
+                              ?.withValues(
+                                alpha: 0.65,
+                              ),
                         ),
-                        if (supplier
-                            .contactPerson
-                            .isNotEmpty) ...[
-                          const SizedBox(
-                            height: 4,
+                      ),
+                    ],
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 7,
+                      children: [
+                        if (supplier.mobile
+                            .isNotEmpty)
+                          _InfoChip(
+                            icon:
+                                Icons.phone_outlined,
+                            label:
+                                supplier.mobile,
                           ),
-                          Text(
-                            supplier
-                                .contactPerson,
-                            maxLines: 1,
-                            overflow:
-                                TextOverflow
-                                    .ellipsis,
-                            style: theme
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(
-                              color: theme
-                                  .colorScheme
-                                  .onSurfaceVariant,
-                            ),
+                        if (supplier.email
+                            .isNotEmpty)
+                          _InfoChip(
+                            icon:
+                                Icons.email_outlined,
+                            label:
+                                supplier.email,
                           ),
-                        ],
+                        if (supplier.gstNumber
+                            .isNotEmpty)
+                          _InfoChip(
+                            icon: Icons
+                                .receipt_long_outlined,
+                            label:
+                                supplier.gstNumber,
+                          ),
                       ],
                     ),
-                  ),
-                  PopupMenuButton<String>(
-                    tooltip: 'More',
-                    onSelected:
-                        (value) {
-                      if (value ==
-                          'edit') {
-                        _openEditSupplier(
-                          supplier,
-                        );
-                      } else if (value ==
-                          'delete') {
-                        _deleteSupplier(
-                          supplier,
-                        );
-                      }
-                    },
-                    itemBuilder:
-                        (context) => [
-                      const PopupMenuItem(
-                        value: 'edit',
-                        child: ListTile(
-                          contentPadding:
-                              EdgeInsets.zero,
-                          leading: Icon(
-                            Icons
-                                .edit_outlined,
-                          ),
-                          title:
-                              Text('Edit'),
-                        ),
-                      ),
-                      const PopupMenuDivider(),
-                      const PopupMenuItem(
-                        value: 'delete',
-                        child: ListTile(
-                          contentPadding:
-                              EdgeInsets.zero,
-                          leading: Icon(
-                            Icons
-                                .delete_outline_rounded,
-                            color:
-                                AppColors.danger,
-                          ),
-                          title: Text(
-                            'Delete',
-                            style:
-                                TextStyle(
-                              color:
-                                  AppColors
-                                      .danger,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(
-                height: 15,
-              ),
-              Container(
-                width:
-                    double.infinity,
-                padding:
-                    const EdgeInsets.all(13),
-                decoration:
-                    BoxDecoration(
-                  color: theme
-                      .colorScheme
-                      .surfaceContainerHighest
-                      .withValues(
-                    alpha: 0.35,
-                  ),
-                  borderRadius:
-                      BorderRadius.circular(
-                    13,
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    _buildContactRow(
-                      theme,
-                      Icons.phone_outlined,
-                      'Mobile',
-                      supplier.mobile,
-                    ),
-                    if (supplier.email
-                        .isNotEmpty) ...[
-                      const SizedBox(
-                        height: 10,
-                      ),
-                      _buildContactRow(
-                        theme,
-                        Icons.email_outlined,
-                        'Email',
-                        supplier.email,
-                      ),
-                    ],
-                    if (supplier.gstNumber
-                        .isNotEmpty) ...[
-                      const SizedBox(
-                        height: 10,
-                      ),
-                      _buildContactRow(
-                        theme,
-                        Icons.receipt_long_outlined,
-                        'GST',
-                        supplier.gstNumber,
-                      ),
-                    ],
                     if (supplier.address
                         .isNotEmpty) ...[
                       const SizedBox(
                         height: 10,
                       ),
-                      _buildContactRow(
-                        theme,
-                        Icons.location_on_outlined,
-                        'Address',
-                        supplier.address,
+                      Row(
+                        crossAxisAlignment:
+                            CrossAxisAlignment
+                                .start,
+                        children: [
+                          Icon(
+                            Icons
+                                .location_on_outlined,
+                            size: 17,
+                            color: theme
+                                .textTheme
+                                .bodySmall
+                                ?.color
+                                ?.withValues(
+                                  alpha: 0.60,
+                                ),
+                          ),
+                          const SizedBox(
+                            width: 6,
+                          ),
+                          Expanded(
+                            child: Text(
+                              supplier.address,
+                              maxLines: 2,
+                              overflow:
+                                  TextOverflow
+                                      .ellipsis,
+                              style: theme
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                color: theme
+                                    .textTheme
+                                    .bodySmall
+                                    ?.color
+                                    ?.withValues(
+                                      alpha:
+                                          0.65,
+                                    ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ],
                 ),
+              ),
+              const SizedBox(width: 8),
+              _buildSupplierMenu(
+                context,
+                supplier,
               ),
             ],
           ),
@@ -918,239 +826,306 @@ class _SuppliersScreenState
     );
   }
 
-  Widget _buildSupplierIcon(
-    SupplierModel supplier,
+  Widget _buildSupplierAvatar(
+    String initials,
   ) {
     return Container(
-      width: 50,
-      height: 50,
-      decoration:
-          BoxDecoration(
-        color: AppColors.primary
-            .withValues(
-          alpha: 0.10,
+      width: 52,
+      height: 52,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.primary.withValues(
+              alpha: 0.16,
+            ),
+            AppColors.secondary.withValues(
+              alpha: 0.12,
+            ),
+          ],
         ),
         borderRadius:
-            BorderRadius.circular(14),
+            BorderRadius.circular(16),
       ),
-      child: const Icon(
-        Icons.local_shipping_outlined,
-        color: AppColors.primary,
-        size: 25,
+      alignment: Alignment.center,
+      child: Text(
+        initials,
+        style: const TextStyle(
+          color: AppColors.primary,
+          fontWeight: FontWeight.w800,
+          fontSize: 16,
+        ),
       ),
     );
   }
 
-  Widget _buildContactRow(
-    ThemeData theme,
-    IconData icon,
-    String label,
-    String value,
+  Widget _buildSupplierMenu(
+    BuildContext context,
+    SupplierModel supplier,
   ) {
-    if (value.trim().isEmpty) {
-      return const SizedBox.shrink();
-    }
+    return PopupMenuButton<String>(
+      tooltip: 'Supplier options',
+      onSelected: (value) {
+        switch (value) {
+          case 'edit':
+            _openEditSupplier(
+              supplier,
+            );
+            break;
 
-    return Row(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
-      children: [
-        Icon(
-          icon,
-          size: 18,
-          color: AppColors.info,
-        ),
-        const SizedBox(
-          width: 9,
-        ),
-        SizedBox(
-          width: 65,
-          child: Text(
-            label,
-            style: theme
-                .textTheme
-                .bodySmall
-                ?.copyWith(
-              color: theme
-                  .colorScheme
-                  .onSurfaceVariant,
+          case 'delete':
+            _deleteSupplier(
+              supplier,
+            );
+            break;
+        }
+      },
+      itemBuilder: (context) {
+        return const [
+          PopupMenuItem<String>(
+            value: 'edit',
+            child: Row(
+              children: [
+                Icon(
+                  Icons.edit_outlined,
+                  size: 20,
+                ),
+                SizedBox(width: 10),
+                Text('Edit'),
+              ],
             ),
           ),
-        ),
-        const SizedBox(
-          width: 8,
-        ),
-        Expanded(
-          child: Text(
-            value,
-            maxLines: 3,
-            overflow:
-                TextOverflow.ellipsis,
-            style: theme
-                .textTheme
-                .bodyMedium
-                ?.copyWith(
-              fontWeight:
-                  FontWeight.w600,
+          PopupMenuItem<String>(
+            value: 'delete',
+            child: Row(
+              children: [
+                Icon(
+                  Icons.delete_outline_rounded,
+                  size: 20,
+                  color:
+                      AppColors.danger,
+                ),
+                SizedBox(width: 10),
+                Text('Delete'),
+              ],
             ),
           ),
-        ),
-      ],
+        ];
+      },
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Empty State
-  // ---------------------------------------------------------------------------
+  Future<void> _showSupplierDetails(
+    BuildContext context,
+    SupplierModel supplier,
+  ) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        final ThemeData theme =
+            Theme.of(sheetContext);
+
+        return SafeArea(
+          child: SingleChildScrollView(
+            padding:
+                const EdgeInsets.fromLTRB(
+              20,
+              4,
+              20,
+              28,
+            ),
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    _buildSupplierAvatar(
+                      _getInitials(
+                        supplier.name,
+                      ),
+                    ),
+                    const SizedBox(
+                      width: 14,
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment:
+                            CrossAxisAlignment
+                                .start,
+                        children: [
+                          Text(
+                            supplier.name,
+                            style: theme
+                                .textTheme
+                                .titleLarge
+                                ?.copyWith(
+                              fontWeight:
+                                  FontWeight.w800,
+                            ),
+                          ),
+                          if (supplier
+                              .contactPerson
+                              .isNotEmpty)
+                            Text(
+                              supplier
+                                  .contactPerson,
+                              style: theme
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(
+                                color: theme
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.color
+                                    ?.withValues(
+                                      alpha:
+                                          0.65,
+                                    ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(
+                  height: 22,
+                ),
+                _DetailRow(
+                  icon:
+                      Icons.phone_outlined,
+                  label: 'Mobile',
+                  value:
+                      supplier.mobile,
+                ),
+                _DetailRow(
+                  icon:
+                      Icons.email_outlined,
+                  label: 'Email',
+                  value:
+                      supplier.email,
+                ),
+                _DetailRow(
+                  icon: Icons
+                      .location_on_outlined,
+                  label: 'Address',
+                  value:
+                      supplier.address,
+                ),
+                _DetailRow(
+                  icon: Icons
+                      .receipt_long_outlined,
+                  label: 'GST Number',
+                  value:
+                      supplier.gstNumber,
+                ),
+                if (supplier.notes
+                    .isNotEmpty)
+                  _DetailRow(
+                    icon: Icons
+                        .notes_outlined,
+                    label: 'Notes',
+                    value:
+                        supplier.notes,
+                  ),
+                const SizedBox(
+                  height: 18,
+                ),
+                SizedBox(
+                  width:
+                      double.infinity,
+                  child:
+                      FilledButton.icon(
+                    onPressed: () {
+                      Navigator.pop(
+                        sheetContext,
+                      );
+
+                      if (!mounted) {
+                        return;
+                      }
+
+                      _openEditSupplier(
+                        supplier,
+                      );
+                    },
+                    icon: const Icon(
+                      Icons.edit_outlined,
+                    ),
+                    label: const Text(
+                      'Edit Supplier',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   Widget _buildEmptyState(
     BuildContext context,
     ThemeData theme,
   ) {
-    return Card(
-      child: Padding(
-        padding:
-            const EdgeInsets.symmetric(
-          horizontal: 24,
-          vertical: 50,
-        ),
-        child: Column(
-          children: [
-            Container(
-              width: 82,
-              height: 82,
-              decoration:
-                  BoxDecoration(
-                color: AppColors.primary
-                    .withValues(
-                  alpha: 0.10,
-                ),
-                borderRadius:
-                    BorderRadius.circular(
-                  24,
-                ),
-              ),
-              child: const Icon(
-                Icons.local_shipping_outlined,
-                size: 42,
-                color:
-                    AppColors.primary,
-              ),
-            ),
-            const SizedBox(
-              height: 20,
-            ),
-            Text(
-              'No Suppliers Yet',
-              style: theme
-                  .textTheme
-                  .titleLarge
-                  ?.copyWith(
-                fontWeight:
-                    FontWeight.bold,
-              ),
-            ),
-            const SizedBox(
-              height: 8,
-            ),
-            Text(
-              'Add your first supplier to start managing supplier information.',
-              textAlign:
-                  TextAlign.center,
-              style: theme
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(
-                color: theme
-                    .colorScheme
-                    .onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(
-              height: 22,
-            ),
-            FilledButton.icon(
-              onPressed:
-                  _openAddSupplier,
-              icon: const Icon(
-                Icons.add_rounded,
-              ),
-              label: const Text(
-                'Add Supplier',
-              ),
-            ),
-          ],
-        ),
-      ),
+    return _StateCard(
+      icon:
+          Icons.local_shipping_outlined,
+      title: 'No suppliers yet',
+      description:
+          'Add your first supplier to start managing supplier information.',
+      actionLabel: 'Add Supplier',
+      onAction: _openAddSupplier,
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // No Search Results
-  // ---------------------------------------------------------------------------
 
   Widget _buildNoSearchResults(
     BuildContext context,
     ThemeData theme,
   ) {
-    return Card(
+    return _StateCard(
+      icon:
+          Icons.search_off_rounded,
+      title: 'No suppliers found',
+      description:
+          'Try another supplier name, contact, mobile number or GST number.',
+      actionLabel: 'Clear Search',
+      onAction: _clearSearch,
+    );
+  }
+
+  Widget _buildErrorState(
+    BuildContext context,
+    ThemeData theme,
+    String error,
+  ) {
+    return Center(
       child: Padding(
         padding:
-            const EdgeInsets.symmetric(
-          horizontal: 24,
-          vertical: 45,
-        ),
-        child: Column(
-          children: [
-            Icon(
-              Icons.search_off_rounded,
-              size: 48,
-              color: theme
-                  .colorScheme
-                  .onSurfaceVariant,
-            ),
-            const SizedBox(
-              height: 14,
-            ),
-            Text(
-              'No Suppliers Found',
-              style: theme
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(
-                fontWeight:
-                    FontWeight.bold,
-              ),
-            ),
-            const SizedBox(
-              height: 6,
-            ),
-            Text(
-              'Try searching with another supplier name, contact, mobile number or GST number.',
-              textAlign:
-                  TextAlign.center,
-              style: theme
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(
-                color: theme
-                    .colorScheme
-                    .onSurfaceVariant,
-              ),
-            ),
-          ],
+            const EdgeInsets.all(24),
+        child: _StateCard(
+          icon:
+              Icons.error_outline_rounded,
+          title:
+              'Unable to load suppliers',
+          description: error,
+          actionLabel: 'Retry',
+          onAction: () async {
+            _initialized = false;
+            await _initialize();
+          },
         ),
       ),
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Business Error
-  // ---------------------------------------------------------------------------
-
   Widget _buildBusinessError(
     BuildContext context,
     ThemeData theme,
+    String message,
   ) {
     return Scaffold(
       backgroundColor:
@@ -1159,113 +1134,304 @@ class _SuppliersScreenState
         title: const Text(
           'Suppliers',
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Retry',
+            onPressed: () async {
+              _initialized = false;
+              await _initialize();
+            },
+            icon: const Icon(
+              Icons.refresh_rounded,
+            ),
+          ),
+        ],
       ),
       body: Center(
         child: Padding(
           padding:
               const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment:
-                MainAxisAlignment.center,
-            children: [
-              const Icon(
+          child: _StateCard(
+            icon:
                 Icons.business_outlined,
-                size: 60,
-                color:
-                    AppColors.danger,
-              ),
-              const SizedBox(
-                height: 18,
-              ),
-              Text(
-                'Business profile unavailable',
-                textAlign:
-                    TextAlign.center,
-                style: theme
-                    .textTheme
-                    .titleLarge
-                    ?.copyWith(
-                  fontWeight:
-                      FontWeight.bold,
-                ),
-              ),
-              const SizedBox(
-                height: 8,
-              ),
-              Text(
-                _businessError ??
-                    'Please complete your business setup before managing suppliers.',
-                textAlign:
-                    TextAlign.center,
-                style: theme
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(
-                  color: theme
-                      .colorScheme
-                      .onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(
-                height: 20,
-              ),
-              FilledButton.icon(
-                onPressed:
-                    _loadBusiness,
-                icon: const Icon(
-                  Icons.refresh_rounded,
-                ),
-                label: const Text(
-                  'Try Again',
-                ),
-              ),
-            ],
+            title:
+                'Business information unavailable',
+            description: message,
+            actionLabel: 'Retry',
+            onAction: () async {
+              _initialized = false;
+              await _initialize();
+            },
           ),
         ),
       ),
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Error State
-  // ---------------------------------------------------------------------------
-
-  Widget _buildErrorState(
-    BuildContext context,
-    ThemeData theme,
+  String _getInitials(
+    String name,
   ) {
-    return Center(
+    final String value =
+        name.trim();
+
+    if (value.isEmpty) {
+      return 'S';
+    }
+
+    final List<String> parts =
+        value.split(
+      RegExp(r'\s+'),
+    );
+
+    if (parts.length == 1) {
+      return parts.first
+          .substring(
+        0,
+        parts.first.length >= 2
+            ? 2
+            : 1,
+      )
+          .toUpperCase();
+    }
+
+    return '${parts.first[0]}${parts.last[0]}'
+        .toUpperCase();
+  }
+}
+
+class _InfoChip
+    extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _InfoChip({
+    required this.icon,
+    required this.label,
+  });
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    final ThemeData theme =
+        Theme.of(context);
+
+    return Container(
+      padding:
+          const EdgeInsets.symmetric(
+        horizontal: 9,
+        vertical: 6,
+      ),
+      decoration: BoxDecoration(
+        color: theme.dividerColor
+            .withValues(
+          alpha: 0.10,
+        ),
+        borderRadius:
+            BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize:
+            MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 14,
+            color: theme
+                .textTheme
+                .bodySmall
+                ?.color
+                ?.withValues(
+                  alpha: 0.65,
+                ),
+          ),
+          const SizedBox(width: 5),
+          ConstrainedBox(
+            constraints:
+                const BoxConstraints(
+              maxWidth: 170,
+            ),
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow:
+                  TextOverflow.ellipsis,
+              style:
+                  theme.textTheme.labelSmall,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailRow
+    extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _DetailRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    final ThemeData theme =
+        Theme.of(context);
+
+    if (value.trim().isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding:
+          const EdgeInsets.only(
+        bottom: 15,
+      ),
+      child: Row(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration:
+                BoxDecoration(
+              color: AppColors.primary
+                  .withValues(
+                alpha: 0.10,
+              ),
+              borderRadius:
+                  BorderRadius.circular(
+                11,
+              ),
+            ),
+            child: Icon(
+              icon,
+              size: 19,
+              color:
+                  AppColors.primary,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: theme
+                      .textTheme
+                      .labelMedium
+                      ?.copyWith(
+                    color: theme
+                        .textTheme
+                        .bodySmall
+                        ?.color
+                        ?.withValues(
+                          alpha: 0.60,
+                        ),
+                  ),
+                ),
+                const SizedBox(
+                  height: 3,
+                ),
+                Text(
+                  value,
+                  style: theme
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(
+                    fontWeight:
+                        FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StateCard
+    extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String description;
+  final String actionLabel;
+  final VoidCallback onAction;
+
+  const _StateCard({
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.actionLabel,
+    required this.onAction,
+  });
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    final ThemeData theme =
+        Theme.of(context);
+
+    return Card(
+      elevation: 0,
       child: Padding(
         padding:
-            const EdgeInsets.all(24),
+            const EdgeInsets.all(28),
         child: Column(
-          mainAxisAlignment:
-              MainAxisAlignment.center,
+          mainAxisSize:
+              MainAxisSize.min,
           children: [
-            const Icon(
-              Icons.cloud_off_rounded,
-              size: 52,
-              color:
-                  AppColors.danger,
+            Container(
+              width: 70,
+              height: 70,
+              decoration:
+                  BoxDecoration(
+                color: AppColors.primary
+                    .withValues(
+                  alpha: 0.10,
+                ),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                icon,
+                size: 34,
+                color:
+                    AppColors.primary,
+              ),
             ),
             const SizedBox(
-              height: 16,
+              height: 18,
             ),
             Text(
-              'Unable to load suppliers',
+              title,
+              textAlign:
+                  TextAlign.center,
               style: theme
                   .textTheme
                   .titleMedium
                   ?.copyWith(
                 fontWeight:
-                    FontWeight.bold,
+                    FontWeight.w800,
               ),
             ),
             const SizedBox(
               height: 8,
             ),
             Text(
-              'Please check your internet connection and Firebase configuration.',
+              description,
               textAlign:
                   TextAlign.center,
               style: theme
@@ -1273,22 +1439,24 @@ class _SuppliersScreenState
                   .bodyMedium
                   ?.copyWith(
                 color: theme
-                    .colorScheme
-                    .onSurfaceVariant,
+                    .textTheme
+                    .bodyMedium
+                    ?.color
+                    ?.withValues(
+                      alpha: 0.65,
+                    ),
               ),
             ),
             const SizedBox(
-              height: 18,
+              height: 20,
             ),
             FilledButton.icon(
-              onPressed: () {
-                setState(() {});
-              },
+              onPressed: onAction,
               icon: const Icon(
-                Icons.refresh_rounded,
+                Icons.arrow_forward_rounded,
               ),
-              label: const Text(
-                'Try Again',
+              label: Text(
+                actionLabel,
               ),
             ),
           ],
