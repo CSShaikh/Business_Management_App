@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -80,8 +81,6 @@ class _AnalyticsReportScreenState
       now.year,
       now.month,
       now.day,
-    ).subtract(
-      const Duration(days: 6),
     );
 
     _endDate = DateTime(
@@ -121,7 +120,7 @@ class _AnalyticsReportScreenState
         );
       }
 
-      final results = await Future.wait([
+      final results = await Future.wait<dynamic>([
         _saleRepository.getSales(
           businessId: business.id,
         ),
@@ -136,10 +135,13 @@ class _AnalyticsReportScreenState
         ),
       ]);
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       setState(() {
-        _sales = results[0] as List<SaleModel>;
+        _sales =
+            results[0] as List<SaleModel>;
         _purchases =
             results[1] as List<PurchaseModel>;
         _expenses =
@@ -152,12 +154,15 @@ class _AnalyticsReportScreenState
         _errorMessage = null;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       setState(() {
         _isLoading = false;
         _isRefreshing = false;
-        _errorMessage = e.toString();
+        _errorMessage =
+            _cleanError(e);
       });
     }
   }
@@ -168,13 +173,85 @@ class _AnalyticsReportScreenState
     );
   }
 
+  String _cleanError(Object error) {
+    final String message = error.toString();
+
+    if (message.startsWith('Exception: ')) {
+      return message.substring(
+        'Exception: '.length,
+      );
+    }
+
+    return message;
+  }
+
+  List<SaleModel> get _filteredSales {
+    return _sales.where(_isSaleInDateRange).toList();
+  }
+
+  List<PurchaseModel> get _filteredPurchases {
+    return _purchases
+        .where(_isPurchaseInDateRange)
+        .toList();
+  }
+
+  List<ExpenseModel> get _filteredExpenses {
+    return _expenses
+        .where(_isExpenseInDateRange)
+        .toList();
+  }
+
+  List<PaymentModel> get _filteredPayments {
+    return _payments
+        .where(_isPaymentInDateRange)
+        .toList();
+  }
+
+  bool _isSaleInDateRange(SaleModel sale) {
+    return _isDateInRange(sale.date);
+  }
+
+  bool _isPurchaseInDateRange(
+    PurchaseModel purchase,
+  ) {
+    return _isDateInRange(purchase.date);
+  }
+
+  bool _isExpenseInDateRange(
+    ExpenseModel expense,
+  ) {
+    return _isDateInRange(expense.date);
+  }
+
+  bool _isPaymentInDateRange(
+    PaymentModel payment,
+  ) {
+    return _isDateInRange(payment.date);
+  }
+
+  bool _isDateInRange(DateTime date) {
+    final DateTime? start = _startDate;
+    final DateTime? end = _endDate;
+
+    if (start == null || end == null) {
+      return true;
+    }
+
+    return !date.isBefore(start) &&
+        !date.isAfter(end);
+  }
+
   Future<void> _selectDateRange() async {
+    final DateTime now = DateTime.now();
+
     final DateTimeRange? selected =
         await showDateRangePicker(
       context: context,
       firstDate: DateTime(2020),
-      lastDate: DateTime.now().add(
-        const Duration(days: 365),
+      lastDate: DateTime(
+        now.year + 2,
+        12,
+        31,
       ),
       initialDateRange:
           _startDate != null &&
@@ -183,10 +260,23 @@ class _AnalyticsReportScreenState
                   start: _startDate!,
                   end: _endDate!,
                 )
-              : null,
+              : DateTimeRange(
+                  start: DateTime(
+                    now.year,
+                    now.month,
+                    1,
+                  ),
+                  end: now,
+                ),
+      helpText:
+          'Select Analytics Period',
+      saveText: 'Apply',
     );
 
-    if (selected == null) return;
+    if (selected == null ||
+        !mounted) {
+      return;
+    }
 
     setState(() {
       _startDate = DateTime(
@@ -207,384 +297,597 @@ class _AnalyticsReportScreenState
     });
   }
 
-  void _setPeriod(_AnalyticsPeriod period) {
+  void _clearDateRange() {
     setState(() {
-      _period = period;
+      _startDate = null;
+      _endDate = null;
     });
   }
 
-  List<SaleModel> get _filteredSales {
-    return _sales.where((sale) {
-      return _isDateInRange(sale.date);
-    }).toList();
-  }
+  void _setPeriod(
+    _AnalyticsPeriod period,
+  ) {
+    final DateTime now = DateTime.now();
 
-  List<PurchaseModel> get _filteredPurchases {
-    return _purchases.where((purchase) {
-      return _isDateInRange(purchase.date);
-    }).toList();
-  }
+    setState(() {
+      _period = period;
 
-  List<ExpenseModel> get _filteredExpenses {
-    return _expenses.where((expense) {
-      return _isDateInRange(expense.date);
-    }).toList();
-  }
+      switch (period) {
+        case _AnalyticsPeriod.daily:
+          _startDate = DateTime(
+            now.year,
+            now.month,
+            now.day,
+          );
+          _endDate = DateTime(
+            now.year,
+            now.month,
+            now.day,
+            23,
+            59,
+            59,
+            999,
+          );
+          break;
 
-  List<PaymentModel> get _filteredPayments {
-    return _payments.where((payment) {
-      return _isDateInRange(payment.date);
-    }).toList();
-  }
+        case _AnalyticsPeriod.weekly:
+          final DateTime today = DateTime(
+            now.year,
+            now.month,
+            now.day,
+          );
 
-  bool _isDateInRange(DateTime date) {
-    if (_startDate != null &&
-        date.isBefore(_startDate!)) {
-      return false;
-    }
+          final int daysFromMonday =
+              today.weekday - 1;
 
-    if (_endDate != null &&
-        date.isAfter(_endDate!)) {
-      return false;
-    }
+          final DateTime monday =
+              today.subtract(
+            Duration(
+              days: daysFromMonday,
+            ),
+          );
 
-    return true;
-  }
+          _startDate = monday;
+          _endDate = DateTime(
+            monday.year,
+            monday.month,
+            monday.day + 6,
+            23,
+            59,
+            59,
+            999,
+          );
+          break;
 
-  double get _totalSales {
-    return _filteredSales.fold(
-      0,
-      (sum, sale) => sum + sale.total,
-    );
-  }
+        case _AnalyticsPeriod.monthly:
+          _startDate = DateTime(
+            now.year,
+            now.month,
+            1,
+          );
 
-  double get _totalPurchases {
-    return _filteredPurchases.fold(
-      0,
-      (sum, purchase) => sum + purchase.total,
-    );
-  }
-
-  double get _totalExpenses {
-    return _filteredExpenses.fold(
-      0,
-      (sum, expense) => sum + expense.amount,
-    );
-  }
-
-  double get _totalPayments {
-    return _filteredPayments.fold(
-      0,
-      (sum, payment) => sum + payment.amount,
-    );
-  }
-
-  double get _grossProfit {
-    double total = 0;
-
-    for (final SaleModel sale
-        in _filteredSales) {
-      for (final item in sale.items) {
-        total +=
-            (item.sellingRate -
-                    item.costPrice) *
-                item.quantity;
+          _endDate = DateTime(
+            now.year,
+            now.month + 1,
+            0,
+            23,
+            59,
+            59,
+            999,
+          );
+          break;
       }
-    }
-
-    return total;
+    });
   }
 
-  double get _netProfit {
-    return _grossProfit - _totalExpenses;
+  double _totalSales(
+    List<SaleModel> sales,
+  ) {
+    return sales.fold<double>(
+      0,
+      (sum, sale) =>
+          sum + sale.total,
+    );
   }
 
-  double get _outstanding {
-    double total = 0;
-
-    for (final SaleModel sale
-        in _filteredSales) {
-      final double amount =
-          sale.total - sale.paidAmount;
-
-      if (amount > 0) {
-        total += amount;
-      }
-    }
-
-    return total;
+  double _totalPurchases(
+    List<PurchaseModel> purchases,
+  ) {
+    return purchases.fold<double>(
+      0,
+      (sum, purchase) =>
+          sum + purchase.total,
+    );
   }
 
-  double get _collectionRate {
-    if (_totalSales <= 0) {
+  double _totalExpenses(
+    List<ExpenseModel> expenses,
+  ) {
+    return expenses.fold<double>(
+      0,
+      (sum, expense) =>
+          sum + expense.amount,
+    );
+  }
+
+  double _totalSalePaid(
+    List<SaleModel> sales,
+  ) {
+    return sales.fold<double>(
+      0,
+      (sum, sale) =>
+          sum + sale.paidAmount,
+    );
+  }
+
+  double _totalSeparatePayments(
+    List<PaymentModel> payments,
+  ) {
+    return payments.fold<double>(
+      0,
+      (sum, payment) =>
+          sum + payment.amount,
+    );
+  }
+
+  double _totalCollected(
+    List<SaleModel> sales,
+    List<PaymentModel> payments,
+  ) {
+    return _totalSalePaid(sales) +
+        _totalSeparatePayments(
+          payments,
+        );
+  }
+
+  double _totalOutstanding(
+    List<SaleModel> sales,
+    List<PaymentModel> payments,
+  ) {
+    final double outstanding =
+        _totalSales(sales) -
+            _totalCollected(
+              sales,
+              payments,
+            );
+
+    return outstanding > 0
+        ? outstanding
+        : 0;
+  }
+
+  double _saleCost(
+    SaleModel sale,
+  ) {
+    return sale.items.fold<double>(
+      0,
+      (sum, item) =>
+          sum +
+          item.quantity *
+              item.costPrice,
+    );
+  }
+
+  double _saleGrossProfit(
+    SaleModel sale,
+  ) {
+    return sale.total -
+        _saleCost(sale);
+  }
+
+  double _totalCost(
+    List<SaleModel> sales,
+  ) {
+    return sales.fold<double>(
+      0,
+      (sum, sale) =>
+          sum + _saleCost(sale),
+    );
+  }
+
+  double _totalGrossProfit(
+    List<SaleModel> sales,
+  ) {
+    return sales.fold<double>(
+      0,
+      (sum, sale) =>
+          sum +
+          _saleGrossProfit(
+            sale,
+          ),
+    );
+  }
+
+  double _netProfit(
+    List<SaleModel> sales,
+    List<ExpenseModel> expenses,
+  ) {
+    return _totalGrossProfit(
+          sales,
+        ) -
+        _totalExpenses(
+          expenses,
+        );
+  }
+
+  double _collectionRate(
+    List<SaleModel> sales,
+    List<PaymentModel> payments,
+  ) {
+    final double salesAmount =
+        _totalSales(sales);
+
+    if (salesAmount <= 0) {
       return 0;
     }
 
-    return (_totalPayments / _totalSales) * 100;
+    return (_totalCollected(
+              sales,
+              payments,
+            ) /
+            salesAmount) *
+        100;
   }
 
-  double get _profitMargin {
-    if (_totalSales <= 0) {
+  double _profitMargin(
+    List<SaleModel> sales,
+  ) {
+    final double salesAmount =
+        _totalSales(sales);
+
+    if (salesAmount <= 0) {
       return 0;
     }
 
-    return (_netProfit / _totalSales) * 100;
+    return (_totalGrossProfit(
+              sales,
+            ) /
+            salesAmount) *
+        100;
   }
 
-  List<_ChartPoint> get _salesChart {
-    return _buildChart(
-      (date) {
-        double value = 0;
-
-        for (final sale in _filteredSales) {
-          if (_sameBucket(
-            sale.date,
-            date,
-          )) {
-            value += sale.total;
-          }
-        }
-
-        return value;
-      },
-    );
-  }
-
-  List<_ChartPoint> get _purchaseChart {
-    return _buildChart(
-      (date) {
-        double value = 0;
-
-        for (final purchase
-            in _filteredPurchases) {
-          if (_sameBucket(
-            purchase.date,
-            date,
-          )) {
-            value += purchase.total;
-          }
-        }
-
-        return value;
-      },
-    );
-  }
-
-  List<_ChartPoint> get _expenseChart {
-    return _buildChart(
-      (date) {
-        double value = 0;
-
-        for (final expense
-            in _filteredExpenses) {
-          if (_sameBucket(
-            expense.date,
-            date,
-          )) {
-            value += expense.amount;
-          }
-        }
-
-        return value;
-      },
-    );
-  }
-
-  List<_ChartPoint> get _paymentChart {
-    return _buildChart(
-      (date) {
-        double value = 0;
-
-        for (final payment
-            in _filteredPayments) {
-          if (_sameBucket(
-            payment.date,
-            date,
-          )) {
-            value += payment.amount;
-          }
-        }
-
-        return value;
-      },
-    );
-  }
-
-  List<_ChartPoint> _buildChart(
-    double Function(DateTime) valueBuilder,
+  double _averageSale(
+    List<SaleModel> sales,
   ) {
-    if (_startDate == null ||
-        _endDate == null) {
-      return <_ChartPoint>[];
+    if (sales.isEmpty) {
+      return 0;
     }
 
-    final List<_ChartPoint> points =
-        <_ChartPoint>[];
-
-    if (_period == _AnalyticsPeriod.daily) {
-      DateTime current = DateTime(
-        _startDate!.year,
-        _startDate!.month,
-        _startDate!.day,
-      );
-
-      final DateTime end = DateTime(
-        _endDate!.year,
-        _endDate!.month,
-        _endDate!.day,
-      );
-
-      while (!current.isAfter(end)) {
-        points.add(
-          _ChartPoint(
-            date: current,
-            value: valueBuilder(current),
-          ),
-        );
-
-        current = current.add(
-          const Duration(days: 1),
-        );
-      }
-    } else if (_period ==
-        _AnalyticsPeriod.weekly) {
-      DateTime current = DateTime(
-        _startDate!.year,
-        _startDate!.month,
-        _startDate!.day,
-      );
-
-      while (!current.isAfter(
-        _endDate!,
-      )) {
-        points.add(
-          _ChartPoint(
-            date: current,
-            value: valueBuilder(current),
-          ),
-        );
-
-        current = current.add(
-          const Duration(days: 7),
-        );
-      }
-    } else {
-      DateTime current = DateTime(
-        _startDate!.year,
-        _startDate!.month,
-        1,
-      );
-
-      final DateTime end = DateTime(
-        _endDate!.year,
-        _endDate!.month,
-        1,
-      );
-
-      while (!current.isAfter(end)) {
-        points.add(
-          _ChartPoint(
-            date: current,
-            value: valueBuilder(current),
-          ),
-        );
-
-        current = DateTime(
-          current.year,
-          current.month + 1,
-          1,
-        );
-      }
-    }
-
-    return points;
+    return _totalSales(sales) /
+        sales.length;
   }
 
-  bool _sameBucket(
-    DateTime date,
-    DateTime bucket,
+  double _averagePurchase(
+    List<PurchaseModel> purchases,
   ) {
-    if (_period == _AnalyticsPeriod.daily) {
-      return date.year == bucket.year &&
-          date.month == bucket.month &&
-          date.day == bucket.day;
+    if (purchases.isEmpty) {
+      return 0;
     }
 
-    if (_period == _AnalyticsPeriod.weekly) {
-      final DateTime start = DateTime(
-        bucket.year,
-        bucket.month,
-        bucket.day,
-      );
-
-      final DateTime end = start.add(
-        const Duration(days: 7),
-      );
-
-      return !date.isBefore(start) &&
-          date.isBefore(end);
-    }
-
-    return date.year == bucket.year &&
-        date.month == bucket.month;
+    return _totalPurchases(
+          purchases,
+        ) /
+        purchases.length;
   }
 
-  String _currency(double value) {
+  double _totalQuantity(
+    List<SaleModel> sales,
+  ) {
+    return sales.fold<double>(
+      0,
+      (sum, sale) =>
+          sum +
+          sale.items.fold<double>(
+            0,
+            (
+              itemSum,
+              item,
+            ) =>
+                itemSum +
+                item.quantity,
+          ),
+    );
+  }
+
+
+  Map<String, double> _expensesByCategory(
+    List<ExpenseModel> expenses,
+  ) {
+    final Map<String, double> result =
+        <String, double>{};
+
+    for (final expense in expenses) {
+      final String category =
+          expense.category.trim().isEmpty
+              ? 'Other'
+              : expense.category.trim();
+
+      result[category] =
+          (result[category] ?? 0) +
+              expense.amount;
+    }
+
+    return result;
+  }
+
+  Map<String, double> _paymentByMethod(
+    List<PaymentModel> payments,
+  ) {
+    final Map<String, double> result =
+        <String, double>{};
+
+    for (final payment in payments) {
+      final String method =
+          payment.paymentMethod.trim().isEmpty
+              ? 'Other'
+              : payment.paymentMethod.trim();
+
+      result[method] =
+          (result[method] ?? 0) +
+              payment.amount;
+    }
+
+    return result;
+  }
+
+  List<_MetricPoint> _buildTrendPoints(
+    List<SaleModel> sales,
+  ) {
+    final Map<DateTime, double> values =
+        <DateTime, double>{};
+
+    for (final sale in sales) {
+      DateTime key;
+
+      switch (_period) {
+        case _AnalyticsPeriod.daily:
+          key = DateTime(
+            sale.date.year,
+            sale.date.month,
+            sale.date.day,
+          );
+          break;
+
+        case _AnalyticsPeriod.weekly:
+          final DateTime date = DateTime(
+            sale.date.year,
+            sale.date.month,
+            sale.date.day,
+          );
+
+          key = date.subtract(
+            Duration(
+              days: date.weekday - 1,
+            ),
+          );
+          break;
+
+        case _AnalyticsPeriod.monthly:
+          key = DateTime(
+            sale.date.year,
+            sale.date.month,
+          );
+          break;
+      }
+
+      values[key] =
+          (values[key] ?? 0) +
+              sale.total;
+    }
+
+    final List<DateTime> dates =
+        values.keys.toList()
+          ..sort();
+
+    return dates.map(
+      (date) {
+        String label;
+
+        switch (_period) {
+          case _AnalyticsPeriod.daily:
+            label = DateFormat(
+              'dd MMM',
+            ).format(date);
+            break;
+
+          case _AnalyticsPeriod.weekly:
+            label = DateFormat(
+              'dd MMM',
+            ).format(date);
+            break;
+
+          case _AnalyticsPeriod.monthly:
+            label = DateFormat(
+              'MMM',
+            ).format(date);
+            break;
+        }
+
+        return _MetricPoint(
+          label: label,
+          value: values[date] ?? 0,
+        );
+      },
+    ).toList();
+  }
+
+  List<_MetricPoint> _buildPurchaseTrendPoints(
+    List<PurchaseModel> purchases,
+  ) {
+    final Map<DateTime, double> values =
+        <DateTime, double>{};
+
+    for (final purchase in purchases) {
+      DateTime key;
+
+      switch (_period) {
+        case _AnalyticsPeriod.daily:
+          key = DateTime(
+            purchase.date.year,
+            purchase.date.month,
+            purchase.date.day,
+          );
+          break;
+
+        case _AnalyticsPeriod.weekly:
+          final DateTime date = DateTime(
+            purchase.date.year,
+            purchase.date.month,
+            purchase.date.day,
+          );
+
+          key = date.subtract(
+            Duration(
+              days: date.weekday - 1,
+            ),
+          );
+          break;
+
+        case _AnalyticsPeriod.monthly:
+          key = DateTime(
+            purchase.date.year,
+            purchase.date.month,
+          );
+          break;
+      }
+
+      values[key] =
+          (values[key] ?? 0) +
+              purchase.total;
+    }
+
+    final List<DateTime> dates =
+        values.keys.toList()
+          ..sort();
+
+    return dates.map(
+      (date) {
+        String label;
+
+        switch (_period) {
+          case _AnalyticsPeriod.daily:
+          case _AnalyticsPeriod.weekly:
+            label = DateFormat(
+              'dd MMM',
+            ).format(date);
+            break;
+
+          case _AnalyticsPeriod.monthly:
+            label = DateFormat(
+              'MMM',
+            ).format(date);
+            break;
+        }
+
+        return _MetricPoint(
+          label: label,
+          value:
+              values[date] ?? 0,
+        );
+      },
+    ).toList();
+  }
+
+  String _currency(
+    double value,
+  ) {
     return NumberFormat.currency(
       locale: 'en_IN',
       symbol: '₹',
-      decimalDigits: 0,
+      decimalDigits: 2,
     ).format(value);
   }
 
-  String _shortCurrency(double value) {
+  String _compactCurrency(
+    double value,
+  ) {
     if (value.abs() >= 10000000) {
-      return '₹${(value / 10000000).toStringAsFixed(1)}Cr';
+      return '₹${(value / 10000000).toStringAsFixed(2)}Cr';
     }
 
     if (value.abs() >= 100000) {
-      return '₹${(value / 100000).toStringAsFixed(1)}L';
+      return '₹${(value / 100000).toStringAsFixed(2)}L';
     }
 
     if (value.abs() >= 1000) {
       return '₹${(value / 1000).toStringAsFixed(1)}K';
     }
 
-    return '₹${value.toStringAsFixed(0)}';
+    return _currency(value);
   }
 
-  String _date(DateTime value) {
-    return DateFormat(
-      'dd MMM yyyy',
+  String _number(
+    double value,
+  ) {
+    return NumberFormat(
+      '#,##0.##',
+      'en_IN',
     ).format(value);
   }
 
-  String _chartDate(DateTime value) {
-    if (_period == _AnalyticsPeriod.monthly) {
-      return DateFormat(
-        'MMM yy',
-      ).format(value);
+  String _dateRangeText() {
+    if (_startDate == null ||
+        _endDate == null) {
+      return 'All Dates';
     }
 
-    return DateFormat(
-      'dd MMM',
-    ).format(value);
+    return '${DateFormat('dd MMM yyyy').format(_startDate!)}'
+        ' - '
+        '${DateFormat('dd MMM yyyy').format(_endDate!)}';
+  }
+
+  String _periodLabel() {
+    switch (_period) {
+      case _AnalyticsPeriod.daily:
+        return 'Daily';
+
+      case _AnalyticsPeriod.weekly:
+        return 'Weekly';
+
+      case _AnalyticsPeriod.monthly:
+        return 'Monthly';
+    }
+  }
+
+  Color _profitColor(
+    double value,
+  ) {
+    return value >= 0
+        ? AppColors.success
+        : AppColors.danger;
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
     if (_isLoading) {
       return const Center(
-        child: CircularProgressIndicator(),
+        child:
+            CircularProgressIndicator(),
       );
     }
 
     if (_errorMessage != null) {
-      return _buildErrorState(theme);
+      return _buildErrorState(
+        theme,
+      );
     }
+
+    final List<SaleModel> sales =
+        _filteredSales;
+
+    final List<PurchaseModel> purchases =
+        _filteredPurchases;
+
+    final List<ExpenseModel> expenses =
+        _filteredExpenses;
+
+    final List<PaymentModel> payments =
+        _filteredPayments;
 
     return RefreshIndicator(
       onRefresh: _refreshAnalytics,
@@ -594,21 +897,24 @@ class _AnalyticsReportScreenState
           constraints,
         ) {
           final bool isDesktop =
-              constraints.maxWidth >= 1050;
+              constraints.maxWidth >=
+                  1000;
 
           final bool isTablet =
               constraints.maxWidth >= 650 &&
-                  constraints.maxWidth < 1050;
+                  constraints.maxWidth < 1000;
 
           return SingleChildScrollView(
             physics:
                 const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.symmetric(
-              horizontal: isDesktop
-                  ? 28
-                  : isTablet
-                      ? 22
-                      : 16,
+            padding:
+                EdgeInsets.symmetric(
+              horizontal:
+                  isDesktop
+                      ? 28
+                      : isTablet
+                          ? 22
+                          : 16,
               vertical: 20,
             ),
             child: Center(
@@ -625,30 +931,69 @@ class _AnalyticsReportScreenState
                       theme,
                       isDesktop,
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(
+                      height: 20,
+                    ),
+                    _buildDateFilter(
+                      theme,
+                    ),
+                    const SizedBox(
+                      height: 20,
+                    ),
                     _buildSummaryCards(
+                      theme,
+                      sales,
+                      purchases,
+                      expenses,
+                      payments,
                       isDesktop,
                     ),
-                    const SizedBox(height: 20),
-                    _buildPeriodAndDateFilter(
+                    const SizedBox(
+                      height: 20,
+                    ),
+                    _buildPeriodSelector(
                       theme,
                     ),
-                    const SizedBox(height: 20),
-                    _buildPerformanceChart(
-                      theme,
+                    const SizedBox(
+                      height: 20,
                     ),
-                    const SizedBox(height: 20),
-                    _buildFinancialCharts(
+                    _buildSalesPurchaseChart(
                       theme,
-                      isDesktop,
+                      sales,
+                      purchases,
                     ),
-                    const SizedBox(height: 20),
-                    _buildProfitAnalysis(
-                      theme,
+                    const SizedBox(
+                      height: 20,
                     ),
-                    const SizedBox(height: 20),
-                    _buildBusinessInsights(
+                    _buildProfitOverview(
                       theme,
+                      sales,
+                      expenses,
+                    ),
+                    const SizedBox(
+                      height: 20,
+                    ),
+                    _buildPaymentOverview(
+                      theme,
+                      sales,
+                      payments,
+                    ),
+                    const SizedBox(
+                      height: 20,
+                    ),
+                    _buildExpenseOverview(
+                      theme,
+                      expenses,
+                    ),
+                    const SizedBox(
+                      height: 20,
+                    ),
+                    _buildQuickMetrics(
+                      theme,
+                      sales,
+                      purchases,
+                      expenses,
+                      payments,
                     ),
                   ],
                 ),
@@ -664,174 +1009,372 @@ class _AnalyticsReportScreenState
     ThemeData theme,
     bool isDesktop,
   ) {
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(
-        isDesktop ? 26 : 20,
-      ),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppColors.primary,
-            AppColors.secondary,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.all(
-          Radius.circular(22),
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 54,
-            height: 54,
-            decoration: BoxDecoration(
-              color:
-                  Colors.white.withValues(
-                alpha: 0.15,
+    return Row(
+      crossAxisAlignment:
+          CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment:
+                CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Analytics',
+                style:
+                    theme.textTheme.headlineSmall
+                        ?.copyWith(
+                  fontWeight:
+                      FontWeight.w800,
+                ),
               ),
-              borderRadius:
-                  BorderRadius.circular(16),
-            ),
-            child: const Icon(
-              Icons.analytics_rounded,
-              color: Colors.white,
-              size: 29,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Analytics & Insights',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight:
-                        FontWeight.w800,
+              const SizedBox(
+                height: 6,
+              ),
+              Text(
+                'Track sales, purchases, profit, expenses and customer collections.',
+                style:
+                    theme.textTheme.bodyMedium
+                        ?.copyWith(
+                  color: theme
+                      .textTheme
+                      .bodyMedium
+                      ?.color
+                      ?.withValues(
+                    alpha: 0.70,
                   ),
                 ),
-                const SizedBox(height: 5),
-                Text(
-                  'Visualise sales, purchases, expenses, collections and profitability.',
-                  style: TextStyle(
-                    color:
-                        Colors.white.withValues(
-                      alpha: 0.82,
-                    ),
-                    fontSize: 13,
-                    height: 1.4,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                _headerDateBadge(),
-              ],
-            ),
+              ),
+            ],
           ),
-          if (isDesktop)
-            IconButton(
-              tooltip: 'Refresh',
-              onPressed: _isRefreshing
-                  ? null
-                  : _refreshAnalytics,
-              icon: _isRefreshing
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child:
-                          CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
+        ),
+        const SizedBox(
+          width: 12,
+        ),
+        if (isDesktop)
+          OutlinedButton.icon(
+            onPressed:
+                _isRefreshing
+                    ? null
+                    : _refreshAnalytics,
+            icon:
+                _isRefreshing
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child:
+                            CircularProgressIndicator(
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Icon(
+                        Icons
+                            .refresh_rounded,
                       ),
-                    )
-                  : const Icon(
-                      Icons.refresh_rounded,
-                      color: Colors.white,
+            label:
+                const Text('Refresh'),
+          )
+        else
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed:
+                _isRefreshing
+                    ? null
+                    : _refreshAnalytics,
+            icon:
+                _isRefreshing
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child:
+                            CircularProgressIndicator(
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Icon(
+                        Icons
+                            .refresh_rounded,
+                      ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildDateFilter(
+    ThemeData theme,
+  ) {
+    return _AnalyticsCard(
+      child: Row(
+        children: [
+          Expanded(
+            child: InkWell(
+              onTap:
+                  _selectDateRange,
+              borderRadius:
+                  BorderRadius.circular(
+                12,
+              ),
+              child: Container(
+                padding:
+                    const EdgeInsets.all(
+                  14,
+                ),
+                decoration:
+                    BoxDecoration(
+                  border:
+                      Border.all(
+                    color:
+                        theme.dividerColor,
+                  ),
+                  borderRadius:
+                      BorderRadius.circular(
+                    12,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons
+                          .calendar_month_rounded,
+                      size: 21,
                     ),
+                    const SizedBox(
+                      width: 10,
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment:
+                            CrossAxisAlignment
+                                .start,
+                        children: [
+                          Text(
+                            'Date Range',
+                            style:
+                                theme
+                                    .textTheme
+                                    .labelMedium
+                                    ?.copyWith(
+                              fontWeight:
+                                  FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(
+                            height: 3,
+                          ),
+                          Text(
+                            _dateRangeText(),
+                            overflow:
+                                TextOverflow
+                                    .ellipsis,
+                            style:
+                                theme
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.copyWith(
+                              fontWeight:
+                                  FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(
+            width: 10,
+          ),
+          if (_startDate != null ||
+              _endDate != null)
+            IconButton(
+              tooltip:
+                  'Clear date range',
+              onPressed:
+                  _clearDateRange,
+              icon:
+                  const Icon(
+                Icons.clear_rounded,
+              ),
             ),
         ],
       ),
     );
   }
 
-  Widget _headerDateBadge() {
-    final String text =
-        _startDate != null &&
-                _endDate != null
-            ? '${_date(_startDate!)} - ${_date(_endDate!)}'
-            : 'All dates';
-
-    return Container(
-      padding:
-          const EdgeInsets.symmetric(
-        horizontal: 11,
-        vertical: 6,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(
-          alpha: 0.14,
-        ),
-        borderRadius:
-            BorderRadius.circular(30),
-      ),
-      child: Text(
-        text,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-        ),
+  Widget _buildPeriodSelector(
+    ThemeData theme,
+  ) {
+    return _AnalyticsCard(
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          _PeriodChip(
+            label: 'Daily',
+            icon:
+                Icons.today_rounded,
+            selected:
+                _period ==
+                    _AnalyticsPeriod.daily,
+            onTap: () {
+              _setPeriod(
+                _AnalyticsPeriod.daily,
+              );
+            },
+          ),
+          _PeriodChip(
+            label: 'Weekly',
+            icon:
+                Icons.view_week_rounded,
+            selected:
+                _period ==
+                    _AnalyticsPeriod.weekly,
+            onTap: () {
+              _setPeriod(
+                _AnalyticsPeriod.weekly,
+              );
+            },
+          ),
+          _PeriodChip(
+            label: 'Monthly',
+            icon:
+                Icons.calendar_month_rounded,
+            selected:
+                _period ==
+                    _AnalyticsPeriod.monthly,
+            onTap: () {
+              _setPeriod(
+                _AnalyticsPeriod.monthly,
+              );
+            },
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildSummaryCards(
+    ThemeData theme,
+    List<SaleModel> sales,
+    List<PurchaseModel> purchases,
+    List<ExpenseModel> expenses,
+    List<PaymentModel> payments,
     bool isDesktop,
   ) {
-    final List<_AnalyticsSummary> cards = [
-      _AnalyticsSummary(
-        title: 'Sales',
-        value: _currency(_totalSales),
-        subtitle:
-            '${_filteredSales.length} invoices',
-        icon: Icons.point_of_sale_rounded,
-        color: AppColors.primary,
-      ),
-      _AnalyticsSummary(
-        title: 'Purchases',
+    final double totalSales =
+        _totalSales(sales);
+
+    final double totalPurchases =
+        _totalPurchases(purchases);
+
+    final double grossProfit =
+        _totalGrossProfit(sales);
+
+    final double netProfit =
+        _netProfit(
+      sales,
+      expenses,
+    );
+
+    final double collected =
+        _totalCollected(
+      sales,
+      payments,
+    );
+
+    final double outstanding =
+        _totalOutstanding(
+      sales,
+      payments,
+    );
+
+    final List<_AnalyticsSummaryItem>
+        items = [
+      _AnalyticsSummaryItem(
+        title: 'Total Sales',
         value:
-            _currency(_totalPurchases),
+            _compactCurrency(
+          totalSales,
+        ),
         subtitle:
-            '${_filteredPurchases.length} purchases',
+            '${sales.length} invoices',
+        icon:
+            Icons
+                .point_of_sale_rounded,
+        color:
+            AppColors.success,
+      ),
+      _AnalyticsSummaryItem(
+        title: 'Total Purchase',
+        value:
+            _compactCurrency(
+          totalPurchases,
+        ),
+        subtitle:
+            '${purchases.length} purchases',
         icon:
             Icons.shopping_cart_rounded,
-        color: AppColors.secondary,
+        color:
+            AppColors.info,
       ),
-      _AnalyticsSummary(
-        title: 'Net Profit',
-        value: _currency(_netProfit),
+      _AnalyticsSummaryItem(
+        title: 'Gross Profit',
+        value:
+            _compactCurrency(
+          grossProfit,
+        ),
         subtitle:
-            '${_profitMargin.toStringAsFixed(1)}% margin',
-        icon: Icons.trending_up_rounded,
-        color: _netProfit >= 0
-            ? AppColors.success
-            : AppColors.danger,
+            '${_profitMargin(sales).toStringAsFixed(1)}% margin',
+        icon:
+            Icons.trending_up_rounded,
+        color:
+            _profitColor(
+          grossProfit,
+        ),
       ),
-      _AnalyticsSummary(
+      _AnalyticsSummaryItem(
+        title: 'Net Profit',
+        value:
+            _compactCurrency(
+          netProfit,
+        ),
+        subtitle:
+            '${expenses.length} expenses',
+        icon:
+            Icons.account_balance_wallet_rounded,
+        color:
+            _profitColor(
+          netProfit,
+        ),
+      ),
+      _AnalyticsSummaryItem(
         title: 'Collected',
         value:
-            _currency(_totalPayments),
+            _compactCurrency(
+          collected,
+        ),
         subtitle:
-            '${_collectionRate.toStringAsFixed(1)}% collection',
-        icon: Icons.payments_rounded,
-        color: AppColors.info,
+            '${_collectionRate(sales, payments).toStringAsFixed(1)}% collection',
+        icon:
+            Icons.payments_rounded,
+        color:
+            AppColors.success,
+      ),
+      _AnalyticsSummaryItem(
+        title: 'Outstanding',
+        value:
+            _compactCurrency(
+          outstanding,
+        ),
+        subtitle:
+            'Customer receivable',
+        icon:
+            Icons.pending_actions_rounded,
+        color:
+            outstanding > 0
+                ? AppColors.warning
+                : AppColors.success,
       ),
     ];
 
@@ -839,526 +1382,595 @@ class _AnalyticsReportScreenState
       shrinkWrap: true,
       physics:
           const NeverScrollableScrollPhysics(),
-      itemCount: cards.length,
+      itemCount: items.length,
       gridDelegate:
           SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount:
-            isDesktop ? 4 : 2,
-        crossAxisSpacing: 14,
-        mainAxisSpacing: 14,
+            isDesktop ? 3 : 2,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
         childAspectRatio:
-            isDesktop ? 1.9 : 1.5,
+            isDesktop ? 2.15 : 1.55,
       ),
-      itemBuilder: (
-        context,
-        index,
-      ) {
+      itemBuilder:
+          (context, index) {
+        final item = items[index];
+
         return _AnalyticsSummaryCard(
-          data: cards[index],
+          item: item,
         );
       },
     );
   }
 
-  Widget _buildPeriodAndDateFilter(
+  Widget _buildSalesPurchaseChart(
     ThemeData theme,
+    List<SaleModel> sales,
+    List<PurchaseModel> purchases,
   ) {
-    return _AnalyticsCard(
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Analytics Filters',
-            style: theme
-                .textTheme
-                .titleMedium
-                ?.copyWith(
-              fontWeight:
-                  FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _periodChip(
-                'Daily',
-                _AnalyticsPeriod.daily,
-              ),
-              _periodChip(
-                'Weekly',
-                _AnalyticsPeriod.weekly,
-              ),
-              _periodChip(
-                'Monthly',
-                _AnalyticsPeriod.monthly,
-              ),
-            ],
-          ),
-          const SizedBox(height: 13),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              OutlinedButton.icon(
-                onPressed:
-                    _selectDateRange,
-                icon: const Icon(
-                  Icons.date_range_rounded,
-                ),
-                label: Text(
-                  _startDate != null &&
-                          _endDate != null
-                      ? '${_date(_startDate!)} - ${_date(_endDate!)}'
-                      : 'Select Date Range',
-                ),
-              ),
-              TextButton.icon(
-                onPressed: () {
-                  setState(() {
-                    _setDefaultDateRange();
-                  });
-                },
-                icon: const Icon(
-                  Icons.restart_alt_rounded,
-                ),
-                label:
-                    const Text('Last 7 Days'),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _periodChip(
-    String label,
-    _AnalyticsPeriod period,
-  ) {
-    return ChoiceChip(
-      label: Text(label),
-      selected: _period == period,
-      onSelected: (_) {
-        _setPeriod(period);
-      },
-    );
-  }
-
-  Widget _buildPerformanceChart(
-    ThemeData theme,
-  ) {
-    final List<_ChartPoint> points =
-        _salesChart;
-
-    return _AnalyticsCard(
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          const _AnalyticsSectionHeader(
-            icon: Icons.show_chart_rounded,
-            title: 'Sales Performance',
-            subtitle:
-                'Sales trend for the selected period',
-          ),
-          const SizedBox(height: 20),
-          if (_hasChartData(points))
-            _LineChart(
-              points: points,
-              lineColor: AppColors.primary,
-              fillColor:
-                  AppColors.primary.withValues(
-                alpha: 0.08,
-              ),
-              labelBuilder: _chartDate,
-              valueFormatter:
-                  _shortCurrency,
-              height: 280,
-            )
-          else
-            const _ChartEmptyState(
-              message:
-                  'No sales data available for this period.',
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFinancialCharts(
-    ThemeData theme,
-    bool isDesktop,
-  ) {
-    final Widget purchaseChart =
-        _buildMiniChartCard(
-      title: 'Purchase Trend',
-      subtitle: 'Purchase amount',
-      icon: Icons.shopping_cart_rounded,
-      color: AppColors.secondary,
-      points: _purchaseChart,
+    final List<_MetricPoint> salesPoints =
+        _buildTrendPoints(
+      sales,
     );
 
-    final Widget expenseChart =
-        _buildMiniChartCard(
-      title: 'Expense Trend',
-      subtitle: 'Expense amount',
-      icon: Icons.money_off_rounded,
-      color: AppColors.warning,
-      points: _expenseChart,
+    final List<_MetricPoint>
+        purchasePoints =
+        _buildPurchaseTrendPoints(
+      purchases,
     );
 
-    final Widget paymentChart =
-        _buildMiniChartCard(
-      title: 'Collection Trend',
-      subtitle: 'Payments received',
-      icon: Icons.payments_rounded,
-      color: AppColors.success,
-      points: _paymentChart,
-    );
+    final List<_MetricPoint> allPoints =
+        [
+      ...salesPoints,
+      ...purchasePoints,
+    ];
 
-    if (isDesktop) {
-      return Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: purchaseChart,
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: expenseChart,
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: paymentChart,
-          ),
-        ],
-      );
-    }
+    double maxValue = 0;
 
-    return Column(
-      children: [
-        purchaseChart,
-        const SizedBox(height: 14),
-        expenseChart,
-        const SizedBox(height: 14),
-        paymentChart,
-      ],
-    );
-  }
-
-  Widget _buildMiniChartCard({
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required Color color,
-    required List<_ChartPoint> points,
-  }) {
-    return _AnalyticsCard(
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration:
-                    BoxDecoration(
-                  color: color.withValues(
-                    alpha: 0.10,
-                  ),
-                  borderRadius:
-                      BorderRadius.circular(
-                    12,
-                  ),
-                ),
-                child: Icon(
-                  icon,
-                  color: color,
-                  size: 21,
-                ),
-              ),
-              const SizedBox(width: 11),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontWeight:
-                            FontWeight.w800,
-                        fontSize: 15,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurfaceVariant,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          if (_hasChartData(points))
-            _LineChart(
-              points: points,
-              lineColor: color,
-              fillColor:
-                  color.withValues(
-                alpha: 0.08,
-              ),
-              labelBuilder: _chartDate,
-              valueFormatter:
-                  _shortCurrency,
-              height: 190,
-              compact: true,
-            )
-          else
-            const _ChartEmptyState(
-              message: 'No data.',
-              compact: true,
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildProfitAnalysis(
-    ThemeData theme,
-  ) {
-    return _AnalyticsCard(
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          const _AnalyticsSectionHeader(
-            icon: Icons.account_balance_rounded,
-            title: 'Profit Analysis',
-            subtitle:
-                'Understand gross profit, expenses and net profit',
-          ),
-          const SizedBox(height: 20),
-          _ProfitRow(
-            label: 'Total Sales',
-            value: _currency(_totalSales),
-            color: AppColors.primary,
-          ),
-          _ProfitRow(
-            label: 'Gross Profit',
-            value: _currency(_grossProfit),
-            color: AppColors.success,
-          ),
-          _ProfitRow(
-            label: 'Expenses',
-            value: _currency(_totalExpenses),
-            color: AppColors.warning,
-          ),
-          const Divider(height: 24),
-          _ProfitRow(
-            label: 'Net Profit',
-            value: _currency(_netProfit),
-            color: _netProfit >= 0
-                ? AppColors.success
-                : AppColors.danger,
-            isBold: true,
-          ),
-          const SizedBox(height: 18),
-          Row(
-            children: [
-              Expanded(
-                child: _SmallStat(
-                  title: 'Margin',
-                  value:
-                      '${_profitMargin.toStringAsFixed(1)}%',
-                  icon:
-                      Icons.percent_rounded,
-                  color:
-                      _profitMargin >= 0
-                          ? AppColors.success
-                          : AppColors.danger,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _SmallStat(
-                  title: 'Outstanding',
-                  value:
-                      _currency(_outstanding),
-                  icon:
-                      Icons.pending_actions_rounded,
-                  color: AppColors.warning,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _SmallStat(
-                  title: 'Collection',
-                  value:
-                      '${_collectionRate.toStringAsFixed(1)}%',
-                  icon:
-                      Icons.task_alt_rounded,
-                  color: AppColors.info,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBusinessInsights(
-    ThemeData theme,
-  ) {
-    final List<_Insight> insights =
-        _generateInsights();
-
-    return _AnalyticsCard(
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          const _AnalyticsSectionHeader(
-            icon: Icons.lightbulb_rounded,
-            title: 'Business Insights',
-            subtitle:
-                'Quick observations from your current data',
-          ),
-          const SizedBox(height: 16),
-          if (insights.isEmpty)
-            const _ChartEmptyState(
-              message:
-                  'Not enough data to generate insights.',
-            )
-          else
-            ...insights.map(
-              (insight) => _InsightTile(
-                insight: insight,
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  List<_Insight> _generateInsights() {
-    final List<_Insight> insights =
-        <_Insight>[];
-
-    if (_totalSales > 0) {
-      if (_profitMargin >= 20) {
-        insights.add(
-          const _Insight(
-            title: 'Healthy profit margin',
-            description:
-                'Your current net profit margin is above 20%.',
-            icon:
-                Icons.trending_up_rounded,
-            color: AppColors.success,
-          ),
-        );
-      } else if (_profitMargin >= 0) {
-        insights.add(
-          const _Insight(
-            title: 'Profit can improve',
-            description:
-                'Sales are profitable, but there is room to improve your margin.',
-            icon:
-                Icons.trending_flat_rounded,
-            color: AppColors.warning,
-          ),
-        );
-      } else {
-        insights.add(
-          const _Insight(
-            title: 'Negative net profit',
-            description:
-                'Expenses are currently higher than your gross profit.',
-            icon:
-                Icons.trending_down_rounded,
-            color: AppColors.danger,
-          ),
-        );
+    for (final point in allPoints) {
+      if (point.value > maxValue) {
+        maxValue = point.value;
       }
     }
 
-    if (_outstanding > 0) {
-      insights.add(
-        _Insight(
-          title: 'Outstanding payments',
-          description:
-              '${_currency(_outstanding)} is still outstanding from sales.',
-          icon:
-              Icons.pending_actions_rounded,
-          color: AppColors.warning,
-        ),
-      );
-    }
-
-    if (_totalPurchases > _totalSales &&
-        _totalPurchases > 0) {
-      insights.add(
-        const _Insight(
-          title: 'Purchases are high',
-          description:
-              'Purchase value is currently higher than sales value for this period.',
-          icon:
-              Icons.shopping_cart_rounded,
-          color: AppColors.secondary,
-        ),
-      );
-    }
-
-    if (_totalPayments > 0 &&
-        _collectionRate >= 80) {
-      insights.add(
-        const _Insight(
-          title: 'Strong collections',
-          description:
-              'Most of the sales value is being collected.',
-          icon:
-              Icons.payments_rounded,
-          color: AppColors.success,
-        ),
-      );
-    }
-
-    if (_totalExpenses > _grossProfit &&
-        _grossProfit > 0) {
-      insights.add(
-        const _Insight(
-          title: 'Review expenses',
-          description:
-              'Current expenses are consuming more than the gross profit generated.',
-          icon:
-              Icons.warning_rounded,
-          color: AppColors.danger,
-        ),
-      );
-    }
-
-    return insights;
+    return _AnalyticsCard(
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          _SectionHeader(
+            icon:
+                Icons.show_chart_rounded,
+            title:
+                'Sales vs Purchase',
+            subtitle:
+                '${_periodLabel()} performance trend',
+          ),
+          const SizedBox(
+            height: 18,
+          ),
+          if (allPoints.isEmpty)
+            const _EmptyAnalytics(
+              icon:
+                  Icons.show_chart_rounded,
+              message:
+                  'No sales or purchase data available for the selected period.',
+            )
+          else
+            SizedBox(
+              height: 250,
+              child: _TrendChart(
+                sales:
+                    salesPoints,
+                purchases:
+                    purchasePoints,
+                maxValue:
+                    maxValue,
+                currency:
+                    _compactCurrency,
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
-  bool _hasChartData(
-    List<_ChartPoint> points,
+  Widget _buildProfitOverview(
+    ThemeData theme,
+    List<SaleModel> sales,
+    List<ExpenseModel> expenses,
   ) {
-    return points.any(
-      (point) => point.value > 0,
+    final double grossProfit =
+        _totalGrossProfit(sales);
+
+    final double totalExpenses =
+        _totalExpenses(expenses);
+
+    final double netProfit =
+        grossProfit -
+            totalExpenses;
+
+    return _AnalyticsCard(
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          _SectionHeader(
+            icon:
+                Icons
+                    .account_balance_rounded,
+            title:
+                'Profit Overview',
+            subtitle:
+                'Gross profit after business expenses',
+          ),
+          const SizedBox(
+            height: 18,
+          ),
+          Wrap(
+            spacing: 14,
+            runSpacing: 14,
+            children: [
+              _ProfitMetric(
+                label:
+                    'Sales Revenue',
+                value:
+                    _currency(
+                  _totalSales(
+                    sales,
+                  ),
+                ),
+                color:
+                    AppColors.info,
+              ),
+              _ProfitMetric(
+                label:
+                    'Sales Cost',
+                value:
+                    _currency(
+                  _totalCost(
+                    sales,
+                  ),
+                ),
+                color:
+                    AppColors.warning,
+              ),
+              _ProfitMetric(
+                label:
+                    'Gross Profit',
+                value:
+                    _currency(
+                  grossProfit,
+                ),
+                color:
+                    _profitColor(
+                  grossProfit,
+                ),
+              ),
+              _ProfitMetric(
+                label:
+                    'Expenses',
+                value:
+                    _currency(
+                  totalExpenses,
+                ),
+                color:
+                    AppColors.danger,
+              ),
+              _ProfitMetric(
+                label:
+                    'Net Profit',
+                value:
+                    _currency(
+                  netProfit,
+                ),
+                color:
+                    _profitColor(
+                  netProfit,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentOverview(
+    ThemeData theme,
+    List<SaleModel> sales,
+    List<PaymentModel> payments,
+  ) {
+    final double salePaid =
+        _totalSalePaid(
+      sales,
+    );
+
+    final double separatePayments =
+        _totalSeparatePayments(
+      payments,
+    );
+
+    final double collected =
+        salePaid +
+            separatePayments;
+
+    final double outstanding =
+        _totalOutstanding(
+      sales,
+      payments,
+    );
+
+    final Map<String, double>
+        methods =
+        _paymentByMethod(
+      payments,
+    );
+
+    return _AnalyticsCard(
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          _SectionHeader(
+            icon:
+                Icons.payments_rounded,
+            title:
+                'Payment Analytics',
+            subtitle:
+                'Customer collections and outstanding receivables',
+          ),
+          const SizedBox(
+            height: 18,
+          ),
+          Wrap(
+            spacing: 14,
+            runSpacing: 14,
+            children: [
+              _ProfitMetric(
+                label:
+                    'Sale Payments',
+                value:
+                    _currency(
+                  salePaid,
+                ),
+                color:
+                    AppColors.info,
+              ),
+              _ProfitMetric(
+                label:
+                    'Separate Payments',
+                value:
+                    _currency(
+                  separatePayments,
+                ),
+                color:
+                    AppColors.success,
+              ),
+              _ProfitMetric(
+                label:
+                    'Total Collected',
+                value:
+                    _currency(
+                  collected,
+                ),
+                color:
+                    AppColors.success,
+              ),
+              _ProfitMetric(
+                label:
+                    'Outstanding',
+                value:
+                    _currency(
+                  outstanding,
+                ),
+                color:
+                    outstanding > 0
+                        ? AppColors.warning
+                        : AppColors.success,
+              ),
+            ],
+          ),
+          if (methods.isNotEmpty) ...[
+            const SizedBox(
+              height: 18,
+            ),
+            Text(
+              'Separate Payment Methods',
+              style:
+                  theme.textTheme.titleSmall
+                      ?.copyWith(
+                fontWeight:
+                    FontWeight.w800,
+              ),
+            ),
+            const SizedBox(
+              height: 10,
+            ),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children:
+                  methods.entries
+                      .map(
+                (entry) {
+                  return _TagMetric(
+                    label:
+                        entry.key,
+                    value:
+                        _currency(
+                      entry.value,
+                    ),
+                  );
+                },
+              ).toList(),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExpenseOverview(
+    ThemeData theme,
+    List<ExpenseModel> expenses,
+  ) {
+    final Map<String, double>
+        categories =
+        _expensesByCategory(
+      expenses,
+    );
+
+    final List<MapEntry<String, double>>
+        sorted =
+        categories.entries.toList()
+          ..sort(
+            (a, b) =>
+                b.value.compareTo(
+              a.value,
+            ),
+          );
+
+    return _AnalyticsCard(
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          _SectionHeader(
+            icon:
+                Icons.money_off_rounded,
+            title:
+                'Expense Distribution',
+            subtitle:
+                'Business expenses by category',
+          ),
+          const SizedBox(
+            height: 18,
+          ),
+          if (sorted.isEmpty)
+            const _EmptyAnalytics(
+              icon:
+                  Icons.money_off_rounded,
+              message:
+                  'No expenses available for the selected period.',
+            )
+          else
+            Column(
+              children:
+                  sorted.take(10).map(
+                (entry) {
+                  final double total =
+                      _totalExpenses(
+                    expenses,
+                  );
+
+                  final double percentage =
+                      total > 0
+                          ? (entry.value /
+                                  total) *
+                              100
+                          : 0;
+
+                  return Padding(
+                    padding:
+                        const EdgeInsets.only(
+                      bottom: 12,
+                    ),
+                    child: Column(
+                      crossAxisAlignment:
+                          CrossAxisAlignment
+                              .start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                entry.key,
+                                style:
+                                    theme
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(
+                                  fontWeight:
+                                      FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              _currency(
+                                entry.value,
+                              ),
+                              style:
+                                  theme
+                                      .textTheme
+                                      .bodyMedium
+                                      ?.copyWith(
+                                fontWeight:
+                                    FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(
+                              width: 8,
+                            ),
+                            Text(
+                              '${percentage.toStringAsFixed(1)}%',
+                              style:
+                                  theme
+                                      .textTheme
+                                      .bodySmall,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(
+                          height: 7,
+                        ),
+                        ClipRRect(
+                          borderRadius:
+                              BorderRadius
+                                  .circular(
+                            6,
+                          ),
+                          child:
+                              LinearProgressIndicator(
+                            value:
+                                (percentage /
+                                        100)
+                                    .clamp(
+                              0.0,
+                              1.0,
+                            ),
+                            minHeight:
+                                7,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ).toList(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickMetrics(
+    ThemeData theme,
+    List<SaleModel> sales,
+    List<PurchaseModel> purchases,
+    List<ExpenseModel> expenses,
+    List<PaymentModel> payments,
+  ) {
+    final List<_QuickMetric> metrics = [
+      _QuickMetric(
+        label:
+            'Average Sale',
+        value:
+            _currency(
+          _averageSale(
+            sales,
+          ),
+        ),
+        icon:
+            Icons.receipt_long_rounded,
+      ),
+      _QuickMetric(
+        label:
+            'Average Purchase',
+        value:
+            _currency(
+          _averagePurchase(
+            purchases,
+          ),
+        ),
+        icon:
+            Icons.shopping_cart_rounded,
+      ),
+      _QuickMetric(
+        label:
+            'Items Sold',
+        value:
+            _number(
+          _totalQuantity(
+            sales,
+          ),
+        ),
+        icon:
+            Icons.inventory_2_rounded,
+      ),
+      _QuickMetric(
+        label:
+            'Profit Margin',
+        value:
+            '${_profitMargin(sales).toStringAsFixed(2)}%',
+        icon:
+            Icons.percent_rounded,
+      ),
+      _QuickMetric(
+        label:
+            'Collection Rate',
+        value:
+            '${_collectionRate(sales, payments).toStringAsFixed(2)}%',
+        icon:
+            Icons
+                .account_balance_wallet_rounded,
+      ),
+      _QuickMetric(
+        label:
+            'Expense Total',
+        value:
+            _currency(
+          _totalExpenses(
+            expenses,
+          ),
+        ),
+        icon:
+            Icons.money_off_rounded,
+      ),
+    ];
+
+    return _AnalyticsCard(
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          _SectionHeader(
+            icon:
+                Icons.insights_rounded,
+            title:
+                'Key Metrics',
+            subtitle:
+                'Quick performance indicators',
+          ),
+          const SizedBox(
+            height: 18,
+          ),
+          GridView.builder(
+            shrinkWrap: true,
+            physics:
+                const NeverScrollableScrollPhysics(),
+            itemCount:
+                metrics.length,
+            gridDelegate:
+                const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 250,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 2.2,
+            ),
+            itemBuilder:
+                (
+              context,
+              index,
+            ) {
+              return _QuickMetricTile(
+                metric:
+                    metrics[index],
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 
@@ -1374,62 +1986,50 @@ class _AnalyticsReportScreenState
             mainAxisSize:
                 MainAxisSize.min,
             children: [
-              Container(
-                width: 64,
-                height: 64,
-                decoration:
-                    BoxDecoration(
-                  color: AppColors.danger
-                      .withValues(
-                    alpha: 0.10,
-                  ),
-                  shape:
-                      BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.error_outline_rounded,
-                  color:
-                      AppColors.danger,
-                  size: 32,
-                ),
+              const Icon(
+                Icons
+                    .error_outline_rounded,
+                size: 52,
+                color:
+                    AppColors.danger,
               ),
-              const SizedBox(height: 16),
+              const SizedBox(
+                height: 12,
+              ),
               Text(
-                'Unable to load Analytics',
-                textAlign:
-                    TextAlign.center,
-                style: theme
-                    .textTheme
-                    .titleLarge
-                    ?.copyWith(
+                'Unable to load analytics',
+                style:
+                    theme.textTheme.titleMedium
+                        ?.copyWith(
                   fontWeight:
                       FontWeight.w800,
                 ),
+                textAlign:
+                    TextAlign.center,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(
+                height: 8,
+              ),
               Text(
                 _errorMessage ??
                     'Something went wrong.',
+                style:
+                    theme.textTheme.bodyMedium,
                 textAlign:
                     TextAlign.center,
-                style: theme
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(
-                  color: theme
-                      .colorScheme
-                      .onSurfaceVariant,
-                ),
               ),
-              const SizedBox(height: 20),
-              FilledButton.icon(
+              const SizedBox(
+                height: 16,
+              ),
+              ElevatedButton.icon(
                 onPressed:
                     () => _loadAnalytics(),
-                icon: const Icon(
+                icon:
+                    const Icon(
                   Icons.refresh_rounded,
                 ),
                 label:
-                    const Text('Try Again'),
+                    const Text('Retry'),
               ),
             ],
           ),
@@ -1440,27 +2040,17 @@ class _AnalyticsReportScreenState
 }
 
 // =============================================================================
-// DATA CLASSES
+// MODELS
 // =============================================================================
 
-class _ChartPoint {
-  final DateTime date;
-  final double value;
-
-  const _ChartPoint({
-    required this.date,
-    required this.value,
-  });
-}
-
-class _AnalyticsSummary {
+class _AnalyticsSummaryItem {
   final String title;
   final String value;
   final String subtitle;
   final IconData icon;
   final Color color;
 
-  const _AnalyticsSummary({
+  const _AnalyticsSummaryItem({
     required this.title,
     required this.value,
     required this.subtitle,
@@ -1469,137 +2059,30 @@ class _AnalyticsSummary {
   });
 }
 
-class _Insight {
-  final String title;
-  final String description;
+class _MetricPoint {
+  final String label;
+  final double value;
+
+  const _MetricPoint({
+    required this.label,
+    required this.value,
+  });
+}
+
+class _QuickMetric {
+  final String label;
+  final String value;
   final IconData icon;
-  final Color color;
 
-  const _Insight({
-    required this.title,
-    required this.description,
+  const _QuickMetric({
+    required this.label,
+    required this.value,
     required this.icon,
-    required this.color,
   });
 }
 
 // =============================================================================
-// SUMMARY CARD
-// =============================================================================
-
-class _AnalyticsSummaryCard
-    extends StatelessWidget {
-  final _AnalyticsSummary data;
-
-  const _AnalyticsSummaryCard({
-    required this.data,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme =
-        Theme.of(context);
-
-    return Container(
-      padding:
-          const EdgeInsets.all(17),
-      decoration: BoxDecoration(
-        color:
-            theme.colorScheme.surface,
-        borderRadius:
-            BorderRadius.circular(17),
-        border: Border.all(
-          color: data.color.withValues(
-            alpha: 0.20,
-          ),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration:
-                    BoxDecoration(
-                  color:
-                      data.color.withValues(
-                    alpha: 0.10,
-                  ),
-                  borderRadius:
-                      BorderRadius.circular(
-                    12,
-                  ),
-                ),
-                child: Icon(
-                  data.icon,
-                  color: data.color,
-                  size: 21,
-                ),
-              ),
-              const Spacer(),
-              Icon(
-                Icons.arrow_outward_rounded,
-                color:
-                    data.color.withValues(
-                  alpha: 0.60,
-                ),
-                size: 18,
-              ),
-            ],
-          ),
-          const Spacer(),
-          Text(
-            data.title,
-            style: theme
-                .textTheme
-                .bodySmall
-                ?.copyWith(
-              color: theme
-                  .colorScheme
-                  .onSurfaceVariant,
-              fontWeight:
-                  FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            data.value,
-            maxLines: 1,
-            overflow:
-                TextOverflow.ellipsis,
-            style: theme
-                .textTheme
-                .titleLarge
-                ?.copyWith(
-              fontWeight:
-                  FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            data.subtitle,
-            maxLines: 1,
-            overflow:
-                TextOverflow.ellipsis,
-            style: TextStyle(
-              color: data.color,
-              fontSize: 11,
-              fontWeight:
-                  FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// =============================================================================
-// CARD
+// ANALYTICS CARD
 // =============================================================================
 
 class _AnalyticsCard
@@ -1611,7 +2094,9 @@ class _AnalyticsCard
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
@@ -1619,32 +2104,31 @@ class _AnalyticsCard
       width: double.infinity,
       padding:
           const EdgeInsets.all(18),
-      decoration: BoxDecoration(
+      decoration:
+          BoxDecoration(
         color:
-            theme.colorScheme.surface,
+            theme.cardColor,
         borderRadius:
-            BorderRadius.circular(18),
-        border: Border.all(
-          color: theme
-              .colorScheme
-              .outlineVariant
-              .withValues(
-            alpha: 0.55,
-          ),
+            BorderRadius.circular(
+          18,
+        ),
+        border:
+            Border.all(
+          color:
+              theme.dividerColor,
         ),
         boxShadow: [
           BoxShadow(
             color:
                 Colors.black.withValues(
-              alpha:
-                  theme.brightness ==
-                          Brightness.dark
-                      ? 0.08
-                      : 0.035,
+              alpha: 0.04,
             ),
-            blurRadius: 16,
+            blurRadius: 18,
             offset:
-                const Offset(0, 6),
+                const Offset(
+              0,
+              6,
+            ),
           ),
         ],
       ),
@@ -1654,52 +2138,189 @@ class _AnalyticsCard
 }
 
 // =============================================================================
+// SUMMARY CARD
+// =============================================================================
+
+class _AnalyticsSummaryCard
+    extends StatelessWidget {
+  final _AnalyticsSummaryItem item;
+
+  const _AnalyticsSummaryCard({
+    required this.item,
+  });
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    final ThemeData theme =
+        Theme.of(context);
+
+    return Container(
+      padding:
+          const EdgeInsets.all(14),
+      decoration:
+          BoxDecoration(
+        color:
+            item.color.withValues(
+          alpha: 0.07,
+        ),
+        borderRadius:
+            BorderRadius.circular(
+          16,
+        ),
+        border:
+            Border.all(
+          color:
+              item.color.withValues(
+            alpha: 0.18,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration:
+                BoxDecoration(
+              color:
+                  item.color.withValues(
+                alpha: 0.12,
+              ),
+              borderRadius:
+                  BorderRadius.circular(
+                12,
+              ),
+            ),
+            child: Icon(
+              item.icon,
+              color:
+                  item.color,
+              size: 22,
+            ),
+          ),
+          const SizedBox(
+            width: 11,
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              mainAxisAlignment:
+                  MainAxisAlignment.center,
+              children: [
+                Text(
+                  item.title,
+                  maxLines: 1,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style:
+                      theme.textTheme.labelMedium
+                          ?.copyWith(
+                    fontWeight:
+                        FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(
+                  height: 2,
+                ),
+                Text(
+                  item.value,
+                  maxLines: 1,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style:
+                      theme.textTheme.titleMedium
+                          ?.copyWith(
+                    fontWeight:
+                        FontWeight.w900,
+                    color:
+                        item.color,
+                  ),
+                ),
+                const SizedBox(
+                  height: 1,
+                ),
+                Text(
+                  item.subtitle,
+                  maxLines: 1,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style:
+                      theme.textTheme.labelSmall
+                          ?.copyWith(
+                    color:
+                        theme
+                            .textTheme
+                            .labelSmall
+                            ?.color
+                            ?.withValues(
+                      alpha: 0.65,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// =============================================================================
 // SECTION HEADER
 // =============================================================================
 
-class _AnalyticsSectionHeader
+class _SectionHeader
     extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
 
-  const _AnalyticsSectionHeader({
+  const _SectionHeader({
     required this.icon,
     required this.title,
     required this.subtitle,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
     return Row(
+      crossAxisAlignment:
+          CrossAxisAlignment.start,
       children: [
         Container(
-          width: 42,
-          height: 42,
+          width: 40,
+          height: 40,
           decoration:
               BoxDecoration(
-            color: theme
-                .colorScheme
-                .primary
-                .withValues(
+            color:
+                theme.colorScheme.primary
+                    .withValues(
               alpha: 0.10,
             ),
             borderRadius:
                 BorderRadius.circular(
-              12,
+              11,
             ),
           ),
           child: Icon(
             icon,
+            size: 21,
             color:
                 theme.colorScheme.primary,
-            size: 22,
           ),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(
+          width: 11,
+        ),
         Expanded(
           child: Column(
             crossAxisAlignment:
@@ -1707,24 +2328,29 @@ class _AnalyticsSectionHeader
             children: [
               Text(
                 title,
-                style: theme
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(
+                style:
+                    theme.textTheme.titleMedium
+                        ?.copyWith(
                   fontWeight:
                       FontWeight.w800,
                 ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(
+                height: 3,
+              ),
               Text(
                 subtitle,
-                style: theme
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(
-                  color: theme
-                      .colorScheme
-                      .onSurfaceVariant,
+                style:
+                    theme.textTheme.bodySmall
+                        ?.copyWith(
+                  color:
+                      theme
+                          .textTheme
+                          .bodySmall
+                          ?.color
+                          ?.withValues(
+                    alpha: 0.65,
+                  ),
                 ),
               ),
             ],
@@ -1736,97 +2362,537 @@ class _AnalyticsSectionHeader
 }
 
 // =============================================================================
-// LINE CHART
+// PERIOD CHIP
 // =============================================================================
 
-class _LineChart
+class _PeriodChip
     extends StatelessWidget {
-  final List<_ChartPoint> points;
-  final Color lineColor;
-  final Color fillColor;
-  final String Function(DateTime) labelBuilder;
-  final String Function(double) valueFormatter;
-  final double height;
-  final bool compact;
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
 
-  const _LineChart({
-    required this.points,
-    required this.lineColor,
-    required this.fillColor,
-    required this.labelBuilder,
-    required this.valueFormatter,
-    required this.height,
-    this.compact = false,
+  const _PeriodChip({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
-    final double maxValue = points.fold(
-      0,
-      (max, point) =>
-          math.max(max, point.value),
-    );
+    final Color color =
+        theme.colorScheme.primary;
 
-    return Column(
-      children: [
-        SizedBox(
-          height: height,
-          width: double.infinity,
-          child: CustomPaint(
-            painter: _LineChartPainter(
-              points: points,
-              maxValue:
-                  maxValue <= 0
-                      ? 1
-                      : maxValue,
-              lineColor: lineColor,
-              fillColor: fillColor,
-              gridColor: theme
-                  .colorScheme
-                  .outlineVariant
-                  .withValues(
-                alpha: 0.35,
-              ),
-              textColor: theme
-                  .colorScheme
-                  .onSurfaceVariant,
-              valueFormatter:
-                  valueFormatter,
-            ),
+    return InkWell(
+      onTap: onTap,
+      borderRadius:
+          BorderRadius.circular(
+        10,
+      ),
+      child: Container(
+        padding:
+            const EdgeInsets.symmetric(
+          horizontal: 13,
+          vertical: 9,
+        ),
+        decoration:
+            BoxDecoration(
+          color:
+              selected
+                  ? color.withValues(
+                      alpha: 0.10,
+                    )
+                  : Colors.transparent,
+          border:
+              Border.all(
+            color:
+                selected
+                    ? color.withValues(
+                        alpha: 0.35,
+                      )
+                    : theme.dividerColor,
+          ),
+          borderRadius:
+              BorderRadius.circular(
+            10,
           ),
         ),
-        const SizedBox(height: 8),
-        _ChartLabels(
-          points: points,
-          labelBuilder: labelBuilder,
-          compact: compact,
+        child: Row(
+          mainAxisSize:
+              MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 18,
+              color:
+                  selected
+                      ? color
+                      : null,
+            ),
+            const SizedBox(
+              width: 7,
+            ),
+            Text(
+              label,
+              style:
+                  theme.textTheme.bodyMedium
+                      ?.copyWith(
+                fontWeight:
+                    selected
+                        ? FontWeight.w800
+                        : FontWeight.w600,
+                color:
+                    selected
+                        ? color
+                        : null,
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
 
-class _LineChartPainter
-    extends CustomPainter {
-  final List<_ChartPoint> points;
-  final double maxValue;
-  final Color lineColor;
-  final Color fillColor;
-  final Color gridColor;
-  final Color textColor;
-  final String Function(double) valueFormatter;
+// =============================================================================
+// PROFIT METRIC
+// =============================================================================
 
-  _LineChartPainter({
-    required this.points,
+class _ProfitMetric
+    extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+
+  const _ProfitMetric({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    final ThemeData theme =
+        Theme.of(context);
+
+    return Container(
+      constraints:
+          const BoxConstraints(
+        minWidth: 150,
+      ),
+      padding:
+          const EdgeInsets.symmetric(
+        horizontal: 14,
+        vertical: 12,
+      ),
+      decoration:
+          BoxDecoration(
+        color:
+            color.withValues(
+          alpha: 0.07,
+        ),
+        borderRadius:
+            BorderRadius.circular(
+          12,
+        ),
+        border:
+            Border.all(
+          color:
+              color.withValues(
+            alpha: 0.18,
+          ),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style:
+                theme.textTheme.labelSmall
+                    ?.copyWith(
+              fontWeight:
+                  FontWeight.w700,
+            ),
+          ),
+          const SizedBox(
+            height: 4,
+          ),
+          Text(
+            value,
+            style:
+                theme.textTheme.titleSmall
+                    ?.copyWith(
+              color: color,
+              fontWeight:
+                  FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// TAG METRIC
+// =============================================================================
+
+class _TagMetric
+    extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _TagMetric({
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    final ThemeData theme =
+        Theme.of(context);
+
+    return Container(
+      padding:
+          const EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: 8,
+      ),
+      decoration:
+          BoxDecoration(
+        color:
+            theme.colorScheme.primary
+                .withValues(
+          alpha: 0.06,
+        ),
+        borderRadius:
+            BorderRadius.circular(
+          10,
+        ),
+        border:
+            Border.all(
+          color:
+              theme.colorScheme.primary
+                  .withValues(
+            alpha: 0.15,
+          ),
+        ),
+      ),
+      child: Row(
+        mainAxisSize:
+            MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style:
+                theme.textTheme.bodySmall
+                    ?.copyWith(
+              fontWeight:
+                  FontWeight.w700,
+            ),
+          ),
+          const SizedBox(
+            width: 7,
+          ),
+          Text(
+            value,
+            style:
+                theme.textTheme.bodySmall
+                    ?.copyWith(
+              fontWeight:
+                  FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// QUICK METRIC TILE
+// =============================================================================
+
+class _QuickMetricTile
+    extends StatelessWidget {
+  final _QuickMetric metric;
+
+  const _QuickMetricTile({
+    required this.metric,
+  });
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    final ThemeData theme =
+        Theme.of(context);
+
+    return Container(
+      padding:
+          const EdgeInsets.all(13),
+      decoration:
+          BoxDecoration(
+        border:
+            Border.all(
+          color:
+              theme.dividerColor,
+        ),
+        borderRadius:
+            BorderRadius.circular(
+          13,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration:
+                BoxDecoration(
+              color:
+                  theme.colorScheme.primary
+                      .withValues(
+                alpha: 0.08,
+              ),
+              borderRadius:
+                  BorderRadius.circular(
+                10,
+              ),
+            ),
+            child: Icon(
+              metric.icon,
+              size: 19,
+              color:
+                  theme.colorScheme.primary,
+            ),
+          ),
+          const SizedBox(
+            width: 10,
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              mainAxisAlignment:
+                  MainAxisAlignment.center,
+              children: [
+                Text(
+                  metric.label,
+                  maxLines: 1,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style:
+                      theme.textTheme.labelSmall
+                          ?.copyWith(
+                    fontWeight:
+                        FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(
+                  height: 2,
+                ),
+                Text(
+                  metric.value,
+                  maxLines: 1,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style:
+                      theme.textTheme.bodyMedium
+                          ?.copyWith(
+                    fontWeight:
+                        FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// EMPTY STATE
+// =============================================================================
+
+class _EmptyAnalytics
+    extends StatelessWidget {
+  final IconData icon;
+  final String message;
+
+  const _EmptyAnalytics({
+    required this.icon,
+    required this.message,
+  });
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    final ThemeData theme =
+        Theme.of(context);
+
+    return Padding(
+      padding:
+          const EdgeInsets.symmetric(
+        vertical: 28,
+      ),
+      child: Center(
+        child: Column(
+          children: [
+            Icon(
+              icon,
+              size: 42,
+              color:
+                  theme
+                      .textTheme
+                      .bodySmall
+                      ?.color
+                      ?.withValues(
+                alpha: 0.45,
+              ),
+            ),
+            const SizedBox(
+              height: 9,
+            ),
+            Text(
+              message,
+              textAlign:
+                  TextAlign.center,
+              style:
+                  theme.textTheme.bodySmall
+                      ?.copyWith(
+                color:
+                    theme
+                        .textTheme
+                        .bodySmall
+                        ?.color
+                        ?.withValues(
+                  alpha: 0.65,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// TREND CHART
+// =============================================================================
+
+class _TrendChart
+    extends StatelessWidget {
+  final List<_MetricPoint> sales;
+  final List<_MetricPoint> purchases;
+  final double maxValue;
+  final String Function(double)
+      currency;
+
+  const _TrendChart({
+    required this.sales,
+    required this.purchases,
     required this.maxValue,
-    required this.lineColor,
-    required this.fillColor,
-    required this.gridColor,
+    required this.currency,
+  });
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    final ThemeData theme =
+        Theme.of(context);
+
+    final int count = math.max(
+      sales.length,
+      purchases.length,
+    );
+
+    if (count == 0) {
+      return const SizedBox.shrink();
+    }
+
+    final double safeMax =
+        maxValue <= 0
+            ? 1
+            : maxValue;
+
+    final double width =
+        math.max(
+      620,
+      count * 82,
+    ).toDouble();
+
+    return SingleChildScrollView(
+      scrollDirection:
+          Axis.horizontal,
+      child: SizedBox(
+        width: width,
+        height: 250,
+        child: CustomPaint(
+          painter:
+              _TrendChartPainter(
+            sales:
+                sales,
+            purchases:
+                purchases,
+            maxValue:
+                safeMax,
+            textColor:
+                theme
+                    .textTheme
+                    .bodySmall
+                    ?.color ??
+                    theme
+                        .colorScheme
+                        .onSurface,
+            gridColor:
+                theme.dividerColor,
+            salesColor:
+                AppColors.success,
+            purchaseColor:
+                AppColors.info,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TrendChartPainter
+    extends CustomPainter {
+  final List<_MetricPoint> sales;
+  final List<_MetricPoint> purchases;
+  final double maxValue;
+  final Color textColor;
+  final Color gridColor;
+  final Color salesColor;
+  final Color purchaseColor;
+
+  const _TrendChartPainter({
+    required this.sales,
+    required this.purchases,
+    required this.maxValue,
     required this.textColor,
-    required this.valueFormatter,
+    required this.gridColor,
+    required this.salesColor,
+    required this.purchaseColor,
   });
 
   @override
@@ -1834,622 +2900,415 @@ class _LineChartPainter
     Canvas canvas,
     Size size,
   ) {
-    if (points.isEmpty) return;
+    final Paint gridPaint =
+        Paint()
+          ..color =
+              gridColor.withValues(
+            alpha: 0.65,
+          )
+          ..strokeWidth = 1;
 
-    const double left = 55;
-    const double right = 14;
-    const double top = 14;
-    const double bottom = 18;
+    final Paint salesPaint =
+        Paint()
+          ..color = salesColor
+          ..strokeWidth = 3
+          ..style =
+              PaintingStyle.stroke
+          ..strokeCap =
+              StrokeCap.round;
+
+    final Paint purchasePaint =
+        Paint()
+          ..color = purchaseColor
+          ..strokeWidth = 3
+          ..style =
+              PaintingStyle.stroke
+          ..strokeCap =
+              StrokeCap.round;
+
+    const double left =
+        45;
+    const double right =
+        18;
+    const double top =
+        18;
+    const double bottom =
+        40;
 
     final double chartWidth =
-        math.max(
-      1,
-      size.width - left - right,
-    );
+        size.width -
+            left -
+            right;
 
     final double chartHeight =
-        math.max(
-      1,
-      size.height - top - bottom,
-    );
-
-    final Paint gridPaint = Paint()
-      ..color = gridColor
-      ..strokeWidth = 1;
-
-    final Paint linePaint = Paint()
-      ..color = lineColor
-      ..strokeWidth = 2.7
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-
-    final Paint fillPaint = Paint()
-      ..color = fillColor
-      ..style = PaintingStyle.fill;
-
-    final TextPainter textPainter =
-        TextPainter(
-      textDirection: ui.TextDirection.ltr,
-    );
+        size.height -
+            top -
+            bottom;
 
     for (int i = 0; i <= 4; i++) {
       final double y =
           top +
-              chartHeight -
-              (chartHeight * i / 4);
+              chartHeight *
+                  (i / 4);
 
       canvas.drawLine(
-        Offset(left, y),
         Offset(
-          left + chartWidth,
+          left,
+          y,
+        ),
+        Offset(
+          size.width -
+              right,
           y,
         ),
         gridPaint,
       );
+    }
 
-      final double value =
-          maxValue * i / 4;
+    final int count = math.max(
+      sales.length,
+      purchases.length,
+    );
+
+    if (count == 0) {
+      return;
+    }
+
+    double xFor(
+      int index,
+    ) {
+      if (count == 1) {
+        return left +
+            chartWidth / 2;
+      }
+
+      return left +
+          chartWidth *
+              (index /
+                  (count - 1));
+    }
+
+    double yFor(
+      double value,
+    ) {
+      final double normalized =
+          (value / maxValue)
+              .clamp(
+        0.0,
+        1.0,
+      );
+
+      return top +
+          chartHeight *
+              (1 -
+                  normalized);
+    }
+
+    Path? buildPath(
+      List<_MetricPoint> points,
+    ) {
+      if (points.isEmpty) {
+        return null;
+      }
+
+      final Path path =
+          Path();
+
+      for (
+        int index = 0;
+        index < points.length;
+        index++
+      ) {
+        final double x =
+            xFor(index);
+
+        final double y =
+            yFor(
+          points[index].value,
+        );
+
+        if (index == 0) {
+          path.moveTo(
+            x,
+            y,
+          );
+        } else {
+          path.lineTo(
+            x,
+            y,
+          );
+        }
+      }
+
+      return path;
+    }
+
+    final Path? salesPath =
+        buildPath(
+      sales,
+    );
+
+    final Path? purchasePath =
+        buildPath(
+      purchases,
+    );
+
+    if (salesPath != null) {
+      canvas.drawPath(
+        salesPath,
+        salesPaint,
+      );
+    }
+
+    if (purchasePath != null) {
+      canvas.drawPath(
+        purchasePath,
+        purchasePaint,
+      );
+    }
+
+    final TextPainter
+        textPainter =
+        TextPainter(
+      textDirection:
+          ui.TextDirection.ltr,
+    );
+
+    final int labelCount =
+        math.max(
+      sales.length,
+      purchases.length,
+    );
+
+    for (
+      int index = 0;
+      index < labelCount;
+      index++
+    ) {
+      final String label =
+          index < sales.length
+              ? sales[index].label
+              : index < purchases.length
+                  ? purchases[index]
+                      .label
+                  : '';
 
       textPainter.text =
           TextSpan(
-        text: valueFormatter(value),
-        style: TextStyle(
-          color: textColor,
-          fontSize: 9,
+        text: label,
+        style:
+            TextStyle(
+          color:
+              textColor.withValues(
+            alpha: 0.70,
+          ),
+          fontSize: 10,
           fontWeight:
-              FontWeight.w500,
+              FontWeight.w600,
         ),
       );
 
-      textPainter.layout(
-        maxWidth: left - 7,
-      );
+      textPainter.layout();
+
+      final double x =
+          xFor(index) -
+              textPainter.width /
+                  2;
 
       textPainter.paint(
         canvas,
         Offset(
-          left -
-              textPainter.width -
-              7,
-          y -
-              textPainter.height /
-                  2,
+          x,
+          size.height -
+              bottom +
+              10,
         ),
       );
     }
 
-    final Path linePath = Path();
-    final Path fillPath = Path();
+    final List<double>
+        gridValues = [
+      maxValue,
+      maxValue * 0.75,
+      maxValue * 0.50,
+      maxValue * 0.25,
+      0,
+    ];
 
-    final List<Offset> offsets =
-        <Offset>[];
+    for (
+      int index = 0;
+      index < gridValues.length;
+      index++
+    ) {
+      final double value =
+          gridValues[index];
 
-    for (int i = 0;
-        i < points.length;
-        i++) {
-      final double x =
-          points.length == 1
-              ? left +
-                  chartWidth / 2
-              : left +
-                  chartWidth *
-                      i /
-                      (points.length - 1);
+      textPainter.text =
+          TextSpan(
+        text:
+            _formatCompact(
+          value,
+        ),
+        style:
+            TextStyle(
+          color:
+              textColor.withValues(
+            alpha: 0.60,
+          ),
+          fontSize: 9,
+          fontWeight:
+              FontWeight.w600,
+        ),
+      );
 
-      final double normalized =
-          points[i].value /
-              maxValue;
+      textPainter.layout();
 
       final double y =
           top +
-              chartHeight -
               chartHeight *
-                  normalized.clamp(
-                    0.0,
-                    1.0,
-                  );
+                  (index / 4) -
+              textPainter.height /
+                  2;
 
-      offsets.add(
-        Offset(x, y),
+      textPainter.paint(
+        canvas,
+        Offset(
+          0,
+          y,
+        ),
       );
     }
 
-    if (offsets.isEmpty) return;
-
-    linePath.moveTo(
-      offsets.first.dx,
-      offsets.first.dy,
+    _drawLegend(
+      canvas,
+      size,
+      textPainter,
     );
+  }
 
-    for (int i = 1;
-        i < offsets.length;
-        i++) {
-      final Offset previous =
-          offsets[i - 1];
-
-      final Offset current =
-          offsets[i];
-
-      final double controlX =
-          (previous.dx +
-                  current.dx) /
-              2;
-
-      linePath.cubicTo(
-        controlX,
-        previous.dy,
-        controlX,
-        current.dy,
-        current.dx,
-        current.dy,
-      );
+  String _formatCompact(
+    double value,
+  ) {
+    if (value >= 10000000) {
+      return '₹${(value / 10000000).toStringAsFixed(1)}Cr';
     }
 
-    fillPath.addPath(
-      linePath,
-      Offset.zero,
-    );
-
-    fillPath.lineTo(
-      offsets.last.dx,
-      top + chartHeight,
-    );
-
-    fillPath.lineTo(
-      offsets.first.dx,
-      top + chartHeight,
-    );
-
-    fillPath.close();
-
-    canvas.drawPath(
-      fillPath,
-      fillPaint,
-    );
-
-    canvas.drawPath(
-      linePath,
-      linePaint,
-    );
-
-    final Paint dotPaint = Paint()
-      ..color = lineColor
-      ..style = PaintingStyle.fill;
-
-    final Paint dotInnerPaint = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.fill;
-
-    final int maxDots =
-        offsets.length > 31
-            ? 0
-            : offsets.length;
-
-    for (int i = 0;
-        i < maxDots;
-        i++) {
-      canvas.drawCircle(
-        offsets[i],
-        4.2,
-        dotPaint,
-      );
-
-      canvas.drawCircle(
-        offsets[i],
-        1.8,
-        dotInnerPaint,
-      );
+    if (value >= 100000) {
+      return '₹${(value / 100000).toStringAsFixed(1)}L';
     }
+
+    if (value >= 1000) {
+      return '₹${(value / 1000).toStringAsFixed(1)}K';
+    }
+
+    return '₹${value.toStringAsFixed(0)}';
+  }
+
+  void _drawLegend(
+    Canvas canvas,
+    Size size,
+    TextPainter textPainter,
+  ) {
+    const double y = 2;
+
+    final Paint salesLegend =
+        Paint()
+          ..color = salesColor
+          ..strokeWidth = 3
+          ..strokeCap =
+              StrokeCap.round;
+
+    final Paint purchaseLegend =
+        Paint()
+          ..color = purchaseColor
+          ..strokeWidth = 3
+          ..strokeCap =
+              StrokeCap.round;
+
+    canvas.drawLine(
+      const Offset(
+        58,
+        y + 8,
+      ),
+      const Offset(
+        76,
+        y + 8,
+      ),
+      salesLegend,
+    );
+
+    textPainter.text =
+        TextSpan(
+      text: 'Sales',
+      style:
+          TextStyle(
+        color:
+            textColor,
+        fontSize: 10,
+        fontWeight:
+            FontWeight.w700,
+      ),
+    );
+
+    textPainter.layout();
+
+    textPainter.paint(
+      canvas,
+      const Offset(
+        81,
+        y + 2,
+      ),
+    );
+
+    canvas.drawLine(
+      Offset(
+        140,
+        y + 8,
+      ),
+      Offset(
+        158,
+        y + 8,
+      ),
+      purchaseLegend,
+    );
+
+    textPainter.text =
+        TextSpan(
+      text: 'Purchase',
+      style:
+          TextStyle(
+        color:
+            textColor,
+        fontSize: 10,
+        fontWeight:
+            FontWeight.w700,
+      ),
+    );
+
+    textPainter.layout();
+
+    textPainter.paint(
+      canvas,
+      const Offset(
+        163,
+        y + 2,
+      ),
+    );
   }
 
   @override
   bool shouldRepaint(
-    covariant _LineChartPainter oldDelegate,
+    covariant _TrendChartPainter oldDelegate,
   ) {
-    return oldDelegate.points != points ||
-        oldDelegate.maxValue != maxValue ||
-        oldDelegate.lineColor != lineColor;
-  }
-}
-
-// =============================================================================
-// CHART LABELS
-// =============================================================================
-
-class _ChartLabels
-    extends StatelessWidget {
-  final List<_ChartPoint> points;
-  final String Function(DateTime) labelBuilder;
-  final bool compact;
-
-  const _ChartLabels({
-    required this.points,
-    required this.labelBuilder,
-    required this.compact,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (points.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    final ThemeData theme =
-        Theme.of(context);
-
-    final int count = points.length;
-
-    final List<int> indexes =
-        <int>[];
-
-    if (count <= 7) {
-      for (int i = 0; i < count; i++) {
-        indexes.add(i);
-      }
-    } else if (count <= 14) {
-      for (int i = 0; i < count; i += 2) {
-        indexes.add(i);
-      }
-
-      if (indexes.last != count - 1) {
-        indexes.add(count - 1);
-      }
-    } else {
-      indexes.add(0);
-      indexes.add(count ~/ 2);
-      indexes.add(count - 1);
-    }
-
-    return Row(
-      children: List.generate(
-        indexes.length,
-        (index) {
-          final int pointIndex =
-              indexes[index];
-
-          final String label =
-              labelBuilder(
-            points[pointIndex].date,
-          );
-
-          return Expanded(
-            child: Text(
-              label,
-              textAlign:
-                  index == 0
-                      ? TextAlign.left
-                      : index ==
-                              indexes.length -
-                                  1
-                          ? TextAlign.right
-                          : TextAlign.center,
-              maxLines: 1,
-              overflow:
-                  TextOverflow.ellipsis,
-              style: theme
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(
-                color: theme
-                    .colorScheme
-                    .onSurfaceVariant,
-                fontSize:
-                    compact ? 9 : 10,
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-// =============================================================================
-// PROFIT ROW
-// =============================================================================
-
-class _ProfitRow
-    extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color color;
-  final bool isBold;
-
-  const _ProfitRow({
-    required this.label,
-    required this.value,
-    required this.color,
-    this.isBold = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme =
-        Theme.of(context);
-
-    return Padding(
-      padding:
-          const EdgeInsets.symmetric(
-        vertical: 7,
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 9,
-            height: 9,
-            decoration:
-                BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              label,
-              style: theme
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(
-                fontWeight: isBold
-                    ? FontWeight.w800
-                    : FontWeight.w500,
-              ),
-            ),
-          ),
-          Text(
-            value,
-            style: theme
-                .textTheme
-                .bodyMedium
-                ?.copyWith(
-              color: color,
-              fontWeight:
-                  isBold
-                      ? FontWeight.w900
-                      : FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// =============================================================================
-// SMALL STAT
-// =============================================================================
-
-class _SmallStat
-    extends StatelessWidget {
-  final String title;
-  final String value;
-  final IconData icon;
-  final Color color;
-
-  const _SmallStat({
-    required this.title,
-    required this.value,
-    required this.icon,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding:
-          const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withValues(
-          alpha: 0.07,
-        ),
-        borderRadius:
-            BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            icon,
-            color: color,
-            size: 19,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow:
-                      TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 10,
-                    fontWeight:
-                        FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  maxLines: 1,
-                  overflow:
-                      TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight:
-                        FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// =============================================================================
-// INSIGHT
-// =============================================================================
-
-class _InsightTile
-    extends StatelessWidget {
-  final _Insight insight;
-
-  const _InsightTile({
-    required this.insight,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme =
-        Theme.of(context);
-
-    return Container(
-      margin:
-          const EdgeInsets.only(
-        bottom: 10,
-      ),
-      padding:
-          const EdgeInsets.all(13),
-      decoration: BoxDecoration(
-        color:
-            insight.color.withValues(
-          alpha: 0.06,
-        ),
-        borderRadius:
-            BorderRadius.circular(13),
-        border: Border.all(
-          color:
-              insight.color.withValues(
-            alpha: 0.14,
-          ),
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration:
-                BoxDecoration(
-              color:
-                  insight.color.withValues(
-                alpha: 0.10,
-              ),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              insight.icon,
-              color: insight.color,
-              size: 19,
-            ),
-          ),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children: [
-                Text(
-                  insight.title,
-                  style: theme
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(
-                    fontWeight:
-                        FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  insight.description,
-                  style: theme
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(
-                    color: theme
-                        .colorScheme
-                        .onSurfaceVariant,
-                    height: 1.35,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// =============================================================================
-// CHART EMPTY
-// =============================================================================
-
-class _ChartEmptyState
-    extends StatelessWidget {
-  final String message;
-  final bool compact;
-
-  const _ChartEmptyState({
-    required this.message,
-    this.compact = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme =
-        Theme.of(context);
-
-    return Container(
-      width: double.infinity,
-      height: compact ? 110 : 180,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: theme
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(
-          alpha: 0.30,
-        ),
-        borderRadius:
-            BorderRadius.circular(13),
-      ),
-      child: Column(
-        mainAxisAlignment:
-            MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.bar_chart_rounded,
-            size: compact ? 28 : 36,
-            color: theme
-                .colorScheme
-                .onSurfaceVariant,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            message,
-            textAlign:
-                TextAlign.center,
-            style: theme
-                .textTheme
-                .bodySmall
-                ?.copyWith(
-              color: theme
-                  .colorScheme
-                  .onSurfaceVariant,
-            ),
-          ),
-        ],
-      ),
-    );
+    return oldDelegate.sales !=
+            sales ||
+        oldDelegate.purchases !=
+            purchases ||
+        oldDelegate.maxValue !=
+            maxValue ||
+        oldDelegate.textColor !=
+            textColor ||
+        oldDelegate.gridColor !=
+            gridColor;
   }
 }

@@ -1,215 +1,783 @@
 import '../../models/ledger_transaction_model.dart';
 import '../../repositories/ledger_repository.dart';
 
+/// Central service for all customer-ledger operations.
+///
+/// Ledger direction:
+///
+/// DEBIT  = increases customer outstanding.
+/// CREDIT = decreases customer outstanding.
+///
+/// Supported transaction types:
+///
+/// SALE
+///     Customer owes more because of a sale.
+///
+/// SALE_PAYMENT
+///     Amount already paid as part of a sale.
+///
+/// SALE_REVERSAL
+///     Reversal of a previous sale. Outstanding decreases.
+///
+/// SALE_PAYMENT_REVERSAL
+///     Reversal of the payment that was included in a sale.
+///     Outstanding increases again.
+///
+/// PAYMENT
+///     Separate customer payment. Outstanding decreases.
+///
+/// PAYMENT_REVERSAL
+///     Reversal of a separate customer payment.
+///     Outstanding increases again.
+///
+/// Other legacy transaction types are also supported by the existing
+/// LedgerRepository / LedgerProvider implementation.
 class LedgerService {
-LedgerService({
-LedgerRepository? repository,
-}) : _repository =
-repository ?? LedgerRepository();
+  LedgerService({
+    LedgerRepository? repository,
+  }) : _repository =
+            repository ?? LedgerRepository();
 
-final LedgerRepository _repository;
+  final LedgerRepository _repository;
 
-Future<LedgerTransactionModel> createTransaction({
-required String businessId,
-required String customerId,
-required String customerName,
-required String transactionType,
-required double amount,
-required double balanceBefore,
-required double balanceAfter,
-String referenceId = '',
-DateTime? date,
-String notes = '',
-}) async {
-final normalizedBusinessId =
-businessId.trim();
-final normalizedCustomerId =
-customerId.trim();
-final normalizedCustomerName =
-customerName.trim();
-final normalizedTransactionType =
-transactionType.trim();
+  // ===========================================================================
+  // TRANSACTION TYPE CONSTANTS
+  // ===========================================================================
 
+  /// Increases customer outstanding.
+  static const String saleType = 'SALE';
 
-if (normalizedBusinessId.isEmpty) {
-  throw ArgumentError(
-    'Business ID cannot be empty.',
-  );
-}
+  /// Decreases customer outstanding.
+  ///
+  /// This represents the amount paid at the time of creating the sale.
+  static const String salePaymentType = 'SALE_PAYMENT';
 
-if (normalizedCustomerId.isEmpty) {
-  throw ArgumentError(
-    'Customer ID cannot be empty.',
-  );
-}
+  /// Decreases customer outstanding because a previous sale is reversed.
+  static const String saleReversalType = 'SALE_REVERSAL';
 
-if (normalizedCustomerName.isEmpty) {
-  throw ArgumentError(
-    'Customer name cannot be empty.',
-  );
-}
+  /// Increases customer outstanding because an included sale payment is
+  /// reversed.
+  static const String salePaymentReversalType =
+      'SALE_PAYMENT_REVERSAL';
 
-if (normalizedTransactionType.isEmpty) {
-  throw ArgumentError(
-    'Transaction type cannot be empty.',
-  );
-}
+  /// Decreases customer outstanding because the customer made a separate
+  /// payment.
+  static const String paymentType = 'PAYMENT';
 
-if (!amount.isFinite || amount <= 0) {
-  throw ArgumentError(
-    'Amount must be greater than zero.',
-  );
-}
+  /// Increases customer outstanding because a separate payment is reversed.
+  static const String paymentReversalType =
+      'PAYMENT_REVERSAL';
 
-if (!balanceBefore.isFinite) {
-  throw ArgumentError(
-    'Balance before must be a valid number.',
-  );
-}
+  // ===========================================================================
+  // GENERIC CREATE TRANSACTION
+  // ===========================================================================
 
-if (!balanceAfter.isFinite) {
-  throw ArgumentError(
-    'Balance after must be a valid number.',
-  );
-}
+  Future<LedgerTransactionModel> createTransaction({
+    required String businessId,
+    required String customerId,
+    required String customerName,
+    required String transactionType,
+    required double amount,
+    required double balanceBefore,
+    required double balanceAfter,
+    String referenceId = '',
+    DateTime? date,
+    String notes = '',
+  }) async {
+    final String normalizedBusinessId =
+        businessId.trim();
 
-final now = DateTime.now();
+    final String normalizedCustomerId =
+        customerId.trim();
 
-final transaction =
-    LedgerTransactionModel(
-  id: '',
-  businessId:
-      normalizedBusinessId,
-  customerId:
-      normalizedCustomerId,
-  customerName:
-      normalizedCustomerName,
-  transactionType:
-      normalizedTransactionType,
-  amount: amount,
-  balanceBefore:
-      balanceBefore,
-  balanceAfter:
-      balanceAfter,
-  referenceId:
-      referenceId.trim(),
-  date: date ?? now,
-  notes: notes.trim(),
-  createdAt: now,
-);
+    final String normalizedCustomerName =
+        customerName.trim();
 
-return _repository.createTransaction(
-  transaction,
-);
+    final String normalizedTransactionType =
+        transactionType.trim();
 
-}
+    final String normalizedReferenceId =
+        referenceId.trim();
 
-Future<LedgerTransactionModel?> getTransaction({
-required String businessId,
-required String transactionId,
-}) {
-return _repository.getTransaction(
-businessId: businessId,
-transactionId: transactionId,
-);
-}
+    final String normalizedNotes =
+        notes.trim();
 
-Future<List<LedgerTransactionModel>>
-getTransactions({
-required String businessId,
-}) {
-return _repository.getTransactions(
-businessId: businessId,
-);
-}
+    // -------------------------------------------------------------------------
+    // VALIDATION
+    // -------------------------------------------------------------------------
 
-Stream<List<LedgerTransactionModel>>
-watchTransactions({
-required String businessId,
-}) {
-return _repository.watchTransactions(
-businessId: businessId,
-);
-}
+    if (normalizedBusinessId.isEmpty) {
+      throw ArgumentError(
+        'Business ID cannot be empty.',
+      );
+    }
 
-Future<List<LedgerTransactionModel>>
-getCustomerTransactions({
-required String businessId,
-required String customerId,
-}) {
-return _repository.getCustomerTransactions(
-businessId: businessId,
-customerId: customerId,
-);
-}
+    if (normalizedCustomerId.isEmpty) {
+      throw ArgumentError(
+        'Customer ID cannot be empty.',
+      );
+    }
 
-Stream<List<LedgerTransactionModel>>
-watchCustomerTransactions({
-required String businessId,
-required String customerId,
-}) {
-return _repository
-.watchCustomerTransactions(
-businessId: businessId,
-customerId: customerId,
-);
-}
+    if (normalizedCustomerName.isEmpty) {
+      throw ArgumentError(
+        'Customer name cannot be empty.',
+      );
+    }
 
-Future<List<LedgerTransactionModel>>
-getTransactionsByType({
-required String businessId,
-required String transactionType,
-}) {
-return _repository.getTransactionsByType(
-businessId: businessId,
-transactionType: transactionType,
-);
-}
+    if (normalizedTransactionType.isEmpty) {
+      throw ArgumentError(
+        'Transaction type cannot be empty.',
+      );
+    }
 
-Future<void> updateTransaction(
-LedgerTransactionModel transaction,
-) {
-return _repository.updateTransaction(
-transaction,
-);
-}
+    if (!amount.isFinite || amount <= 0) {
+      throw ArgumentError(
+        'Amount must be greater than zero.',
+      );
+    }
 
-Future<void> deleteTransaction({
-required String businessId,
-required String transactionId,
-}) {
-return _repository.deleteTransaction(
-businessId: businessId,
-transactionId: transactionId,
-);
-}
+    if (!balanceBefore.isFinite) {
+      throw ArgumentError(
+        'Balance before must be a valid number.',
+      );
+    }
 
-Future<double> getCustomerBalance({
-required String businessId,
-required String customerId,
-}) {
-return _repository.getCustomerBalance(
-businessId: businessId,
-customerId: customerId,
-);
-}
+    if (!balanceAfter.isFinite) {
+      throw ArgumentError(
+        'Balance after must be a valid number.',
+      );
+    }
 
-Future<double> getTotalReceivable({
-required String businessId,
-}) {
-return _repository.getTotalReceivable(
-businessId: businessId,
-);
-}
+    final DateTime now =
+        DateTime.now();
 
-Future<List<LedgerTransactionModel>>
-searchTransactions({
-required String businessId,
-required String query,
-}) {
-return _repository.searchTransactions(
-businessId: businessId,
-query: query,
-);
-}
+    final LedgerTransactionModel transaction =
+        LedgerTransactionModel(
+      id: '',
+      businessId:
+          normalizedBusinessId,
+      customerId:
+          normalizedCustomerId,
+      customerName:
+          normalizedCustomerName,
+      transactionType:
+          normalizedTransactionType,
+      amount: amount,
+      balanceBefore:
+          balanceBefore,
+      balanceAfter:
+          balanceAfter,
+      referenceId:
+          normalizedReferenceId,
+      date: date ?? now,
+      notes:
+          normalizedNotes,
+      createdAt:
+          now,
+    );
+
+    return _repository.createTransaction(
+      transaction,
+    );
+  }
+
+  // ===========================================================================
+  // SALE LEDGER
+  // ===========================================================================
+
+  /// Creates the debit entry for a customer sale.
+  ///
+  /// Example:
+  ///
+  /// Previous balance = 2,000
+  /// Sale             = 5,000
+  /// New balance      = 7,000
+  ///
+  /// The [referenceId] should normally be the SaleModel.id.
+  Future<LedgerTransactionModel> createSaleLedgerEntry({
+    required String businessId,
+    required String customerId,
+    required String customerName,
+    required double saleAmount,
+    required double balanceBefore,
+    String referenceId = '',
+    DateTime? date,
+    String notes = '',
+  }) async {
+    _validateLedgerInputs(
+      businessId: businessId,
+      customerId: customerId,
+      customerName: customerName,
+      amount: saleAmount,
+      balanceBefore: balanceBefore,
+    );
+
+    final double balanceAfter =
+        balanceBefore + saleAmount;
+
+    return createTransaction(
+      businessId:
+          businessId,
+      customerId:
+          customerId,
+      customerName:
+          customerName,
+      transactionType:
+          saleType,
+      amount:
+          saleAmount,
+      balanceBefore:
+          balanceBefore,
+      balanceAfter:
+          balanceAfter,
+      referenceId:
+          referenceId,
+      date:
+          date,
+      notes:
+          notes.isEmpty
+              ? 'Sale recorded.'
+              : notes,
+    );
+  }
+
+  // ===========================================================================
+  // SALE PAYMENT LEDGER
+  // ===========================================================================
+
+  /// Creates the credit entry for the amount already paid inside a sale.
+  ///
+  /// Example:
+  ///
+  /// Sale debit        = 5,000
+  /// Sale payment      = 2,000
+  /// Outstanding       = 3,000
+  ///
+  /// The [referenceId] should normally be the SaleModel.id so both entries
+  /// can be found together when the sale is edited or deleted.
+  Future<LedgerTransactionModel> createSalePaymentLedgerEntry({
+    required String businessId,
+    required String customerId,
+    required String customerName,
+    required double paymentAmount,
+    required double balanceBefore,
+    String referenceId = '',
+    DateTime? date,
+    String notes = '',
+  }) async {
+    _validateLedgerInputs(
+      businessId: businessId,
+      customerId: customerId,
+      customerName: customerName,
+      amount: paymentAmount,
+      balanceBefore: balanceBefore,
+    );
+
+    final double balanceAfter =
+        balanceBefore - paymentAmount;
+
+    return createTransaction(
+      businessId:
+          businessId,
+      customerId:
+          customerId,
+      customerName:
+          customerName,
+      transactionType:
+          salePaymentType,
+      amount:
+          paymentAmount,
+      balanceBefore:
+          balanceBefore,
+      balanceAfter:
+          balanceAfter,
+      referenceId:
+          referenceId,
+      date:
+          date,
+      notes:
+          notes.isEmpty
+              ? 'Payment received with sale.'
+              : notes,
+    );
+  }
+
+  // ===========================================================================
+  // SALE REVERSAL
+  // ===========================================================================
+
+  /// Creates the credit entry required when an existing sale is reversed.
+  ///
+  /// Example:
+  ///
+  /// Current balance = 7,000
+  /// Sale reversed    = 5,000
+  /// New balance      = 2,000
+  ///
+  /// This does not delete the original SALE entry. It creates an auditable
+  /// reversal transaction instead.
+  Future<LedgerTransactionModel> createSaleReversal({
+    required String businessId,
+    required String customerId,
+    required String customerName,
+    required double saleAmount,
+    required double balanceBefore,
+    String referenceId = '',
+    DateTime? date,
+    String notes = '',
+  }) async {
+    _validateLedgerInputs(
+      businessId: businessId,
+      customerId: customerId,
+      customerName: customerName,
+      amount: saleAmount,
+      balanceBefore: balanceBefore,
+    );
+
+    final double balanceAfter =
+        balanceBefore - saleAmount;
+
+    return createTransaction(
+      businessId:
+          businessId,
+      customerId:
+          customerId,
+      customerName:
+          customerName,
+      transactionType:
+          saleReversalType,
+      amount:
+          saleAmount,
+      balanceBefore:
+          balanceBefore,
+      balanceAfter:
+          balanceAfter,
+      referenceId:
+          referenceId,
+      date:
+          date,
+      notes:
+          notes.isEmpty
+              ? 'Sale reversed.'
+              : notes,
+    );
+  }
+
+  // ===========================================================================
+  // SALE PAYMENT REVERSAL
+  // ===========================================================================
+
+  /// Reverses the payment that was originally included inside a sale.
+  ///
+  /// Example:
+  ///
+  /// Current balance = 3,000
+  /// Included payment reversed = 2,000
+  /// New balance = 5,000
+  Future<LedgerTransactionModel>
+      createSalePaymentReversal({
+    required String businessId,
+    required String customerId,
+    required String customerName,
+    required double paymentAmount,
+    required double balanceBefore,
+    String referenceId = '',
+    DateTime? date,
+    String notes = '',
+  }) async {
+    _validateLedgerInputs(
+      businessId: businessId,
+      customerId: customerId,
+      customerName: customerName,
+      amount: paymentAmount,
+      balanceBefore: balanceBefore,
+    );
+
+    final double balanceAfter =
+        balanceBefore + paymentAmount;
+
+    return createTransaction(
+      businessId:
+          businessId,
+      customerId:
+          customerId,
+      customerName:
+          customerName,
+      transactionType:
+          salePaymentReversalType,
+      amount:
+          paymentAmount,
+      balanceBefore:
+          balanceBefore,
+      balanceAfter:
+          balanceAfter,
+      referenceId:
+          referenceId,
+      date:
+          date,
+      notes:
+          notes.isEmpty
+              ? 'Sale payment reversed.'
+              : notes,
+    );
+  }
+
+  // ===========================================================================
+  // SEPARATE CUSTOMER PAYMENT
+  // ===========================================================================
+
+  /// Creates a normal customer payment ledger entry.
+  ///
+  /// This is used for payments created from the Payments module, not for the
+  /// payment already included in a sale.
+  Future<LedgerTransactionModel> createPaymentLedgerEntry({
+    required String businessId,
+    required String customerId,
+    required String customerName,
+    required double paymentAmount,
+    required double balanceBefore,
+    String referenceId = '',
+    DateTime? date,
+    String notes = '',
+  }) async {
+    _validateLedgerInputs(
+      businessId: businessId,
+      customerId: customerId,
+      customerName: customerName,
+      amount: paymentAmount,
+      balanceBefore: balanceBefore,
+    );
+
+    final double balanceAfter =
+        balanceBefore - paymentAmount;
+
+    return createTransaction(
+      businessId:
+          businessId,
+      customerId:
+          customerId,
+      customerName:
+          customerName,
+      transactionType:
+          paymentType,
+      amount:
+          paymentAmount,
+      balanceBefore:
+          balanceBefore,
+      balanceAfter:
+          balanceAfter,
+      referenceId:
+          referenceId,
+      date:
+          date,
+      notes:
+          notes.isEmpty
+              ? 'Customer payment received.'
+              : notes,
+    );
+  }
+
+  // ===========================================================================
+  // PAYMENT REVERSAL
+  // ===========================================================================
+
+  /// Reverses a normal customer payment.
+  ///
+  /// This is different from SALE_PAYMENT_REVERSAL because this payment was
+  /// created independently from the sale.
+  Future<LedgerTransactionModel>
+      createPaymentReversal({
+    required String businessId,
+    required String customerId,
+    required String customerName,
+    required double paymentAmount,
+    required double balanceBefore,
+    String referenceId = '',
+    DateTime? date,
+    String notes = '',
+  }) async {
+    _validateLedgerInputs(
+      businessId: businessId,
+      customerId: customerId,
+      customerName: customerName,
+      amount: paymentAmount,
+      balanceBefore: balanceBefore,
+    );
+
+    final double balanceAfter =
+        balanceBefore + paymentAmount;
+
+    return createTransaction(
+      businessId:
+          businessId,
+      customerId:
+          customerId,
+      customerName:
+          customerName,
+      transactionType:
+          paymentReversalType,
+      amount:
+          paymentAmount,
+      balanceBefore:
+          balanceBefore,
+      balanceAfter:
+          balanceAfter,
+      referenceId:
+          referenceId,
+      date:
+          date,
+      notes:
+          notes.isEmpty
+              ? 'Customer payment reversed.'
+              : notes,
+    );
+  }
+
+  // ===========================================================================
+  // FIND TRANSACTIONS BY REFERENCE
+  // ===========================================================================
+
+  /// Returns all ledger transactions associated with a specific reference.
+  ///
+  /// For sales, the reference will normally be the SaleModel.id.
+  ///
+  /// For payments, the reference will normally be the PaymentModel.id.
+  Future<List<LedgerTransactionModel>>
+      getTransactionsByReferenceId({
+    required String businessId,
+    required String customerId,
+    required String referenceId,
+  }) async {
+    final String normalizedBusinessId =
+        businessId.trim();
+
+    final String normalizedCustomerId =
+        customerId.trim();
+
+    final String normalizedReferenceId =
+        referenceId.trim();
+
+    if (normalizedBusinessId.isEmpty) {
+      throw ArgumentError(
+        'Business ID cannot be empty.',
+      );
+    }
+
+    if (normalizedCustomerId.isEmpty) {
+      throw ArgumentError(
+        'Customer ID cannot be empty.',
+      );
+    }
+
+    if (normalizedReferenceId.isEmpty) {
+      throw ArgumentError(
+        'Reference ID cannot be empty.',
+      );
+    }
+
+    final List<LedgerTransactionModel>
+        transactions =
+        await _repository.getCustomerTransactions(
+      businessId:
+          normalizedBusinessId,
+      customerId:
+          normalizedCustomerId,
+    );
+
+    return transactions
+        .where(
+          (LedgerTransactionModel transaction) =>
+              transaction.referenceId.trim() ==
+              normalizedReferenceId,
+        )
+        .toList();
+  }
+
+  // ===========================================================================
+  // BASIC REPOSITORY ACCESS
+  // ===========================================================================
+
+  Future<LedgerTransactionModel?> getTransaction({
+    required String businessId,
+    required String transactionId,
+  }) {
+    return _repository.getTransaction(
+      businessId:
+          businessId,
+      transactionId:
+          transactionId,
+    );
+  }
+
+  Future<List<LedgerTransactionModel>>
+      getTransactions({
+    required String businessId,
+  }) {
+    return _repository.getTransactions(
+      businessId:
+          businessId,
+    );
+  }
+
+  Stream<List<LedgerTransactionModel>>
+      watchTransactions({
+    required String businessId,
+  }) {
+    return _repository.watchTransactions(
+      businessId:
+          businessId,
+    );
+  }
+
+  Future<List<LedgerTransactionModel>>
+      getCustomerTransactions({
+    required String businessId,
+    required String customerId,
+  }) {
+    return _repository.getCustomerTransactions(
+      businessId:
+          businessId,
+      customerId:
+          customerId,
+    );
+  }
+
+  Stream<List<LedgerTransactionModel>>
+      watchCustomerTransactions({
+    required String businessId,
+    required String customerId,
+  }) {
+    return _repository.watchCustomerTransactions(
+      businessId:
+          businessId,
+      customerId:
+          customerId,
+    );
+  }
+
+  Future<List<LedgerTransactionModel>>
+      getTransactionsByType({
+    required String businessId,
+    required String transactionType,
+  }) {
+    return _repository.getTransactionsByType(
+      businessId:
+          businessId,
+      transactionType:
+          transactionType,
+    );
+  }
+
+  Future<void> updateTransaction(
+    LedgerTransactionModel transaction,
+  ) {
+    return _repository.updateTransaction(
+      transaction,
+    );
+  }
+
+  Future<void> deleteTransaction({
+    required String businessId,
+    required String transactionId,
+  }) {
+    return _repository.deleteTransaction(
+      businessId:
+          businessId,
+      transactionId:
+          transactionId,
+    );
+  }
+
+  // ===========================================================================
+  // BALANCE
+  // ===========================================================================
+
+  Future<double> getCustomerBalance({
+    required String businessId,
+    required String customerId,
+  }) {
+    return _repository.getCustomerBalance(
+      businessId:
+          businessId,
+      customerId:
+          customerId,
+    );
+  }
+
+  Future<double> getTotalReceivable({
+    required String businessId,
+  }) {
+    return _repository.getTotalReceivable(
+      businessId:
+          businessId,
+    );
+  }
+
+  // ===========================================================================
+  // SEARCH
+  // ===========================================================================
+
+  Future<List<LedgerTransactionModel>>
+      searchTransactions({
+    required String businessId,
+    required String query,
+  }) {
+    return _repository.searchTransactions(
+      businessId:
+          businessId,
+      query:
+          query,
+    );
+  }
+
+  // ===========================================================================
+  // VALIDATION
+  // ===========================================================================
+
+  void _validateLedgerInputs({
+    required String businessId,
+    required String customerId,
+    required String customerName,
+    required double amount,
+    required double balanceBefore,
+  }) {
+    final String normalizedBusinessId =
+        businessId.trim();
+
+    final String normalizedCustomerId =
+        customerId.trim();
+
+    final String normalizedCustomerName =
+        customerName.trim();
+
+    if (normalizedBusinessId.isEmpty) {
+      throw ArgumentError(
+        'Business ID cannot be empty.',
+      );
+    }
+
+    if (normalizedCustomerId.isEmpty) {
+      throw ArgumentError(
+        'Customer ID cannot be empty.',
+      );
+    }
+
+    if (normalizedCustomerName.isEmpty) {
+      throw ArgumentError(
+        'Customer name cannot be empty.',
+      );
+    }
+
+    if (!amount.isFinite || amount <= 0) {
+      throw ArgumentError(
+        'Amount must be greater than zero.',
+      );
+    }
+
+    if (!balanceBefore.isFinite) {
+      throw ArgumentError(
+        'Previous balance must be a valid number.',
+      );
+    }
+  }
 }

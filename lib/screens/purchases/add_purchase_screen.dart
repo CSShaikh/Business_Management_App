@@ -613,16 +613,14 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
   }
 
   Future<void> _savePurchase() async {
-    if (_isSaving) {
+    if (!_formKey.currentState!.validate()) {
       return;
     }
 
-    if (!_formKey.currentState!
-        .validate()) {
-      return;
-    }
+    final BusinessModel? business = _business;
+    final SupplierModel? supplier = _selectedSupplier;
 
-    if (_business == null) {
+    if (business == null) {
       _showMessage(
         'Business information is not available.',
         isError: true,
@@ -630,7 +628,7 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
       return;
     }
 
-    if (_selectedSupplier == null) {
+    if (supplier == null) {
       _showMessage(
         'Please select a supplier.',
         isError: true,
@@ -654,47 +652,12 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
       return;
     }
 
-    if (_discount > _subtotal) {
-      _showMessage(
-        'Discount cannot be greater than subtotal.',
-        isError: true,
-      );
-      return;
-    }
-
     if (_paidAmount > _total) {
       _showMessage(
         'Paid amount cannot be greater than total.',
         isError: true,
       );
       return;
-    }
-
-    for (final _PurchaseDraftItem item
-        in _items) {
-      if (item.product.id.trim().isEmpty) {
-        _showMessage(
-          'A product has an invalid ID.',
-          isError: true,
-        );
-        return;
-      }
-
-      if (item.quantity <= 0) {
-        _showMessage(
-          'Product quantity must be greater than zero.',
-          isError: true,
-        );
-        return;
-      }
-
-      if (item.purchaseRate < 0) {
-        _showMessage(
-          'Purchase rate cannot be negative.',
-          isError: true,
-        );
-        return;
-      }
     }
 
     FocusScope.of(context).unfocus();
@@ -704,97 +667,60 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
     });
 
     try {
-      final DateTime now =
-          DateTime.now();
+      final DateTime now = DateTime.now();
 
-      final List<PurchaseItemModel>
-          purchaseItems =
-          _items
-              .map(
-                (_PurchaseDraftItem item) {
-                  return PurchaseItemModel(
-                    productId:
-                        item.product.id,
-                    productName:
-                        item.product.name,
-                    quantity:
-                        item.quantity,
-                    unit:
-                        item.product.unit,
-                    purchaseRate:
-                        item.purchaseRate,
-                    total:
-                        item.total,
-                  );
-                },
-              )
-              .toList();
+      final List<PurchaseItemModel> purchaseItems =
+          _items.map((item) {
+        return PurchaseItemModel(
+          productId: item.product.id,
+          productName: item.product.name,
+          quantity: item.quantity,
+          unit: item.product.unit,
+          purchaseRate: item.purchaseRate,
+          total: item.total,
+        );
+      }).toList();
 
-      final PurchaseModel purchase =
-          PurchaseModel(
+      final PurchaseModel purchase = PurchaseModel(
         id: widget.purchase?.id ?? '',
-        businessId: _business!.id,
-        supplierId:
-            _selectedSupplier!.id,
-        supplierName:
-            _selectedSupplier!.name,
+        businessId: business.id,
+        supplierId: supplier.id,
+        supplierName: supplier.name,
         items: purchaseItems,
         subtotal: _subtotal,
         discount: _discount,
         tax: _tax,
         total: _total,
         paidAmount: _paidAmount,
-        paymentStatus:
-            _paymentStatus,
-        paymentMethod:
-            _paymentMethod,
+        paymentStatus: _paymentStatus,
+        paymentMethod: _paymentMethod,
         date: _purchaseDate,
-        notes:
-            _notesController.text.trim(),
-        createdAt:
-            widget.purchase?.createdAt ??
-                now,
+        notes: _notesController.text.trim(),
+        createdAt: widget.purchase?.createdAt ?? now,
       );
 
-      if (widget.isEditMode) {
+      final PurchaseModel? oldPurchase = widget.purchase;
+
+      if (oldPurchase == null) {
+        await _createNewPurchase(purchase);
+      } else {
         await _updateExistingPurchase(
           purchase,
-          widget.purchase!,
-        );
-      } else {
-        await _createNewPurchase(
-          purchase,
+          oldPurchase,
         );
       }
 
       if (!mounted) {
         return;
       }
-
-      setState(() {
-        _isSaving = false;
-      });
 
       _showMessage(
-        widget.isEditMode
-            ? 'Purchase updated successfully. Stock adjusted.'
-            : 'Purchase saved successfully. Stock updated.',
+        oldPurchase == null
+            ? 'Purchase saved and stock updated successfully.'
+            : 'Purchase updated and stock adjusted successfully.',
       );
 
-      await Future<void>.delayed(
-        const Duration(
-          milliseconds: 350,
-        ),
-      );
-
-      if (!mounted) {
-        return;
-      }
-
-      Navigator.pop(
-        context,
-        true,
-      );
+      Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) {
         return;
@@ -805,11 +731,9 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
       });
 
       _showMessage(
-        widget.isEditMode
-            ? 'Unable to update purchase: '
-                '${_cleanError(e)}'
-            : 'Unable to save purchase: '
-                '${_cleanError(e)}',
+        widget.purchase == null
+            ? 'Unable to save purchase: ${_cleanError(e)}'
+            : 'Unable to update purchase: ${_cleanError(e)}',
         isError: true,
       );
     }
@@ -818,73 +742,32 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
   Future<void> _createNewPurchase(
     PurchaseModel purchase,
   ) async {
-    await _purchaseRepository
-        .createPurchase(
+    final PurchaseModel savedPurchase =
+        await _purchaseRepository.createPurchase(
       purchase,
     );
 
-    final List<PurchaseItemModel>
-        addedItems =
-        <PurchaseItemModel>[];
-
     try {
-      for (final PurchaseItemModel item
-          in purchase.items) {
-        await _purchaseStockService
-            .stockRepository
-            .stockIn(
-          businessId:
-              purchase.businessId,
-          productId:
-              item.productId,
-          quantity:
-              item.quantity,
-          unitCost:
-              item.purchaseRate,
-          referenceId:
-              purchase.id,
-          date:
-              purchase.date,
-          notes:
-              'Stock added for purchase transaction',
-        );
-
-        addedItems.add(item);
-      }
+      await _purchaseStockService.processPurchaseStock(
+        purchase: savedPurchase,
+      );
     } catch (stockError) {
-      for (final PurchaseItemModel item
-          in addedItems.reversed) {
-        try {
-          await _purchaseStockService
-              .stockRepository
-              .stockOut(
-            businessId:
-                purchase.businessId,
-            productId:
-                item.productId,
-            quantity:
-                item.quantity,
-            unitCost:
-                item.purchaseRate,
-            referenceId:
-                purchase.id,
-            date:
-                DateTime.now(),
-            notes:
-                'Rollback of failed purchase creation',
-          );
-        } catch (_) {}
+      try {
+        await _purchaseStockService.reversePurchaseStock(
+          purchase: savedPurchase,
+        );
+      } catch (_) {
+        // Preserve the original stock error.
       }
 
       try {
-        await _purchaseRepository
-            .deletePurchase(
-          businessId:
-              purchase.businessId,
-          purchaseId:
-              purchase.id,
+        await _purchaseRepository.deletePurchase(
+          businessId: savedPurchase.businessId,
+          purchaseId: savedPurchase.id,
         );
-      } catch (_) {}
+      } catch (_) {
+        // Preserve the original stock error.
+      }
 
       rethrow;
     }

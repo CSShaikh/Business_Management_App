@@ -7,6 +7,7 @@ import '../../repositories/business_repository.dart';
 import '../customers/add_customer_screen.dart';
 import '../expenses/add_expense_screen.dart';
 import '../payments/add_payment_screen.dart';
+import '../payments/supplier_payment_screen.dart';
 import '../products/add_product_screen.dart';
 import '../products/product_screen.dart';
 import '../profile/profile_screen.dart';
@@ -196,6 +197,10 @@ class _MainNavigationScreenState
                   ),
                   const SizedBox(height: 18),
 
+                  // ==================================================
+                  // ADD SALE
+                  // ==================================================
+
                   _AddOptionTile(
                     icon:
                         Icons.point_of_sale_rounded,
@@ -210,6 +215,10 @@ class _MainNavigationScreenState
                       _openAddSale();
                     },
                   ),
+
+                  // ==================================================
+                  // ADD PURCHASE
+                  // ==================================================
 
                   _AddOptionTile(
                     icon:
@@ -226,6 +235,10 @@ class _MainNavigationScreenState
                     },
                   ),
 
+                  // ==================================================
+                  // CUSTOMER PAYMENT
+                  // ==================================================
+
                   _AddOptionTile(
                     icon:
                         Icons.payments_rounded,
@@ -240,6 +253,29 @@ class _MainNavigationScreenState
                       _openAddPayment();
                     },
                   ),
+
+                  // ==================================================
+                  // SUPPLIER PAYMENT
+                  // ==================================================
+
+                  _AddOptionTile(
+                    icon:
+                        Icons.account_balance_rounded,
+                    title: 'Supplier Payment',
+                    subtitle:
+                        'Record a payment to a supplier',
+                    color: AppColors.secondary,
+                    onTap: () {
+                      Navigator.pop(
+                        bottomSheetContext,
+                      );
+                      _openSupplierPayment();
+                    },
+                  ),
+
+                  // ==================================================
+                  // ADD EXPENSE
+                  // ==================================================
 
                   _AddOptionTile(
                     icon:
@@ -256,6 +292,10 @@ class _MainNavigationScreenState
                     },
                   ),
 
+                  // ==================================================
+                  // ADD CUSTOMER
+                  // ==================================================
+
                   _AddOptionTile(
                     icon:
                         Icons.person_add_alt_1_rounded,
@@ -271,6 +311,10 @@ class _MainNavigationScreenState
                       _openAddCustomer();
                     },
                   ),
+
+                  // ==================================================
+                  // ADD PRODUCT
+                  // ==================================================
 
                   _AddOptionTile(
                     icon:
@@ -340,7 +384,7 @@ class _MainNavigationScreenState
   }
 
   // ============================================================
-  // ADD PAYMENT
+  // ADD CUSTOMER PAYMENT
   // ============================================================
 
   Future<void> _openAddPayment() async {
@@ -351,6 +395,28 @@ class _MainNavigationScreenState
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => const AddPaymentScreen(),
+      ),
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    _openHome();
+  }
+
+  // ============================================================
+  // SUPPLIER PAYMENT
+  // ============================================================
+
+  Future<void> _openSupplierPayment() async {
+    if (!mounted) {
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SupplierPaymentScreen(),
       ),
     );
 

@@ -3,8 +3,10 @@ import 'package:intl/intl.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../models/purchase_model.dart';
+import '../../models/supplier_payment_model.dart';
 import '../../repositories/business_repository.dart';
 import '../../repositories/purchase_repository.dart';
+import '../../repositories/supplier_payment_repository.dart';
 
 class PurchaseReportScreen extends StatefulWidget {
   const PurchaseReportScreen({
@@ -24,6 +26,9 @@ class _PurchaseReportScreenState
   final PurchaseRepository _purchaseRepository =
       PurchaseRepository();
 
+  final SupplierPaymentRepository _supplierPaymentRepository =
+      SupplierPaymentRepository();
+
   final TextEditingController _searchController =
       TextEditingController();
 
@@ -40,6 +45,9 @@ class _PurchaseReportScreenState
 
   List<PurchaseModel> _allPurchases =
       <PurchaseModel>[];
+
+  List<SupplierPaymentModel> _allSupplierPayments =
+      <SupplierPaymentModel>[];
 
   @override
   void initState() {
@@ -88,16 +96,26 @@ class _PurchaseReportScreenState
         businessId: business.id,
       );
 
-      if (!mounted) return;
+      final List<SupplierPaymentModel> supplierPayments =
+          await _supplierPaymentRepository.getPayments(
+        businessId: business.id,
+      );
+
+      if (!mounted) {
+        return;
+      }
 
       setState(() {
         _allPurchases = purchases;
+        _allSupplierPayments = supplierPayments;
         _loading = false;
         _refreshing = false;
         _errorMessage = null;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       setState(() {
         _loading = false;
@@ -189,10 +207,6 @@ class _PurchaseReportScreenState
 
     final List<PurchaseModel> result =
         _allPurchases.where((purchase) {
-      // -----------------------------------------------------------------------
-      // DATE
-      // -----------------------------------------------------------------------
-
       if (_startDate != null &&
           purchase.date.isBefore(_startDate!)) {
         return false;
@@ -203,20 +217,12 @@ class _PurchaseReportScreenState
         return false;
       }
 
-      // -----------------------------------------------------------------------
-      // PAYMENT STATUS
-      // -----------------------------------------------------------------------
-
       if (_paymentFilter != 'All' &&
           purchase.paymentStatus
                   .toLowerCase() !=
               _paymentFilter.toLowerCase()) {
         return false;
       }
-
-      // -----------------------------------------------------------------------
-      // SEARCH
-      // -----------------------------------------------------------------------
 
       if (query.isEmpty) {
         return true;
@@ -260,51 +266,119 @@ class _PurchaseReportScreenState
   }
 
   // ===========================================================================
+  // FILTERED SUPPLIER PAYMENTS
+  // ===========================================================================
+
+  List<SupplierPaymentModel>
+      get _filteredSupplierPayments {
+    final String query =
+        _searchQuery.trim().toLowerCase();
+
+    final List<SupplierPaymentModel> result =
+        _allSupplierPayments.where(
+      (payment) {
+        if (_startDate != null &&
+            payment.date.isBefore(
+              _startDate!,
+            )) {
+          return false;
+        }
+
+        if (_endDate != null &&
+            payment.date.isAfter(
+              _endDate!,
+            )) {
+          return false;
+        }
+
+        if (query.isEmpty) {
+          return true;
+        }
+
+        return payment.supplierName
+                .toLowerCase()
+                .contains(query) ||
+            payment.paymentMethod
+                .toLowerCase()
+                .contains(query) ||
+            payment.transactionReference
+                .toLowerCase()
+                .contains(query) ||
+            payment.notes
+                .toLowerCase()
+                .contains(query) ||
+            payment.id
+                .toLowerCase()
+                .contains(query);
+      },
+    ).toList();
+
+    result.sort(
+      (a, b) => b.date.compareTo(a.date),
+    );
+
+    return result;
+  }
+
+  // ===========================================================================
   // CALCULATIONS
   // ===========================================================================
 
   double _totalPurchases(
     List<PurchaseModel> purchases,
   ) {
-    return purchases.fold(
+    return purchases.fold<double>(
       0,
       (sum, purchase) =>
           sum + purchase.total,
     );
   }
 
+  double _totalSupplierPayments(
+    List<SupplierPaymentModel> payments,
+  ) {
+    return payments.fold<double>(
+      0,
+      (sum, payment) =>
+          sum + payment.amount,
+    );
+  }
+
   double _totalPaid(
     List<PurchaseModel> purchases,
+    List<SupplierPaymentModel> payments,
   ) {
-    return purchases.fold(
+    final double purchasePaid =
+        purchases.fold<double>(
       0,
       (sum, purchase) =>
           sum + purchase.paidAmount,
     );
+
+    return purchasePaid +
+        _totalSupplierPayments(payments);
   }
 
   double _totalOutstanding(
     List<PurchaseModel> purchases,
+    List<SupplierPaymentModel> payments,
   ) {
-    return purchases.fold(
-      0,
-      (sum, purchase) {
-        final double outstanding =
-            purchase.total -
-                purchase.paidAmount;
+    final double outstanding =
+        _totalPurchases(purchases) -
+            _totalPaid(
+              purchases,
+              payments,
+            );
 
-        return sum +
-            (outstanding > 0
-                ? outstanding
-                : 0);
-      },
-    );
+    return outstanding > 0
+        ? outstanding
+        : 0;
   }
 
   double _totalDiscount(
     List<PurchaseModel> purchases,
   ) {
-    return purchases.fold(
+    return purchases.fold<double>(
       0,
       (sum, purchase) =>
           sum + purchase.discount,
@@ -314,7 +388,7 @@ class _PurchaseReportScreenState
   double _totalTax(
     List<PurchaseModel> purchases,
   ) {
-    return purchases.fold(
+    return purchases.fold<double>(
       0,
       (sum, purchase) =>
           sum + purchase.tax,
@@ -337,6 +411,7 @@ class _PurchaseReportScreenState
 
   double _paymentRate(
     List<PurchaseModel> purchases,
+    List<SupplierPaymentModel> payments,
   ) {
     final double total =
         _totalPurchases(purchases);
@@ -345,8 +420,11 @@ class _PurchaseReportScreenState
       return 0;
     }
 
-    return (_totalPaid(purchases) /
-            total) *
+    return (_totalPaid(
+          purchases,
+          payments,
+        ) /
+        total) *
         100;
   }
 
@@ -367,7 +445,9 @@ class _PurchaseReportScreenState
     ).length;
   }
 
-  Color _statusColor(String status) {
+  Color _statusColor(
+    String status,
+  ) {
     switch (status.toLowerCase()) {
       case 'paid':
         return AppColors.success;
@@ -390,12 +470,16 @@ class _PurchaseReportScreenState
   Map<String, _SupplierPurchaseSummary>
       _supplierWisePurchases(
     List<PurchaseModel> purchases,
+    List<SupplierPaymentModel> payments,
   ) {
     final Map<String, _SupplierPurchaseSummary>
         result =
         <String, _SupplierPurchaseSummary>{};
 
     for (final purchase in purchases) {
+      final String supplierId =
+          purchase.supplierId.trim();
+
       final String supplierName =
           purchase.supplierName
                   .trim()
@@ -403,17 +487,22 @@ class _PurchaseReportScreenState
               ? 'Unknown Supplier'
               : purchase.supplierName.trim();
 
+      final String key =
+          supplierId.isEmpty
+              ? 'name:$supplierName'
+              : 'id:$supplierId';
+
       final _SupplierPurchaseSummary existing =
-          result[supplierName] ??
+          result[key] ??
               _SupplierPurchaseSummary(
                 name: supplierName,
               );
 
-      final double outstanding =
+      final double purchaseOutstanding =
           purchase.total -
               purchase.paidAmount;
 
-      result[supplierName] =
+      result[key] =
           _SupplierPurchaseSummary(
         name: supplierName,
         purchases:
@@ -424,11 +513,57 @@ class _PurchaseReportScreenState
                 purchase.paidAmount,
         outstanding:
             existing.outstanding +
-                (outstanding > 0
-                    ? outstanding
+                (purchaseOutstanding > 0
+                    ? purchaseOutstanding
                     : 0),
         invoiceCount:
             existing.invoiceCount + 1,
+      );
+    }
+
+    for (final payment in payments) {
+      final String supplierId =
+          payment.supplierId.trim();
+
+      final String supplierName =
+          payment.supplierName
+                  .trim()
+                  .isEmpty
+              ? 'Unknown Supplier'
+              : payment.supplierName.trim();
+
+      final String key =
+          supplierId.isEmpty
+              ? 'name:$supplierName'
+              : 'id:$supplierId';
+
+      final _SupplierPurchaseSummary existing =
+          result[key] ??
+              _SupplierPurchaseSummary(
+                name: supplierName,
+              );
+
+      final double updatedOutstanding =
+          existing.outstanding -
+              payment.amount;
+
+      result[key] =
+          _SupplierPurchaseSummary(
+        name:
+            existing.name.isEmpty
+                ? supplierName
+                : existing.name,
+        purchases:
+            existing.purchases,
+        paid:
+            existing.paid +
+                payment.amount,
+        outstanding:
+            updatedOutstanding > 0
+                ? updatedOutstanding
+                : 0,
+        invoiceCount:
+            existing.invoiceCount,
       );
     }
 
@@ -444,8 +579,12 @@ class _PurchaseReportScreenState
     );
 
     return <String, _SupplierPurchaseSummary>{
-      for (final item in values)
-        item.name: item,
+      for (
+        int index = 0;
+        index < values.length;
+        index++
+      )
+        '$index': values[index],
     };
   }
 
@@ -499,7 +638,9 @@ class _PurchaseReportScreenState
   // FORMATTING
   // ===========================================================================
 
-  String _currency(double value) {
+  String _currency(
+    double value,
+  ) {
     return NumberFormat.currency(
       locale: 'en_IN',
       symbol: '₹',
@@ -507,14 +648,18 @@ class _PurchaseReportScreenState
     ).format(value);
   }
 
-  String _number(double value) {
+  String _number(
+    double value,
+  ) {
     return NumberFormat(
       '#,##0.##',
       'en_IN',
     ).format(value);
   }
 
-  String _date(DateTime date) {
+  String _date(
+    DateTime date,
+  ) {
     return DateFormat(
       'dd MMM yyyy',
     ).format(date);
@@ -536,22 +681,32 @@ class _PurchaseReportScreenState
   // ===========================================================================
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
     if (_loading) {
       return const Center(
-        child: CircularProgressIndicator(),
+        child:
+            CircularProgressIndicator(),
       );
     }
 
     if (_errorMessage != null) {
-      return _buildErrorState(theme);
+      return _buildErrorState(
+        theme,
+      );
     }
 
-    final List<PurchaseModel> purchases =
+    final List<PurchaseModel>
+        purchases =
         _filteredPurchases;
+
+    final List<SupplierPaymentModel>
+        supplierPayments =
+        _filteredSupplierPayments;
 
     return RefreshIndicator(
       onRefresh: _refreshReport,
@@ -565,17 +720,20 @@ class _PurchaseReportScreenState
 
           final bool isTablet =
               constraints.maxWidth >= 650 &&
-                  constraints.maxWidth < 1000;
+                  constraints.maxWidth <
+                      1000;
 
           return SingleChildScrollView(
             physics:
                 const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.symmetric(
-              horizontal: isDesktop
-                  ? 28
-                  : isTablet
-                      ? 22
-                      : 16,
+            padding:
+                EdgeInsets.symmetric(
+              horizontal:
+                  isDesktop
+                      ? 28
+                      : isTablet
+                          ? 22
+                          : 16,
               vertical: 20,
             ),
             child: Center(
@@ -586,7 +744,8 @@ class _PurchaseReportScreenState
                 ),
                 child: Column(
                   crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                      CrossAxisAlignment
+                          .start,
                   children: [
                     _buildHeader(
                       theme,
@@ -608,6 +767,7 @@ class _PurchaseReportScreenState
                     _buildSummaryCards(
                       theme,
                       purchases,
+                      supplierPayments,
                       isDesktop,
                     ),
 
@@ -635,6 +795,7 @@ class _PurchaseReportScreenState
                     _buildSupplierWiseSection(
                       theme,
                       purchases,
+                      supplierPayments,
                     ),
 
                     const SizedBox(
@@ -662,6 +823,7 @@ class _PurchaseReportScreenState
                     _buildFooter(
                       theme,
                       purchases,
+                      supplierPayments,
                     ),
                   ],
                 ),
@@ -687,13 +849,16 @@ class _PurchaseReportScreenState
         isDesktop ? 26 : 20,
       ),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
+        gradient:
+            const LinearGradient(
           colors: [
             AppColors.primary,
             AppColors.secondary,
           ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+          begin:
+              Alignment.topLeft,
+          end:
+              Alignment.bottomRight,
         ),
         borderRadius:
             BorderRadius.circular(22),
@@ -705,45 +870,56 @@ class _PurchaseReportScreenState
           Container(
             width: 54,
             height: 54,
-            decoration: BoxDecoration(
+            decoration:
+                BoxDecoration(
               color:
                   Colors.white.withValues(
                 alpha: 0.15,
               ),
               borderRadius:
-                  BorderRadius.circular(16),
+                  BorderRadius.circular(
+                16,
+              ),
             ),
-            child: const Icon(
+            child:
+                const Icon(
               Icons.shopping_cart_rounded,
-              color: Colors.white,
+              color:
+                  Colors.white,
               size: 28,
             ),
           ),
 
-          const SizedBox(width: 16),
+          const SizedBox(
+            width: 16,
+          ),
 
           Expanded(
             child: Column(
               crossAxisAlignment:
-                  CrossAxisAlignment.start,
+                  CrossAxisAlignment
+                      .start,
               children: [
                 const Text(
                   'Purchase Report',
                   style: TextStyle(
-                    color: Colors.white,
+                    color:
+                        Colors.white,
                     fontSize: 24,
                     fontWeight:
                         FontWeight.w800,
                   ),
                 ),
 
-                const SizedBox(height: 5),
+                const SizedBox(
+                  height: 5,
+                ),
 
                 Text(
                   'Analyze purchases, supplier payments and inventory buying.',
                   style: TextStyle(
-                    color:
-                        Colors.white.withValues(
+                    color: Colors.white
+                        .withValues(
                       alpha: 0.82,
                     ),
                     fontSize: 13,
@@ -751,22 +927,26 @@ class _PurchaseReportScreenState
                   ),
                 ),
 
-                const SizedBox(height: 10),
+                const SizedBox(
+                  height: 10,
+                ),
 
                 Container(
                   padding:
-                      const EdgeInsets.symmetric(
+                      const EdgeInsets
+                          .symmetric(
                     horizontal: 11,
                     vertical: 6,
                   ),
                   decoration:
                       BoxDecoration(
-                    color:
-                        Colors.white.withValues(
+                    color: Colors.white
+                        .withValues(
                       alpha: 0.14,
                     ),
                     borderRadius:
-                        BorderRadius.circular(
+                        BorderRadius
+                            .circular(
                       30,
                     ),
                   ),
@@ -774,7 +954,8 @@ class _PurchaseReportScreenState
                     _dateRangeText(),
                     style:
                         const TextStyle(
-                      color: Colors.white,
+                      color:
+                          Colors.white,
                       fontSize: 12,
                       fontWeight:
                           FontWeight.w600,
@@ -840,7 +1021,8 @@ class _PurchaseReportScreenState
           Text(
             'Report Period',
             style:
-                theme.textTheme.titleMedium
+                theme.textTheme
+                    .titleMedium
                     ?.copyWith(
               fontWeight:
                   FontWeight.w700,
@@ -849,23 +1031,27 @@ class _PurchaseReportScreenState
 
           Container(
             padding:
-                const EdgeInsets.symmetric(
+                const EdgeInsets
+                    .symmetric(
               horizontal: 13,
               vertical: 9,
             ),
-            decoration: BoxDecoration(
+            decoration:
+                BoxDecoration(
               color: theme
                   .colorScheme
                   .surfaceContainerHighest,
               borderRadius:
-                  BorderRadius.circular(10),
+                  BorderRadius.circular(
+                10,
+              ),
             ),
             child: Text(
               _dateRangeText(),
-              style: theme
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(
+              style:
+                  theme.textTheme
+                      .bodyMedium
+                      ?.copyWith(
                 fontWeight:
                     FontWeight.w600,
               ),
@@ -875,8 +1061,10 @@ class _PurchaseReportScreenState
           FilledButton.icon(
             onPressed:
                 _selectDateRange,
-            icon: const Icon(
-              Icons.calendar_month_rounded,
+            icon:
+                const Icon(
+              Icons
+                  .calendar_month_rounded,
               size: 18,
             ),
             label: Text(
@@ -890,7 +1078,8 @@ class _PurchaseReportScreenState
             OutlinedButton.icon(
               onPressed:
                   _clearDateFilter,
-              icon: const Icon(
+              icon:
+                  const Icon(
                 Icons.clear_rounded,
                 size: 18,
               ),
@@ -909,52 +1098,71 @@ class _PurchaseReportScreenState
   Widget _buildSummaryCards(
     ThemeData theme,
     List<PurchaseModel> purchases,
+    List<SupplierPaymentModel>
+        supplierPayments,
     bool isDesktop,
   ) {
-    final List<_SummaryItem> items = [
+    final List<_SummaryItem>
+        items = [
       _SummaryItem(
-        title: 'Total Purchases',
+        title:
+            'Total Purchases',
         value: _currency(
-          _totalPurchases(purchases),
+          _totalPurchases(
+            purchases,
+          ),
         ),
         subtitle:
             '${purchases.length} purchase${purchases.length == 1 ? '' : 's'}',
-        icon:
-            Icons.shopping_cart_checkout_rounded,
-        color: AppColors.primary,
+        icon: Icons
+            .shopping_cart_checkout_rounded,
+        color:
+            AppColors.primary,
       ),
       _SummaryItem(
         title: 'Total Paid',
         value: _currency(
-          _totalPaid(purchases),
+          _totalPaid(
+            purchases,
+            supplierPayments,
+          ),
         ),
         subtitle:
-            '${_paymentRate(purchases).toStringAsFixed(1)}% paid',
+            '${_paymentRate(purchases, supplierPayments).toStringAsFixed(1)}% paid',
         icon:
             Icons.payments_rounded,
-        color: AppColors.success,
+        color:
+            AppColors.success,
       ),
       _SummaryItem(
         title: 'Outstanding',
         value: _currency(
-          _totalOutstanding(purchases),
+          _totalOutstanding(
+            purchases,
+            supplierPayments,
+          ),
         ),
         subtitle:
             'Supplier payable',
-        icon:
-            Icons.account_balance_wallet_rounded,
-        color: AppColors.warning,
+        icon: Icons
+            .account_balance_wallet_rounded,
+        color:
+            AppColors.warning,
       ),
       _SummaryItem(
-        title: 'Total Quantity',
+        title:
+            'Total Quantity',
         value: _number(
-          _totalQuantity(purchases),
+          _totalQuantity(
+            purchases,
+          ),
         ),
         subtitle:
             'Items purchased',
         icon:
             Icons.inventory_2_rounded,
-        color: AppColors.secondary,
+        color:
+            AppColors.secondary,
       ),
     ];
 
@@ -991,27 +1199,41 @@ class _PurchaseReportScreenState
     ThemeData theme,
     List<PurchaseModel> purchases,
   ) {
-    final List<_StatusItem> items = [
+    final List<_StatusItem>
+        items = [
       _StatusItem(
         label: 'Paid',
         count:
-            _countStatus(purchases, 'Paid'),
-        color: AppColors.success,
+            _countStatus(
+          purchases,
+          'Paid',
+        ),
+        color:
+            AppColors.success,
         icon:
             Icons.check_circle_rounded,
       ),
       _StatusItem(
         label: 'Partial',
         count:
-            _countStatus(purchases, 'Partial'),
-        color: AppColors.warning,
-        icon: Icons.timelapse_rounded,
+            _countStatus(
+          purchases,
+          'Partial',
+        ),
+        color:
+            AppColors.warning,
+        icon:
+            Icons.timelapse_rounded,
       ),
       _StatusItem(
         label: 'Unpaid',
         count:
-            _countStatus(purchases, 'Unpaid'),
-        color: AppColors.danger,
+            _countStatus(
+          purchases,
+          'Unpaid',
+        ),
+        color:
+            AppColors.danger,
         icon:
             Icons.pending_actions_rounded,
       ),
@@ -1020,7 +1242,8 @@ class _PurchaseReportScreenState
     return _ReportCard(
       child: Column(
         crossAxisAlignment:
-            CrossAxisAlignment.start,
+            CrossAxisAlignment
+                .start,
         children: [
           _SectionHeader(
             icon:
@@ -1040,48 +1263,53 @@ class _PurchaseReportScreenState
               context,
               constraints,
             ) {
-              if (constraints.maxWidth <
+              if (constraints
+                      .maxWidth <
                   600) {
                 return Column(
-                  children: items
-                      .map(
-                        (item) =>
-                            Padding(
-                          padding:
-                              const EdgeInsets
-                                  .only(
-                            bottom: 10,
-                          ),
-                          child:
-                              _StatusTile(
-                            item: item,
-                          ),
-                        ),
-                      )
-                      .toList(),
+                  children:
+                      items
+                          .map(
+                    (item) =>
+                        Padding(
+                      padding:
+                          const EdgeInsets
+                              .only(
+                        bottom: 10,
+                      ),
+                      child:
+                          _StatusTile(
+                        item:
+                            item,
+                      ),
+                    ),
+                  )
+                          .toList(),
                 );
               }
 
               return Row(
-                children: items
-                    .map(
-                      (item) =>
-                          Expanded(
-                        child:
-                            Padding(
-                          padding:
-                              const EdgeInsets
-                                  .only(
-                            right: 10,
-                          ),
-                          child:
-                              _StatusTile(
-                            item: item,
-                          ),
-                        ),
+                children:
+                    items
+                        .map(
+                  (item) =>
+                      Expanded(
+                    child:
+                        Padding(
+                      padding:
+                          const EdgeInsets
+                              .only(
+                        right: 10,
                       ),
-                    )
-                    .toList(),
+                      child:
+                          _StatusTile(
+                        item:
+                            item,
+                      ),
+                    ),
+                  ),
+                )
+                        .toList(),
               );
             },
           ),
@@ -1106,7 +1334,8 @@ class _PurchaseReportScreenState
             onChanged: (value) {
               setState(() {
                 _searchQuery =
-                    value.trim().toLowerCase();
+                    value.trim()
+                        .toLowerCase();
               });
             },
             decoration:
@@ -1118,7 +1347,8 @@ class _PurchaseReportScreenState
                 Icons.search_rounded,
               ),
               suffixIcon:
-                  _searchQuery.isNotEmpty
+                  _searchQuery
+                          .isNotEmpty
                       ? IconButton(
                           onPressed: () {
                             _searchController
@@ -1131,7 +1361,8 @@ class _PurchaseReportScreenState
                           },
                           icon:
                               const Icon(
-                            Icons.clear_rounded,
+                            Icons
+                                .clear_rounded,
                           ),
                         )
                       : null,
@@ -1161,6 +1392,7 @@ class _PurchaseReportScreenState
                     });
                   },
                 ),
+
                 _FilterChip(
                   label: 'Paid',
                   selected:
@@ -1175,6 +1407,7 @@ class _PurchaseReportScreenState
                     });
                   },
                 ),
+
                 _FilterChip(
                   label: 'Partial',
                   selected:
@@ -1189,6 +1422,7 @@ class _PurchaseReportScreenState
                     });
                   },
                 ),
+
                 _FilterChip(
                   label: 'Unpaid',
                   selected:
@@ -1218,17 +1452,22 @@ class _PurchaseReportScreenState
   Widget _buildSupplierWiseSection(
     ThemeData theme,
     List<PurchaseModel> purchases,
+    List<SupplierPaymentModel>
+        supplierPayments,
   ) {
-    final List<_SupplierPurchaseSummary>
+    final List<
+            _SupplierPurchaseSummary>
         suppliers =
         _supplierWisePurchases(
       purchases,
+      supplierPayments,
     ).values.toList();
 
     return _ReportCard(
       child: Column(
         crossAxisAlignment:
-            CrossAxisAlignment.start,
+            CrossAxisAlignment
+                .start,
         children: [
           _SectionHeader(
             icon:
@@ -1251,11 +1490,15 @@ class _PurchaseReportScreenState
                   'No supplier purchases available for the selected filters.',
             )
           else
-            ...suppliers.take(15).map(
+            ...suppliers
+                .take(15)
+                .map(
               (supplier) {
                 return _SupplierTile(
-                  summary: supplier,
-                  currency: _currency,
+                  summary:
+                      supplier,
+                  currency:
+                      _currency,
                 );
               },
             ),
@@ -1272,13 +1515,15 @@ class _PurchaseReportScreenState
     ThemeData theme,
     List<PurchaseModel> purchases,
   ) {
-    final List<_ProductPurchaseSummary>
+    final List<
+            _ProductPurchaseSummary>
         products =
         _productWisePurchases(
       purchases,
     ).values.toList()
           ..sort(
-            (a, b) => b.amount.compareTo(
+            (a, b) =>
+                b.amount.compareTo(
               a.amount,
             ),
           );
@@ -1286,7 +1531,8 @@ class _PurchaseReportScreenState
     return _ReportCard(
       child: Column(
         crossAxisAlignment:
-            CrossAxisAlignment.start,
+            CrossAxisAlignment
+                .start,
         children: [
           _SectionHeader(
             icon:
@@ -1314,22 +1560,23 @@ class _PurchaseReportScreenState
                 context,
                 constraints,
               ) {
-                if (constraints.maxWidth <
+                if (constraints
+                        .maxWidth <
                     650) {
                   return Column(
                     children: products
                         .take(15)
                         .map(
-                          (product) =>
-                              _ProductTile(
-                            summary:
-                                product,
-                            currency:
-                                _currency,
-                            number:
-                                _number,
-                          ),
-                        )
+                      (product) =>
+                          _ProductTile(
+                        summary:
+                            product,
+                        currency:
+                            _currency,
+                        number:
+                            _number,
+                      ),
+                    )
                         .toList(),
                   );
                 }
@@ -1337,61 +1584,71 @@ class _PurchaseReportScreenState
                 return SingleChildScrollView(
                   scrollDirection:
                       Axis.horizontal,
-                  child: DataTable(
+                  child:
+                      DataTable(
                     columnSpacing: 28,
                     columns: const [
                       DataColumn(
                         label:
-                            Text('Product'),
+                            Text(
+                          'Product',
+                        ),
                       ),
                       DataColumn(
                         label:
-                            Text('Quantity'),
+                            Text(
+                          'Quantity',
+                        ),
                       ),
                       DataColumn(
                         label:
-                            Text('Purchase Amount'),
+                            Text(
+                          'Purchase Amount',
+                        ),
                       ),
                       DataColumn(
                         label:
-                            Text('Purchases'),
+                            Text(
+                          'Purchases',
+                        ),
                       ),
                     ],
                     rows: products
                         .take(20)
                         .map(
-                          (product) {
-                            return DataRow(
-                              cells: [
-                                DataCell(
-                                  Text(
-                                    product.name,
-                                  ),
+                      (product) {
+                        return DataRow(
+                          cells: [
+                            DataCell(
+                              Text(
+                                product
+                                    .name,
+                              ),
+                            ),
+                            DataCell(
+                              Text(
+                                '${_number(product.quantity)} ${product.unit}',
+                              ),
+                            ),
+                            DataCell(
+                              Text(
+                                _currency(
+                                  product
+                                      .amount,
                                 ),
-                                DataCell(
-                                  Text(
-                                    '${_number(product.quantity)} ${product.unit}',
-                                  ),
-                                ),
-                                DataCell(
-                                  Text(
-                                    _currency(
-                                      product.amount,
-                                    ),
-                                  ),
-                                ),
-                                DataCell(
-                                  Text(
-                                    product
-                                        .invoiceCount
-                                        .toString(),
-                                  ),
-                                ),
-                              ],
-                            );
-                          },
-                        )
-                        .toList(),
+                              ),
+                            ),
+                            DataCell(
+                              Text(
+                                product
+                                    .invoiceCount
+                                    .toString(),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ).toList(),
                   ),
                 );
               },
@@ -1412,7 +1669,8 @@ class _PurchaseReportScreenState
     return _ReportCard(
       child: Column(
         crossAxisAlignment:
-            CrossAxisAlignment.start,
+            CrossAxisAlignment
+                .start,
         children: [
           _SectionHeader(
             icon:
@@ -1438,8 +1696,10 @@ class _PurchaseReportScreenState
             ...purchases.map(
               (purchase) {
                 return _PurchaseTile(
-                  purchase: purchase,
-                  currency: _currency,
+                  purchase:
+                      purchase,
+                  currency:
+                      _currency,
                   date: _date,
                   statusColor:
                       _statusColor,
@@ -1465,11 +1725,14 @@ class _PurchaseReportScreenState
   ) {
     showModalBottomSheet<void>(
       context: context,
-      isScrollControlled: true,
+      isScrollControlled:
+          true,
       showDragHandle: true,
       builder: (sheetContext) {
         final ThemeData theme =
-            Theme.of(sheetContext);
+            Theme.of(
+          sheetContext,
+        );
 
         final double outstanding =
             purchase.total -
@@ -1478,16 +1741,19 @@ class _PurchaseReportScreenState
         return SafeArea(
           child: Padding(
             padding:
-                const EdgeInsets.fromLTRB(
+                const EdgeInsets
+                    .fromLTRB(
               20,
               8,
               20,
               24,
             ),
-            child: SingleChildScrollView(
+            child:
+                SingleChildScrollView(
               child: Column(
                 crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                    CrossAxisAlignment
+                        .start,
                 children: [
                   Text(
                     'Purchase Details',
@@ -1505,7 +1771,9 @@ class _PurchaseReportScreenState
                   ),
 
                   Text(
-                    _date(purchase.date),
+                    _date(
+                      purchase.date,
+                    ),
                     style: theme
                         .textTheme
                         .bodyMedium
@@ -1521,30 +1789,37 @@ class _PurchaseReportScreenState
                   ),
 
                   _DetailRow(
-                    label: 'Purchase ID',
+                    label:
+                        'Purchase ID',
                     value:
                         purchase.id,
                   ),
 
                   _DetailRow(
-                    label: 'Supplier',
+                    label:
+                        'Supplier',
                     value:
-                        purchase.supplierName,
+                        purchase
+                            .supplierName,
                   ),
 
                   _DetailRow(
-                    label: 'Subtotal',
+                    label:
+                        'Subtotal',
                     value:
                         _currency(
-                      purchase.subtotal,
+                      purchase
+                          .subtotal,
                     ),
                   ),
 
                   _DetailRow(
-                    label: 'Discount',
+                    label:
+                        'Discount',
                     value:
                         _currency(
-                      purchase.discount,
+                      purchase
+                          .discount,
                     ),
                   ),
 
@@ -1569,12 +1844,14 @@ class _PurchaseReportScreenState
                     label: 'Paid',
                     value:
                         _currency(
-                      purchase.paidAmount,
+                      purchase
+                          .paidAmount,
                     ),
                   ),
 
                   _DetailRow(
-                    label: 'Outstanding',
+                    label:
+                        'Outstanding',
                     value:
                         _currency(
                       outstanding > 0
@@ -1635,7 +1912,9 @@ class _PurchaseReportScreenState
                         ),
                         padding:
                             const EdgeInsets
-                                .all(13),
+                                .all(
+                          13,
+                        ),
                         decoration:
                             BoxDecoration(
                           color: theme
@@ -1653,7 +1932,8 @@ class _PurchaseReportScreenState
                                   .start,
                           children: [
                             Text(
-                              item.productName,
+                              item
+                                  .productName,
                               style:
                                   const TextStyle(
                                 fontWeight:
@@ -1739,6 +2019,8 @@ class _PurchaseReportScreenState
   Widget _buildFooter(
     ThemeData theme,
     List<PurchaseModel> purchases,
+    List<SupplierPaymentModel>
+        supplierPayments,
   ) {
     return _ReportCard(
       child: Wrap(
@@ -1748,30 +2030,51 @@ class _PurchaseReportScreenState
           _FooterMetric(
             label: 'Purchases',
             value:
-                purchases.length.toString(),
+                purchases.length
+                    .toString(),
           ),
+
           _FooterMetric(
             label: 'Quantity',
             value: _number(
-              _totalQuantity(purchases),
+              _totalQuantity(
+                purchases,
+              ),
             ),
           ),
+
           _FooterMetric(
             label: 'Discount',
             value: _currency(
-              _totalDiscount(purchases),
+              _totalDiscount(
+                purchases,
+              ),
             ),
           ),
+
           _FooterMetric(
             label: 'Tax',
             value: _currency(
-              _totalTax(purchases),
+              _totalTax(
+                purchases,
+              ),
             ),
           ),
+
+          _FooterMetric(
+            label:
+                'Supplier Payments',
+            value: _currency(
+              _totalSupplierPayments(
+                supplierPayments,
+              ),
+            ),
+          ),
+
           _FooterMetric(
             label: 'Payment Rate',
             value:
-                '${_paymentRate(purchases).toStringAsFixed(2)}%',
+                '${_paymentRate(purchases, supplierPayments).toStringAsFixed(2)}%',
           ),
         ],
       ),
@@ -1804,18 +2107,21 @@ class _PurchaseReportScreenState
                   height: 64,
                   decoration:
                       BoxDecoration(
-                    color:
-                        AppColors.danger
-                            .withValues(
+                    color: AppColors
+                        .danger
+                        .withValues(
                       alpha: 0.10,
                     ),
                     shape:
                         BoxShape.circle,
                   ),
-                  child: const Icon(
-                    Icons.error_outline_rounded,
+                  child:
+                      const Icon(
+                    Icons
+                        .error_outline_rounded,
                     color:
-                        AppColors.danger,
+                        AppColors
+                            .danger,
                     size: 32,
                   ),
                 ),
@@ -1862,9 +2168,12 @@ class _PurchaseReportScreenState
 
                 FilledButton.icon(
                   onPressed:
-                      () => _loadReport(),
-                  icon: const Icon(
-                    Icons.refresh_rounded,
+                      () =>
+                          _loadReport(),
+                  icon:
+                      const Icon(
+                    Icons
+                        .refresh_rounded,
                   ),
                   label:
                       const Text(
@@ -1950,7 +2259,8 @@ class _StatusItem {
 // CARD
 // =============================================================================
 
-class _ReportCard extends StatelessWidget {
+class _ReportCard
+    extends StatelessWidget {
   final Widget child;
 
   const _ReportCard({
@@ -1958,7 +2268,9 @@ class _ReportCard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
@@ -1981,8 +2293,8 @@ class _ReportCard extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color:
-                Colors.black.withValues(
+            color: Colors.black
+                .withValues(
               alpha:
                   theme.brightness ==
                           Brightness.dark
@@ -2013,7 +2325,9 @@ class _SummaryCard
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
@@ -2043,8 +2357,8 @@ class _SummaryCard
                 height: 40,
                 decoration:
                     BoxDecoration(
-                  color:
-                      item.color.withValues(
+                  color: item.color
+                      .withValues(
                     alpha: 0.10,
                   ),
                   borderRadius:
@@ -2054,22 +2368,28 @@ class _SummaryCard
                 ),
                 child: Icon(
                   item.icon,
-                  color: item.color,
+                  color:
+                      item.color,
                   size: 21,
                 ),
               ),
+
               const Spacer(),
+
               Icon(
-                Icons.arrow_outward_rounded,
-                color:
-                    item.color.withValues(
+                Icons
+                    .arrow_outward_rounded,
+                color: item.color
+                    .withValues(
                   alpha: 0.65,
                 ),
                 size: 18,
               ),
             ],
           ),
+
           const Spacer(),
+
           Text(
             item.title,
             maxLines: 1,
@@ -2086,7 +2406,11 @@ class _SummaryCard
                   FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 3),
+
+          const SizedBox(
+            height: 3,
+          ),
+
           Text(
             item.value,
             maxLines: 1,
@@ -2100,7 +2424,11 @@ class _SummaryCard
                   FontWeight.w800,
             ),
           ),
-          const SizedBox(height: 2),
+
+          const SizedBox(
+            height: 2,
+          ),
+
           Text(
             item.subtitle,
             maxLines: 1,
@@ -2110,7 +2438,8 @@ class _SummaryCard
                 .textTheme
                 .bodySmall
                 ?.copyWith(
-              color: item.color,
+              color:
+                  item.color,
               fontWeight:
                   FontWeight.w600,
             ),
@@ -2138,7 +2467,9 @@ class _SectionHeader
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
@@ -2167,11 +2498,16 @@ class _SectionHeader
             size: 22,
           ),
         ),
-        const SizedBox(width: 12),
+
+        const SizedBox(
+          width: 12,
+        ),
+
         Expanded(
           child: Column(
             crossAxisAlignment:
-                CrossAxisAlignment.start,
+                CrossAxisAlignment
+                    .start,
             children: [
               Text(
                 title,
@@ -2183,9 +2519,11 @@ class _SectionHeader
                       FontWeight.w800,
                 ),
               ),
+
               const SizedBox(
                 height: 2,
               ),
+
               Text(
                 subtitle,
                 style: theme
@@ -2218,7 +2556,9 @@ class _StatusTile
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
@@ -2243,12 +2583,15 @@ class _StatusTile
         children: [
           Icon(
             item.icon,
-            color: item.color,
+            color:
+                item.color,
             size: 23,
           ),
+
           const SizedBox(
             width: 10,
           ),
+
           Expanded(
             child: Text(
               item.label,
@@ -2261,13 +2604,15 @@ class _StatusTile
               ),
             ),
           ),
+
           Text(
             item.count.toString(),
             style: theme
                 .textTheme
                 .titleMedium
                 ?.copyWith(
-              color: item.color,
+              color:
+                  item.color,
               fontWeight:
                   FontWeight.w800,
             ),
@@ -2297,7 +2642,9 @@ class _FilterChip
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
@@ -2341,8 +2688,10 @@ class _FilterChip
 
 class _SupplierTile
     extends StatelessWidget {
-  final _SupplierPurchaseSummary summary;
-  final String Function(double) currency;
+  final _SupplierPurchaseSummary
+      summary;
+  final String Function(double)
+      currency;
 
   const _SupplierTile({
     required this.summary,
@@ -2350,7 +2699,9 @@ class _SupplierTile
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
@@ -2378,28 +2729,32 @@ class _SupplierTile
             height: 44,
             decoration:
                 BoxDecoration(
-              color:
-                  AppColors.primary
-                      .withValues(
+              color: AppColors
+                  .primary
+                  .withValues(
                 alpha: 0.10,
               ),
               shape:
                   BoxShape.circle,
             ),
             child: const Icon(
-              Icons.local_shipping_rounded,
+              Icons
+                  .local_shipping_rounded,
               color:
                   AppColors.primary,
               size: 22,
             ),
           ),
+
           const SizedBox(
             width: 12,
           ),
+
           Expanded(
             child: Column(
               crossAxisAlignment:
-                  CrossAxisAlignment.start,
+                  CrossAxisAlignment
+                      .start,
               children: [
                 Text(
                   summary.name,
@@ -2414,9 +2769,11 @@ class _SupplierTile
                         FontWeight.w800,
                   ),
                 ),
+
                 const SizedBox(
                   height: 4,
                 ),
+
                 Text(
                   '${summary.invoiceCount} purchase${summary.invoiceCount == 1 ? '' : 's'}',
                   style: theme
@@ -2431,6 +2788,7 @@ class _SupplierTile
               ],
             ),
           ),
+
           Column(
             crossAxisAlignment:
                 CrossAxisAlignment.end,
@@ -2447,12 +2805,31 @@ class _SupplierTile
                       FontWeight.w800,
                 ),
               ),
+
               const SizedBox(
                 height: 4,
               ),
+
+              Text(
+                'Paid ${currency(summary.paid)}',
+                style:
+                    TextStyle(
+                  color:
+                      AppColors.success,
+                  fontSize: 11,
+                  fontWeight:
+                      FontWeight.w600,
+                ),
+              ),
+
+              const SizedBox(
+                height: 2,
+              ),
+
               Text(
                 'Due ${currency(summary.outstanding)}',
-                style: TextStyle(
+                style:
+                    TextStyle(
                   color:
                       summary.outstanding >
                               0
@@ -2479,9 +2856,12 @@ class _SupplierTile
 
 class _ProductTile
     extends StatelessWidget {
-  final _ProductPurchaseSummary summary;
-  final String Function(double) currency;
-  final String Function(double) number;
+  final _ProductPurchaseSummary
+      summary;
+  final String Function(double)
+      currency;
+  final String Function(double)
+      number;
 
   const _ProductTile({
     required this.summary,
@@ -2490,7 +2870,9 @@ class _ProductTile
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
@@ -2513,7 +2895,8 @@ class _ProductTile
       ),
       child: Column(
         crossAxisAlignment:
-            CrossAxisAlignment.start,
+            CrossAxisAlignment
+                .start,
         children: [
           Row(
             children: [
@@ -2529,6 +2912,7 @@ class _ProductTile
                   ),
                 ),
               ),
+
               Text(
                 currency(
                   summary.amount,
@@ -2543,9 +2927,11 @@ class _ProductTile
               ),
             ],
           ),
+
           const SizedBox(
             height: 8,
           ),
+
           Wrap(
             spacing: 14,
             runSpacing: 6,
@@ -2556,6 +2942,7 @@ class _ProductTile
                     .textTheme
                     .bodySmall,
               ),
+
               Text(
                 '${summary.invoiceCount} purchase${summary.invoiceCount == 1 ? '' : 's'}',
                 style: theme
@@ -2577,9 +2964,12 @@ class _ProductTile
 class _PurchaseTile
     extends StatelessWidget {
   final PurchaseModel purchase;
-  final String Function(double) currency;
-  final String Function(DateTime) date;
-  final Color Function(String) statusColor;
+  final String Function(double)
+      currency;
+  final String Function(DateTime)
+      date;
+  final Color Function(String)
+      statusColor;
   final VoidCallback onTap;
 
   const _PurchaseTile({
@@ -2591,7 +2981,9 @@ class _PurchaseTile
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
@@ -2650,14 +3042,17 @@ class _PurchaseTile
                 ),
               ),
               child: Icon(
-                Icons.shopping_bag_rounded,
+                Icons
+                    .shopping_bag_rounded,
                 color: color,
                 size: 22,
               ),
             ),
+
             const SizedBox(
               width: 12,
             ),
+
             Expanded(
               child: Column(
                 crossAxisAlignment:
@@ -2677,11 +3072,14 @@ class _PurchaseTile
                           FontWeight.w800,
                     ),
                   ),
+
                   const SizedBox(
                     height: 4,
                   ),
+
                   Text(
-                    purchase.supplierName,
+                    purchase
+                        .supplierName,
                     maxLines: 1,
                     overflow:
                         TextOverflow.ellipsis,
@@ -2689,11 +3087,15 @@ class _PurchaseTile
                         .textTheme
                         .bodySmall,
                   ),
+
                   const SizedBox(
                     height: 3,
                   ),
+
                   Text(
-                    date(purchase.date),
+                    date(
+                      purchase.date,
+                    ),
                     style: theme
                         .textTheme
                         .bodySmall
@@ -2706,9 +3108,11 @@ class _PurchaseTile
                 ],
               ),
             ),
+
             const SizedBox(
               width: 10,
             ),
+
             Column(
               crossAxisAlignment:
                   CrossAxisAlignment.end,
@@ -2725,9 +3129,11 @@ class _PurchaseTile
                         FontWeight.w800,
                   ),
                 ),
+
                 const SizedBox(
                   height: 5,
                 ),
+
                 Container(
                   padding:
                       const EdgeInsets
@@ -2749,7 +3155,8 @@ class _PurchaseTile
                   child: Text(
                     purchase
                         .paymentStatus,
-                    style: TextStyle(
+                    style:
+                        TextStyle(
                       color: color,
                       fontSize: 10,
                       fontWeight:
@@ -2757,6 +3164,7 @@ class _PurchaseTile
                     ),
                   ),
                 ),
+
                 if (outstanding > 0)
                   Padding(
                     padding:
@@ -2769,7 +3177,8 @@ class _PurchaseTile
                       style:
                           const TextStyle(
                         color:
-                            AppColors.warning,
+                            AppColors
+                                .warning,
                         fontSize: 10,
                         fontWeight:
                             FontWeight.w600,
@@ -2778,11 +3187,14 @@ class _PurchaseTile
                   ),
               ],
             ),
+
             const SizedBox(
               width: 5,
             ),
+
             const Icon(
-              Icons.chevron_right_rounded,
+              Icons
+                  .chevron_right_rounded,
               size: 21,
             ),
           ],
@@ -2811,7 +3223,9 @@ class _DetailRow
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
@@ -2835,6 +3249,7 @@ class _DetailRow
               ),
             ),
           ),
+
           Flexible(
             child: Text(
               value,
@@ -2873,7 +3288,9 @@ class _EmptyInline
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
@@ -2900,9 +3317,11 @@ class _EmptyInline
                 .colorScheme
                 .onSurfaceVariant,
           ),
+
           const SizedBox(
             height: 10,
           ),
+
           Text(
             message,
             textAlign:
@@ -2937,7 +3356,9 @@ class _FooterMetric
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
@@ -2956,6 +3377,7 @@ class _FooterMetric
                 .onSurfaceVariant,
           ),
         ),
+
         Text(
           value,
           style: theme

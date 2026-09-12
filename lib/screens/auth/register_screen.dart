@@ -1,8 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-import '../../repositories/auth_repository.dart';
 import '../business_setup/business_setup_screen.dart';
+import '../../repositories/auth_repository.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({
@@ -10,8 +10,7 @@ class RegisterScreen extends StatefulWidget {
   });
 
   @override
-  State<RegisterScreen> createState() =>
-      _RegisterScreenState();
+  State<RegisterScreen> createState() => _RegisterScreenState();
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
@@ -42,9 +41,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
-
     super.dispose();
   }
+
+  // ===========================================================================
+  // REGISTER
+  // ===========================================================================
 
   Future<void> _register() async {
     if (_isLoading) {
@@ -59,20 +61,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     FocusScope.of(context).unfocus();
 
-    final String businessName =
-        _businessNameController.text.trim();
-
-    final String email =
-        _emailController.text.trim();
-
-    final String password =
-        _passwordController.text;
-
     setState(() {
       _isLoading = true;
     });
 
     try {
+      final String email =
+          _emailController.text.trim();
+
+      final String password =
+          _passwordController.text;
+
+      final String businessName =
+          _businessNameController.text.trim();
+
       final UserCredential credential =
           await _authRepository.register(
         email: email,
@@ -83,50 +85,28 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       if (user == null) {
         throw Exception(
-          'Account could not be created.',
+          'User account could not be created.',
         );
       }
 
-      // Keep the business name available in the
-      // Firebase user profile until BusinessSetup
-      // saves the complete business document.
-      await _authRepository.updateDisplayName(
-        businessName,
-      );
+      // Keep the entered business name available in the Firebase
+      // authentication profile. The actual business document is created
+      // later by BusinessSetupScreen.
+      if (businessName.isNotEmpty) {
+        await user.updateDisplayName(
+          businessName,
+        );
+      }
 
       if (!mounted) {
         return;
       }
 
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Account created successfully.',
-            ),
-            behavior: SnackBarBehavior.floating,
-            duration: Duration(
-              milliseconds: 900,
-            ),
-          ),
-        );
-
-      await Future.delayed(
-        const Duration(
-          milliseconds: 400,
-        ),
-      );
-
-      if (!mounted) {
-        return;
-      }
-
-      // Registration only creates the Firebase
-      // Authentication account.
+      // Registration is complete. BusinessSetupScreen is now responsible
+      // for collecting and saving the business profile.
       //
-      // Complete business information is created
-      // from BusinessSetupScreen.
+      // pushAndRemoveUntil is intentional here so the user cannot press
+      // Back and return to the registration form after creating an account.
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(
@@ -135,21 +115,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ),
         (route) => false,
       );
-    } on FirebaseAuthException catch (e) {
+    } on FirebaseAuthException catch (error) {
       if (!mounted) {
         return;
       }
 
-      _showRegisterError(
-        _getRegisterErrorMessage(e),
+      _showMessage(
+        _getFirebaseRegisterErrorMessage(
+          error,
+        ),
+        isError: true,
       );
     } catch (error) {
       if (!mounted) {
         return;
       }
 
-      _showRegisterError(
+      _showMessage(
         _getRegisterErrorMessage(error),
+        isError: true,
       );
     } finally {
       if (mounted) {
@@ -160,59 +144,70 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
+  // ===========================================================================
+  // FIREBASE ERROR HANDLING
+  // ===========================================================================
+
+  String _getFirebaseRegisterErrorMessage(
+    FirebaseAuthException error,
+  ) {
+    switch (error.code) {
+      case 'email-already-in-use':
+        return 'Is email se account already exist karta hai.';
+
+      case 'invalid-email':
+        return 'Please valid email address enter karo.';
+
+      case 'weak-password':
+        return 'Password thoda strong rakho.';
+
+      case 'operation-not-allowed':
+        return 'Email/password authentication Firebase mein enabled nahi hai.';
+
+      case 'network-request-failed':
+        return 'Internet connection check karo.';
+
+      case 'too-many-requests':
+        return 'Bahut zyada attempts ho gaye hain. Thodi der baad try karo.';
+
+      case 'user-disabled':
+        return 'Ye account disabled hai.';
+
+      default:
+        return error.message ??
+            'Registration failed. Please try again.';
+    }
+  }
+
   String _getRegisterErrorMessage(
     Object error,
   ) {
-    if (error is FirebaseAuthException) {
-      switch (error.code) {
-        case 'email-already-in-use':
-          return 'Is email se account already exist karta hai.';
-
-        case 'invalid-email':
-          return 'Please valid email address enter karo.';
-
-        case 'weak-password':
-          return 'Password thoda strong rakho.';
-
-        case 'network-request-failed':
-          return 'Internet connection check karo.';
-
-        case 'operation-not-allowed':
-          return 'Email/password registration Firebase mein enabled nahi hai.';
-
-        case 'too-many-requests':
-          return 'Bahut zyada attempts ho gaye. Thodi der baad try karo.';
-
-        case 'user-disabled':
-          return 'Ye account disabled hai.';
-
-        default:
-          return error.message ??
-              'Registration failed. Please try again.';
-      }
-    }
-
     final String message =
         error.toString().toLowerCase();
 
-    if (message.contains(
-      'email-already-in-use',
-    )) {
-      return 'Is email se account already exist karta hai.';
+    if (message.contains('network')) {
+      return 'Internet connection check karo.';
     }
 
-    if (message.contains(
-      'network-request-failed',
-    )) {
-      return 'Internet connection check karo.';
+    if (message.contains('permission')) {
+      return 'You do not have permission to create this account.';
+    }
+
+    if (message.contains('user account could not be created')) {
+      return 'Account create nahi ho paya. Please try again.';
     }
 
     return 'Registration failed. Please try again.';
   }
 
-  void _showRegisterError(
-    String message,
-  ) {
+  // ===========================================================================
+  // MESSAGE
+  // ===========================================================================
+
+  void _showMessage(
+    String message, {
+    bool isError = false,
+  }) {
     if (!mounted) {
       return;
     }
@@ -221,72 +216,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(message),
-          behavior: SnackBarBehavior.floating,
+          content: Text(
+            message,
+          ),
+          behavior:
+              SnackBarBehavior.floating,
+          backgroundColor:
+              isError ? Colors.red : Colors.green,
         ),
       );
   }
 
-  String? _validateEmail(
-    String? value,
-  ) {
-    final String email =
-        value?.trim() ?? '';
-
-    if (email.isEmpty) {
-      return 'Email is required';
-    }
-
-    final RegExp emailRegex = RegExp(
-      r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
-    );
-
-    if (!emailRegex.hasMatch(email)) {
-      return 'Enter a valid email';
-    }
-
-    return null;
-  }
-
-  String? _validatePassword(
-    String? value,
-  ) {
-    final String password =
-        value ?? '';
-
-    if (password.isEmpty) {
-      return 'Password is required';
-    }
-
-    if (password.length < 6) {
-      return 'Minimum 6 characters required';
-    }
-
-    return null;
-  }
-
-  String? _validateConfirmPassword(
-    String? value,
-  ) {
-    final String confirmPassword =
-        value ?? '';
-
-    if (confirmPassword.isEmpty) {
-      return 'Please confirm password';
-    }
-
-    if (confirmPassword !=
-        _passwordController.text) {
-      return 'Passwords do not match';
-    }
-
-    return null;
-  }
+  // ===========================================================================
+  // BUILD
+  // ===========================================================================
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     final ThemeData theme =
         Theme.of(context);
 
@@ -299,9 +245,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
+            padding:
+                const EdgeInsets.all(24),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(
+              constraints:
+                  const BoxConstraints(
                 maxWidth: 430,
               ),
               child: Form(
@@ -314,22 +262,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       height: 12,
                     ),
 
-                    Icon(
-                      Icons
-                          .person_add_alt_1_rounded,
-                      size: 54,
-                      color:
-                          theme.colorScheme.primary,
-                    ),
-
-                    const SizedBox(
-                      height: 18,
-                    ),
+                    // ---------------------------------------------------------
+                    // TITLE
+                    // ---------------------------------------------------------
 
                     Text(
                       'Create your account',
-                      textAlign:
-                          TextAlign.center,
                       style: theme
                           .textTheme
                           .headlineSmall
@@ -345,8 +283,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                     Text(
                       'Start managing your business easily.',
-                      textAlign:
-                          TextAlign.center,
                       style: theme
                           .textTheme
                           .bodyLarge
@@ -361,19 +297,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       height: 30,
                     ),
 
+                    // ---------------------------------------------------------
+                    // BUSINESS NAME
+                    // ---------------------------------------------------------
+
                     TextFormField(
                       controller:
                           _businessNameController,
                       textInputAction:
                           TextInputAction.next,
-                      enabled:
-                          !_isLoading,
-                      textCapitalization:
-                          TextCapitalization.words,
+                      enabled: !_isLoading,
                       decoration:
                           const InputDecoration(
                         labelText:
-                            'Business Name *',
+                            'Business Name',
                         hintText:
                             'Enter business name',
                         prefixIcon: Icon(
@@ -396,6 +333,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       height: 18,
                     ),
 
+                    // ---------------------------------------------------------
+                    // EMAIL
+                    // ---------------------------------------------------------
+
                     TextFormField(
                       controller:
                           _emailController,
@@ -403,15 +344,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           TextInputType.emailAddress,
                       textInputAction:
                           TextInputAction.next,
-                      enabled:
-                          !_isLoading,
+                      enabled: !_isLoading,
                       autocorrect: false,
-                      autofillHints: const [
-                        AutofillHints.email,
-                      ],
                       decoration:
                           const InputDecoration(
-                        labelText: 'Email *',
+                        labelText: 'Email',
                         hintText:
                             'Enter email address',
                         prefixIcon: Icon(
@@ -419,13 +356,35 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               .email_outlined,
                         ),
                       ),
-                      validator:
-                          _validateEmail,
+                      validator: (value) {
+                        final String email =
+                            value?.trim() ?? '';
+
+                        if (email.isEmpty) {
+                          return 'Email is required';
+                        }
+
+                        final RegExp emailRegex =
+                            RegExp(
+                          r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                        );
+
+                        if (!emailRegex
+                            .hasMatch(email)) {
+                          return 'Enter a valid email';
+                        }
+
+                        return null;
+                      },
                     ),
 
                     const SizedBox(
                       height: 18,
                     ),
+
+                    // ---------------------------------------------------------
+                    // PASSWORD
+                    // ---------------------------------------------------------
 
                     TextFormField(
                       controller:
@@ -434,37 +393,27 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           _obscurePassword,
                       textInputAction:
                           TextInputAction.next,
-                      enabled:
-                          !_isLoading,
-                      autofillHints: const [
-                        AutofillHints.newPassword,
-                      ],
+                      enabled: !_isLoading,
                       decoration:
                           InputDecoration(
-                        labelText:
-                            'Password *',
+                        labelText: 'Password',
                         hintText:
                             'Minimum 6 characters',
                         prefixIcon:
                             const Icon(
-                          Icons.lock_outline,
+                          Icons
+                              .lock_outline,
                         ),
                         suffixIcon:
                             IconButton(
-                          tooltip:
-                              _obscurePassword
-                                  ? 'Show password'
-                                  : 'Hide password',
                           onPressed:
                               _isLoading
                                   ? null
                                   : () {
-                                      setState(
-                                        () {
-                                          _obscurePassword =
-                                              !_obscurePassword;
-                                        },
-                                      );
+                                      setState(() {
+                                        _obscurePassword =
+                                            !_obscurePassword;
+                                      });
                                     },
                           icon: Icon(
                             _obscurePassword
@@ -475,13 +424,30 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                         ),
                       ),
-                      validator:
-                          _validatePassword,
+                      validator: (value) {
+                        final String password =
+                            value ?? '';
+
+                        if (password.isEmpty) {
+                          return 'Password is required';
+                        }
+
+                        if (password.length <
+                            6) {
+                          return 'Minimum 6 characters required';
+                        }
+
+                        return null;
+                      },
                     ),
 
                     const SizedBox(
                       height: 18,
                     ),
+
+                    // ---------------------------------------------------------
+                    // CONFIRM PASSWORD
+                    // ---------------------------------------------------------
 
                     TextFormField(
                       controller:
@@ -490,20 +456,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           _obscureConfirmPassword,
                       textInputAction:
                           TextInputAction.done,
-                      enabled:
-                          !_isLoading,
-                      autofillHints: const [
-                        AutofillHints.newPassword,
-                      ],
-                      onFieldSubmitted: (_) {
-                        if (!_isLoading) {
-                          _register();
-                        }
-                      },
+                      enabled: !_isLoading,
+                      onFieldSubmitted:
+                          (_) => _register(),
                       decoration:
                           InputDecoration(
                         labelText:
-                            'Confirm Password *',
+                            'Confirm Password',
                         hintText:
                             'Enter password again',
                         prefixIcon:
@@ -513,20 +472,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
                         suffixIcon:
                             IconButton(
-                          tooltip:
-                              _obscureConfirmPassword
-                                  ? 'Show password'
-                                  : 'Hide password',
                           onPressed:
                               _isLoading
                                   ? null
                                   : () {
-                                      setState(
-                                        () {
-                                          _obscureConfirmPassword =
-                                              !_obscureConfirmPassword;
-                                        },
-                                      );
+                                      setState(() {
+                                        _obscureConfirmPassword =
+                                            !_obscureConfirmPassword;
+                                      });
                                     },
                           icon: Icon(
                             _obscureConfirmPassword
@@ -537,13 +490,32 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                         ),
                       ),
-                      validator:
-                          _validateConfirmPassword,
+                      validator: (value) {
+                        final String confirmPassword =
+                            value ?? '';
+
+                        if (confirmPassword
+                            .isEmpty) {
+                          return 'Please confirm password';
+                        }
+
+                        if (confirmPassword !=
+                            _passwordController
+                                .text) {
+                          return 'Passwords do not match';
+                        }
+
+                        return null;
+                      },
                     ),
 
                     const SizedBox(
                       height: 28,
                     ),
+
+                    // ---------------------------------------------------------
+                    // REGISTER BUTTON
+                    // ---------------------------------------------------------
 
                     SizedBox(
                       height: 52,
@@ -558,7 +530,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 height: 22,
                                 child:
                                     CircularProgressIndicator(
-                                  strokeWidth: 2.5,
+                                  strokeWidth:
+                                      2.5,
                                   color:
                                       Colors.white,
                                 ),
@@ -572,6 +545,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     const SizedBox(
                       height: 20,
                     ),
+
+                    // ---------------------------------------------------------
+                    // LOGIN
+                    // ---------------------------------------------------------
 
                     Row(
                       mainAxisAlignment:
@@ -589,7 +566,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                         context,
                                       );
                                     },
-                          child: const Text(
+                          child:
+                              const Text(
                             'Login',
                           ),
                         ),

@@ -56,7 +56,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
   final DateFormat _dateFormat =
       DateFormat('dd MMM yyyy');
 
-  
   BusinessModel? _business;
 
   List<SaleModel> _sales = <SaleModel>[];
@@ -254,8 +253,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ),
           );
       }
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
+
+      setState(() {
+        _errorMessage =
+            'Unable to refresh reports. Please try again.';
+      });
 
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
@@ -269,29 +273,64 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ),
         );
     } finally {
-      if (mounted) {
-        setState(() {
-          _isRefreshing = false;
-        });
-      }
-    }
+  if (mounted) {
+    setState(() {
+      _isRefreshing = false;
+    });
+  }
+}
   }
 
   // ===========================================================================
-  // DATE RANGE
+  // DATE FILTER
   // ===========================================================================
 
-  Future<void> _selectDateRange() async {
-    final DateTime now = DateTime.now();
+  bool _isDateInRange(DateTime date) {
+    final DateTime normalized =
+        DateTime(
+      date.year,
+      date.month,
+      date.day,
+    );
 
-    final DateTimeRange? selected =
+    if (_startDate != null) {
+      final DateTime start =
+          DateTime(
+        _startDate!.year,
+        _startDate!.month,
+        _startDate!.day,
+      );
+
+      if (normalized.isBefore(start)) {
+        return false;
+      }
+    }
+
+    if (_endDate != null) {
+      final DateTime end =
+          DateTime(
+        _endDate!.year,
+        _endDate!.month,
+        _endDate!.day,
+      );
+
+      if (normalized.isAfter(end)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  Future<void> _selectDateRange() async {
+    final DateTimeRange? range =
         await showDateRangePicker(
       context: context,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(
-        now.year + 1,
-        now.month,
-        now.day,
+      firstDate:
+          DateTime(2000),
+      lastDate:
+          DateTime.now().add(
+        const Duration(days: 365),
       ),
       initialDateRange:
           _startDate != null &&
@@ -300,66 +339,43 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   start: _startDate!,
                   end: _endDate!,
                 )
-              : DateTimeRange(
-                  start: DateTime(
-                    now.year,
-                    now.month,
-                    1,
-                  ),
-                  end: now,
-                ),
-      helpText: 'Select report period',
+              : null,
+      helpText:
+          'Select report date range',
       saveText: 'Apply',
     );
 
-    if (selected == null ||
-        !mounted) {
+    if (range == null || !mounted) {
       return;
     }
 
     setState(() {
       _startDate = DateTime(
-        selected.start.year,
-        selected.start.month,
-        selected.start.day,
+        range.start.year,
+        range.start.month,
+        range.start.day,
       );
 
       _endDate = DateTime(
-        selected.end.year,
-        selected.end.month,
-        selected.end.day,
-        23,
-        59,
-        59,
+        range.end.year,
+        range.end.month,
+        range.end.day,
       );
     });
   }
 
   void _clearDateRange() {
+    if (!mounted) return;
+
     setState(() {
       _startDate = null;
       _endDate = null;
     });
   }
 
-  bool _isDateInRange(DateTime date) {
-    if (_startDate == null &&
-        _endDate == null) {
-      return true;
-    }
-
-    if (_startDate != null &&
-        date.isBefore(_startDate!)) {
-      return false;
-    }
-
-    if (_endDate != null &&
-        date.isAfter(_endDate!)) {
-      return false;
-    }
-
-    return true;
-  }
+  // ===========================================================================
+  // FILTERED DATA
+  // ===========================================================================
 
   List<SaleModel> get _filteredSales {
     return _sales
@@ -432,28 +448,53 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
+  /// Total customer receipts within the selected period.
+  ///
+  /// Customer money can be recorded in two places:
+  /// 1. paidAmount on the sale itself.
+  /// 2. Separate PaymentModel transactions.
+  ///
+  /// Both are intentionally included here.
   double get _totalPayments {
-    return _filteredPayments.fold<double>(
+    final double salePayments =
+        _filteredSales.fold<double>(
+      0,
+      (sum, sale) =>
+          sum + sale.paidAmount,
+    );
+
+    final double separatePayments =
+        _filteredPayments.fold<double>(
       0,
       (sum, payment) =>
           sum + payment.amount,
     );
+
+    return salePayments + separatePayments;
   }
 
+  double _saleCost(SaleModel sale) {
+    return sale.items.fold<double>(
+      0,
+      (sum, item) =>
+          sum +
+          (item.costPrice *
+              item.quantity),
+    );
+  }
+
+  /// Gross profit is based on the actual invoice total
+  /// minus the actual cost of goods sold.
+  ///
+  /// This keeps the overview consistent with Profit Report.
   double get _grossProfit {
-    double profit = 0;
-
-    for (final SaleModel sale
-        in _filteredSales) {
-      for (final item in sale.items) {
-        profit +=
-            (item.sellingRate -
-                    item.costPrice) *
-                item.quantity;
-      }
-    }
-
-    return profit;
+    return _filteredSales.fold<double>(
+      0,
+      (sum, sale) =>
+          sum +
+          (sale.total -
+              _saleCost(sale)),
+    );
   }
 
   double get _netProfit {
@@ -471,21 +512,18 @@ class _ReportsScreenState extends State<ReportsScreen> {
         100;
   }
 
+  /// Customer outstanding for the selected sales/payment period.
+  ///
+  /// Separate customer payments are included so the overview does not
+  /// show an artificially inflated outstanding balance.
   double get _outstandingSales {
-    double outstanding = 0;
+    final double outstanding =
+        _totalSales -
+            _totalPayments;
 
-    for (final SaleModel sale
-        in _filteredSales) {
-      final double balance =
-          sale.total -
-              sale.paidAmount;
-
-      if (balance > 0) {
-        outstanding += balance;
-      }
-    }
-
-    return outstanding;
+    return outstanding > 0
+        ? outstanding
+        : 0;
   }
 
   double get _stockValue {
@@ -624,12 +662,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
         backgroundColor:
             theme.scaffoldBackgroundColor,
         appBar: AppBar(
-          title: const Text(
-            'Reports',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-            ),
-          ),
+          title:
+              const Text('Reports'),
         ),
         body: const Center(
           child:
@@ -643,66 +677,96 @@ class _ReportsScreenState extends State<ReportsScreen> {
         backgroundColor:
             theme.scaffoldBackgroundColor,
         appBar: AppBar(
-          title: const Text(
-            'Reports',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
+          title:
+              const Text('Reports'),
+        ),
+        body: Center(
+          child: Padding(
+            padding:
+                const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize:
+                  MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons
+                      .error_outline_rounded,
+                  size: 54,
+                  color:
+                      theme.colorScheme.error,
+                ),
+                const SizedBox(
+                  height: 14,
+                ),
+                Text(
+                  _errorMessage!,
+                  textAlign:
+                      TextAlign.center,
+                  style: theme
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(
+                    fontWeight:
+                        FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(
+                  height: 18,
+                ),
+                FilledButton.icon(
+                  onPressed:
+                      _initialize,
+                  icon: const Icon(
+                    Icons.refresh_rounded,
+                  ),
+                  label: const Text(
+                    'Try Again',
+                  ),
+                ),
+              ],
             ),
           ),
         ),
-        body: _buildErrorState(theme),
       );
     }
 
-    if (_business == null) {
-      return Scaffold(
-        backgroundColor:
-            theme.scaffoldBackgroundColor,
-        appBar: AppBar(
-          title: const Text(
-            'Reports',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ),
-        body:
-            _buildEmptyBusinessState(
-          theme,
-        ),
-      );
-    }
+    final Size size =
+        MediaQuery.sizeOf(context);
+
+    final bool isDesktop =
+        size.width >= 1000;
 
     return Scaffold(
       backgroundColor:
           theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text(
-          'Reports',
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
-          ),
-        ),
+        title:
+            const Text('Reports'),
         actions: [
           IconButton(
-            tooltip: 'Refresh',
-            onPressed: _isRefreshing
-                ? null
-                : _refresh,
-            icon: _isRefreshing
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child:
-                        CircularProgressIndicator(
-                      strokeWidth: 2,
-                    ),
-                  )
-                : const Icon(
-                    Icons.refresh_rounded,
-                  ),
+            tooltip:
+                'Refresh reports',
+            onPressed:
+                _isRefreshing
+                    ? null
+                    : _refresh,
+            icon:
+                _isRefreshing
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child:
+                            CircularProgressIndicator(
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Icon(
+                        Icons.refresh_rounded,
+                      ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(
+            width: 6,
+          ),
         ],
       ),
       body: RefreshIndicator(
@@ -712,58 +776,69 @@ class _ReportsScreenState extends State<ReportsScreen> {
             context,
             constraints,
           ) {
-            final bool isDesktop =
-                constraints.maxWidth >=
-                    1000;
+            final double maxWidth =
+                isDesktop
+                    ? 1250
+                    : 1000;
 
             return SingleChildScrollView(
               physics:
                   const AlwaysScrollableScrollPhysics(),
-              padding: EdgeInsets.fromLTRB(
-                isDesktop ? 28 : 16,
-                20,
-                isDesktop ? 28 : 16,
-                40,
+              padding:
+                  const EdgeInsets.fromLTRB(
+                16,
+                16,
+                16,
+                30,
               ),
               child: Center(
                 child: ConstrainedBox(
                   constraints:
-                      const BoxConstraints(
-                    maxWidth: 1250,
+                      BoxConstraints(
+                    maxWidth: maxWidth,
                   ),
                   child: Column(
                     crossAxisAlignment:
                         CrossAxisAlignment
-                            .start,
+                            .stretch,
                     children: [
-                      _buildHeader(theme),
+                      _buildHeader(
+                        theme,
+                        isDesktop,
+                      ),
                       const SizedBox(
-                        height: 20,
+                        height: 18,
                       ),
                       _buildDateFilter(
                         theme,
                       ),
                       const SizedBox(
-                        height: 20,
+                        height: 18,
                       ),
                       _buildOverview(
                         theme,
                         isDesktop,
                       ),
                       const SizedBox(
-                        height: 24,
-                      ),
-                      _buildReportCategories(
-                        theme,
-                      ),
-                      const SizedBox(
-                        height: 24,
+                        height: 22,
                       ),
                       _buildQuickSummary(
                         theme,
                       ),
                       const SizedBox(
-                        height: 24,
+                        height: 22,
+                      ),
+                      _buildReportGrid(
+                        theme,
+                      ),
+                      const SizedBox(
+                        height: 22,
+                      ),
+                      _buildInventorySnapshot(
+                        theme,
+                      ),
+                      const SizedBox(
+                        height: 22,
                       ),
                       _buildReportTips(
                         theme,
@@ -785,56 +860,65 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Widget _buildHeader(
     ThemeData theme,
+    bool isDesktop,
   ) {
     final String businessName =
-        _business?.businessName.trim() ??
-            '';
+        _business?.ownerName.trim().isNotEmpty ==
+                true
+            ? _business!.ownerName.trim()
+            : 'Business';
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(22),
+      padding:
+          const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [
-            AppColors.primary,
-            AppColors.secondary,
-          ],
+        borderRadius:
+            BorderRadius.circular(20),
+        gradient: LinearGradient(
           begin:
               Alignment.topLeft,
           end:
               Alignment.bottomRight,
+          colors: [
+            AppColors.primary
+                .withValues(alpha: 0.14),
+            AppColors.secondary
+                .withValues(alpha: 0.08),
+          ],
         ),
-        borderRadius:
-            BorderRadius.circular(20),
+        border: Border.all(
+          color: AppColors.primary
+              .withValues(alpha: 0.16),
+        ),
       ),
       child: Row(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
           Container(
-            width: 58,
-            height: 58,
-            decoration:
-                BoxDecoration(
-              color: Colors.white
-                  .withValues(
-                alpha: 0.14,
-              ),
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: AppColors.primary
+                  .withValues(alpha: 0.12),
               borderRadius:
-                  BorderRadius.circular(
-                16,
-              ),
+                  BorderRadius.circular(15),
             ),
             child: const Icon(
               Icons.assessment_rounded,
-              color: Colors.white,
-              size: 30,
+              color:
+                  AppColors.primary,
+              size: 28,
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(
+            width: 15,
+          ),
           Expanded(
             child: Column(
               crossAxisAlignment:
-                  CrossAxisAlignment
-                      .start,
+                  CrossAxisAlignment.start,
               children: [
                 Text(
                   'Business Reports',
@@ -842,8 +926,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       .textTheme
                       .headlineSmall
                       ?.copyWith(
-                    color:
-                        Colors.white,
                     fontWeight:
                         FontWeight.w900,
                   ),
@@ -852,20 +934,33 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   height: 5,
                 ),
                 Text(
-                  businessName.isEmpty
-                      ? 'Analyze your business performance'
-                      : businessName,
-                  maxLines: 2,
-                  overflow:
-                      TextOverflow.ellipsis,
+                  businessName,
+                  style: theme
+                      .textTheme
+                      .titleSmall
+                      ?.copyWith(
+                    color: theme
+                        .colorScheme
+                        .onSurfaceVariant,
+                    fontWeight:
+                        FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(
+                  height: 6,
+                ),
+                Text(
+                  'Monitor sales, purchases, expenses, '
+                  'profit, collections, stock, customers '
+                  'and suppliers from one place.',
                   style: theme
                       .textTheme
                       .bodyMedium
                       ?.copyWith(
-                    color: Colors.white
-                        .withValues(
-                      alpha: 0.88,
-                    ),
+                    height: 1.45,
+                    color: theme
+                        .colorScheme
+                        .onSurfaceVariant,
                   ),
                 ),
               ],
@@ -887,117 +982,66 @@ class _ReportsScreenState extends State<ReportsScreen> {
         _startDate != null &&
             _endDate != null;
 
-    String label =
-        'All Dates';
-
-    if (hasDateRange) {
-      label =
-          '${_dateFormat.format(_startDate!)} - '
-          '${_dateFormat.format(_endDate!)}';
-    }
-
     return Card(
       elevation: 0,
       child: Padding(
         padding:
             const EdgeInsets.all(16),
-        child: LayoutBuilder(
-          builder: (
-            context,
-            constraints,
-          ) {
-            final bool compact =
-                constraints.maxWidth <
-                    620;
-
-            if (compact) {
-              return Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment
-                        .stretch,
-                children: [
-                  _sectionTitle(
-                    theme,
-                    'Report Period',
-                    label,
-                    Icons.date_range_rounded,
-                  ),
-                  const SizedBox(
-                    height: 14,
-                  ),
-                  FilledButton.icon(
-                    onPressed:
-                        _selectDateRange,
-                    icon: const Icon(
-                      Icons
-                          .calendar_month_rounded,
-                    ),
-                    label: const Text(
-                      'Select Date Range',
-                    ),
-                  ),
-                  if (hasDateRange) ...[
-                    const SizedBox(
-                      height: 8,
-                    ),
-                    OutlinedButton.icon(
-                      onPressed:
-                          _clearDateRange,
-                      icon: const Icon(
-                        Icons
-                            .clear_rounded,
-                      ),
-                      label: const Text(
-                        'Clear Filter',
-                      ),
-                    ),
-                  ],
-                ],
-              );
-            }
-
-            return Row(
-              children: [
-                Expanded(
-                  child: _sectionTitle(
-                    theme,
-                    'Report Period',
-                    label,
-                    Icons.date_range_rounded,
-                  ),
+        child: Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          crossAxisAlignment:
+              WrapCrossAlignment.center,
+          children: [
+            Icon(
+              Icons
+                  .date_range_rounded,
+              color:
+                  AppColors.primary,
+            ),
+            Text(
+              hasDateRange
+                  ? '${_dateFormat.format(_startDate!)} - '
+                      '${_dateFormat.format(_endDate!)}'
+                  : 'All Dates',
+              style: theme
+                  .textTheme
+                  .titleSmall
+                  ?.copyWith(
+                fontWeight:
+                    FontWeight.w700,
+              ),
+            ),
+            const SizedBox(
+              width: 4,
+            ),
+            OutlinedButton.icon(
+              onPressed:
+                  _selectDateRange,
+              icon: const Icon(
+                Icons
+                    .calendar_month_rounded,
+              ),
+              label: const Text(
+                'Select Date Range',
+              ),
+            ),
+            if (hasDateRange) ...[
+              const SizedBox(
+                width: 8,
+              ),
+              OutlinedButton.icon(
+                onPressed:
+                    _clearDateRange,
+                icon: const Icon(
+                  Icons.clear_rounded,
                 ),
-                const SizedBox(
-                  width: 12,
+                label: const Text(
+                  'Clear',
                 ),
-                FilledButton.icon(
-                  onPressed:
-                      _selectDateRange,
-                  icon: const Icon(
-                    Icons
-                        .calendar_month_rounded,
-                  ),
-                  label: const Text(
-                    'Select Date Range',
-                  ),
-                ),
-                if (hasDateRange) ...[
-                  const SizedBox(
-                    width: 8,
-                  ),
-                  OutlinedButton.icon(
-                    onPressed:
-                        _clearDateRange,
-                    icon: const Icon(
-                      Icons.clear_rounded,
-                    ),
-                    label: const Text(
-                      'Clear',
-                    ),
-                  ),
-                ],
-              ],
-            );
-          },
+              ),
+            ],
+          ],
         ),
       ),
     );
@@ -1015,33 +1059,37 @@ class _ReportsScreenState extends State<ReportsScreen> {
         [
       _MetricItem(
         title: 'Total Sales',
-        value: _currency(_totalSales),
-        icon: Icons
-            .point_of_sale_rounded,
-        color: AppColors.success,
+        value:
+            _currency(_totalSales),
+        icon:
+            Icons.point_of_sale_rounded,
+        color:
+            AppColors.success,
       ),
       _MetricItem(
         title: 'Total Purchases',
         value:
             _currency(_totalPurchases),
-        icon: Icons
-            .shopping_bag_rounded,
-        color: AppColors.primary,
+        icon:
+            Icons.shopping_bag_rounded,
+        color:
+            AppColors.primary,
       ),
       _MetricItem(
         title: 'Expenses',
         value:
             _currency(_totalExpenses),
-        icon: Icons
-            .receipt_long_rounded,
-        color: AppColors.warning,
+        icon:
+            Icons.receipt_long_rounded,
+        color:
+            AppColors.warning,
       ),
       _MetricItem(
         title: 'Net Profit',
         value:
             _currency(_netProfit),
-        icon: Icons
-            .trending_up_rounded,
+        icon:
+            Icons.trending_up_rounded,
         color: _netProfit >= 0
             ? AppColors.success
             : AppColors.danger,
@@ -1052,15 +1100,19 @@ class _ReportsScreenState extends State<ReportsScreen> {
             _currency(_totalPayments),
         icon:
             Icons.payments_rounded,
-        color: AppColors.info,
+        color:
+            AppColors.info,
       ),
       _MetricItem(
         title: 'Outstanding',
         value:
-            _currency(_outstandingSales),
-        icon: Icons
-            .pending_actions_rounded,
-        color: AppColors.warning,
+            _currency(
+          _outstandingSales,
+        ),
+        icon:
+            Icons.pending_actions_rounded,
+        color:
+            AppColors.warning,
       ),
     ];
 
@@ -1071,10 +1123,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
         _sectionTitle(
           theme,
           'Overview',
-          'Financial performance for the selected period',
-          Icons.insights_rounded,
+          'High-level business performance',
+          Icons
+              .dashboard_rounded,
         ),
-        const SizedBox(height: 12),
+        const SizedBox(
+          height: 12,
+        ),
         LayoutBuilder(
           builder: (
             context,
@@ -1085,7 +1140,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
             int columns = 1;
 
-            if (width >= 1100) {
+            if (width >= 1050) {
               columns = 3;
             } else if (width >= 650) {
               columns = 2;
@@ -1127,86 +1182,252 @@ class _ReportsScreenState extends State<ReportsScreen> {
     ThemeData theme,
     _MetricItem metric,
   ) {
-    return Card(
-      elevation: 0,
-      child: Padding(
-        padding:
-            const EdgeInsets.all(18),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration:
-                  BoxDecoration(
-                color: metric.color
-                    .withValues(
-                  alpha: 0.10,
-                ),
-                borderRadius:
-                    BorderRadius.circular(
-                  14,
-                ),
-              ),
-              child: Icon(
-                metric.icon,
-                color: metric.color,
-                size: 24,
-              ),
-            ),
-            const SizedBox(
-              width: 13,
-            ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment
-                        .start,
-                children: [
-                  Text(
-                    metric.title,
-                    style: theme
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(
-                      color: theme
-                          .colorScheme
-                          .onSurfaceVariant,
-                      fontWeight:
-                          FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(
-                    height: 4,
-                  ),
-                  Text(
-                    metric.value,
-                    maxLines: 1,
-                    overflow:
-                        TextOverflow
-                            .ellipsis,
-                    style: theme
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(
-                      fontWeight:
-                          FontWeight.w900,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+    return Container(
+      padding:
+          const EdgeInsets.all(17),
+      decoration: BoxDecoration(
+        color:
+            theme.colorScheme.surface,
+        borderRadius:
+            BorderRadius.circular(18),
+        border: Border.all(
+          color: metric.color
+              .withValues(alpha: 0.20),
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black
+                .withValues(
+              alpha:
+                  theme.brightness ==
+                          Brightness.dark
+                      ? 0.08
+                      : 0.035,
+            ),
+            blurRadius: 15,
+            offset:
+                const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration:
+                BoxDecoration(
+              color: metric.color
+                  .withValues(
+                alpha: 0.10,
+              ),
+              borderRadius:
+                  BorderRadius.circular(
+                13,
+              ),
+            ),
+            child: Icon(
+              metric.icon,
+              color:
+                  metric.color,
+              size: 23,
+            ),
+          ),
+          const SizedBox(
+            width: 13,
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Text(
+                  metric.title,
+                  maxLines: 1,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style: theme
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(
+                    fontWeight:
+                        FontWeight.w700,
+                    color: theme
+                        .colorScheme
+                        .onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(
+                  height: 5,
+                ),
+                Text(
+                  metric.value,
+                  maxLines: 1,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style: theme
+                      .textTheme
+                      .titleLarge
+                      ?.copyWith(
+                    fontWeight:
+                        FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 
   // ===========================================================================
-  // REPORT CATEGORIES
+  // QUICK SUMMARY
   // ===========================================================================
 
-  Widget _buildReportCategories(
+  Widget _buildQuickSummary(
+    ThemeData theme,
+  ) {
+    return Column(
+      crossAxisAlignment:
+          CrossAxisAlignment.start,
+      children: [
+        _sectionTitle(
+          theme,
+          'Quick Summary',
+          'Current business position',
+          Icons
+              .dashboard_customize_rounded,
+        ),
+        const SizedBox(
+          height: 12,
+        ),
+        Card(
+          elevation: 0,
+          child: Column(
+            children: [
+              _summaryRow(
+                theme,
+                'Amount Received',
+                _currency(
+                  _totalPayments,
+                ),
+                Icons.payments_rounded,
+                AppColors.success,
+              ),
+              const Divider(
+                height: 1,
+              ),
+              _summaryRow(
+                theme,
+                'Outstanding',
+                _currency(
+                  _outstandingSales,
+                ),
+                Icons
+                    .pending_actions_rounded,
+                AppColors.warning,
+              ),
+              const Divider(
+                height: 1,
+              ),
+              _summaryRow(
+                theme,
+                'Gross Profit',
+                _currency(
+                  _grossProfit,
+                ),
+                Icons
+                    .account_balance_wallet_rounded,
+                AppColors.secondary,
+              ),
+              const Divider(
+                height: 1,
+              ),
+              _summaryRow(
+                theme,
+                'Profit Margin',
+                '${_profitMargin.toStringAsFixed(1)}%',
+                Icons
+                    .percent_rounded,
+                AppColors.info,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _summaryRow(
+    ThemeData theme,
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
+    return Padding(
+      padding:
+          const EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: 15,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration:
+                BoxDecoration(
+              color: color.withValues(
+                alpha: 0.10,
+              ),
+              borderRadius:
+                  BorderRadius.circular(
+                11,
+              ),
+            ),
+            child: Icon(
+              icon,
+              size: 19,
+              color: color,
+            ),
+          ),
+          const SizedBox(
+            width: 12,
+          ),
+          Expanded(
+            child: Text(
+              label,
+              style: theme
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(
+                fontWeight:
+                    FontWeight.w700,
+              ),
+            ),
+          ),
+          Text(
+            value,
+            style: theme
+                .textTheme
+                .titleSmall
+                ?.copyWith(
+              fontWeight:
+                  FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // REPORT GRID
+  // ===========================================================================
+
+  Widget _buildReportGrid(
     ThemeData theme,
   ) {
     return Column(
@@ -1216,10 +1437,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
         _sectionTitle(
           theme,
           'Detailed Reports',
-          'Open the dedicated report for each business area',
+          'Open a dedicated report for deeper analysis',
           Icons.assessment_rounded,
         ),
-        const SizedBox(height: 12),
+        const SizedBox(
+          height: 12,
+        ),
         LayoutBuilder(
           builder: (
             context,
@@ -1375,20 +1598,36 @@ class _ReportsScreenState extends State<ReportsScreen> {
     ThemeData theme,
     _ReportItem report,
   ) {
-    return Card(
-      elevation: 0,
-      clipBehavior:
-          Clip.antiAlias,
+    return Material(
+      color:
+          theme.colorScheme.surface,
+      borderRadius:
+          BorderRadius.circular(18),
       child: InkWell(
         onTap: report.onTap,
-        child: Padding(
+        borderRadius:
+            BorderRadius.circular(18),
+        child: Container(
           padding:
               const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            borderRadius:
+                BorderRadius.circular(18),
+            border: Border.all(
+              color: report.color
+                  .withValues(
+                alpha: 0.16,
+              ),
+            ),
+          ),
           child: Row(
+            crossAxisAlignment:
+                CrossAxisAlignment
+                    .start,
             children: [
               Container(
-                width: 50,
-                height: 50,
+                width: 46,
+                height: 46,
                 decoration:
                     BoxDecoration(
                   color: report.color
@@ -1397,17 +1636,18 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   ),
                   borderRadius:
                       BorderRadius.circular(
-                    15,
+                    13,
                   ),
                 ),
                 child: Icon(
                   report.icon,
-                  color: report.color,
-                  size: 26,
+                  color:
+                      report.color,
+                  size: 23,
                 ),
               ),
               const SizedBox(
-                width: 14,
+                width: 13,
               ),
               Expanded(
                 child: Column(
@@ -1417,16 +1657,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   children: [
                     Text(
                       report.title,
-                      maxLines: 1,
-                      overflow:
-                          TextOverflow
-                              .ellipsis,
                       style: theme
                           .textTheme
                           .titleSmall
                           ?.copyWith(
                         fontWeight:
-                            FontWeight.w800,
+                            FontWeight.w900,
                       ),
                     ),
                     const SizedBox(
@@ -1434,30 +1670,45 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     ),
                     Text(
                       report.description,
-                      maxLines: 3,
-                      overflow:
-                          TextOverflow
-                              .ellipsis,
                       style: theme
                           .textTheme
                           .bodySmall
                           ?.copyWith(
                         height: 1.35,
+                        color: theme
+                            .colorScheme
+                            .onSurfaceVariant,
                       ),
+                    ),
+                    const SizedBox(
+                      height: 10,
+                    ),
+                    Row(
+                      children: [
+                        Text(
+                          'Open Report',
+                          style: TextStyle(
+                            color:
+                                report.color,
+                            fontSize: 12,
+                            fontWeight:
+                                FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(
+                          width: 6,
+                        ),
+                        Icon(
+                          Icons
+                              .arrow_forward_rounded,
+                          size: 15,
+                          color:
+                              report.color,
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(
-                width: 8,
-              ),
-              Icon(
-                Icons
-                    .arrow_forward_ios_rounded,
-                size: 15,
-                color: theme
-                    .colorScheme
-                    .onSurfaceVariant,
               ),
             ],
           ),
@@ -1467,10 +1718,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   // ===========================================================================
-  // QUICK SUMMARY
+  // INVENTORY SNAPSHOT
   // ===========================================================================
 
-  Widget _buildQuickSummary(
+  Widget _buildInventorySnapshot(
     ThemeData theme,
   ) {
     return Column(
@@ -1479,155 +1730,90 @@ class _ReportsScreenState extends State<ReportsScreen> {
       children: [
         _sectionTitle(
           theme,
-          'Quick Summary',
-          'Current business position',
-          Icons.dashboard_customize_rounded,
+          'Inventory Snapshot',
+          'Current stock position',
+          Icons.inventory_2_rounded,
         ),
-        const SizedBox(height: 12),
-        Card(
-          elevation: 0,
-          child: Column(
-            children: [
-              _summaryRow(
-                theme,
-                'Amount Received',
-                _currency(
-                  _totalPayments,
-                ),
-                Icons.payments_rounded,
-                AppColors.success,
+        const SizedBox(
+          height: 12,
+        ),
+        LayoutBuilder(
+          builder: (
+            context,
+            constraints,
+          ) {
+            final double width =
+                constraints.maxWidth;
+
+            int columns = 1;
+
+            if (width >= 900) {
+              columns = 3;
+            }
+
+            const double spacing =
+                12;
+
+            final double cardWidth =
+                (width -
+                        ((columns - 1) *
+                            spacing)) /
+                    columns;
+
+            final List<_MetricItem>
+                inventoryMetrics = [
+              _MetricItem(
+                title:
+                    'Stock Value',
+                value:
+                    _currency(_stockValue),
+                icon:
+                    Icons.inventory_rounded,
+                color:
+                    AppColors.primary,
               ),
-              const Divider(
-                height: 1,
+              _MetricItem(
+                title:
+                    'Low Stock',
+                value:
+                    _lowStockCount.toString(),
+                icon:
+                    Icons.warning_amber_rounded,
+                color:
+                    AppColors.warning,
               ),
-              _summaryRow(
-                theme,
-                'Outstanding',
-                _currency(
-                  _outstandingSales,
-                ),
-                Icons
-                    .pending_actions_rounded,
-                AppColors.warning,
+              _MetricItem(
+                title:
+                    'Out of Stock',
+                value:
+                    _outOfStockCount.toString(),
+                icon:
+                    Icons.remove_shopping_cart_rounded,
+                color:
+                    AppColors.danger,
               ),
-              const Divider(
-                height: 1,
-              ),
-              _summaryRow(
-                theme,
-                'Stock Value',
-                _currency(
-                  _stockValue,
-                ),
-                Icons
-                    .inventory_2_rounded,
-                AppColors.primary,
-              ),
-              const Divider(
-                height: 1,
-              ),
-              _summaryRow(
-                theme,
-                'Low Stock Products',
-                _lowStockCount
-                    .toString(),
-                Icons
-                    .warning_amber_rounded,
-                AppColors.warning,
-              ),
-              const Divider(
-                height: 1,
-              ),
-              _summaryRow(
-                theme,
-                'Out of Stock',
-                _outOfStockCount
-                    .toString(),
-                Icons
-                    .remove_shopping_cart_rounded,
-                AppColors.danger,
-              ),
-              const Divider(
-                height: 1,
-              ),
-              _summaryRow(
-                theme,
-                'Profit Margin',
-                '${_profitMargin.toStringAsFixed(1)}%',
-                Icons
-                    .percent_rounded,
-                _profitMargin >= 0
-                    ? AppColors.success
-                    : AppColors.danger,
-              ),
-            ],
-          ),
+            ];
+
+            return Wrap(
+              spacing: spacing,
+              runSpacing: spacing,
+              children:
+                  inventoryMetrics.map(
+                (metric) {
+                  return SizedBox(
+                    width: cardWidth,
+                    child:
+                        _metricCard(
+                      theme,
+                      metric,
+                    ),
+                  );
+                },
+              ).toList(),
+            );
+          },
         ),
       ],
-    );
-  }
-
-  Widget _summaryRow(
-    ThemeData theme,
-    String title,
-    String value,
-    IconData icon,
-    Color color,
-  ) {
-    return Padding(
-      padding:
-          const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 15,
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration:
-                BoxDecoration(
-              color: color.withValues(
-                alpha: 0.10,
-              ),
-              borderRadius:
-                  BorderRadius.circular(
-                11,
-              ),
-            ),
-            child: Icon(
-              icon,
-              color: color,
-              size: 20,
-            ),
-          ),
-          const SizedBox(
-            width: 12,
-          ),
-          Expanded(
-            child: Text(
-              title,
-              style: theme
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(
-                fontWeight:
-                    FontWeight.w600,
-              ),
-            ),
-          ),
-          Text(
-            value,
-            style: theme
-                .textTheme
-                .bodyMedium
-                ?.copyWith(
-              fontWeight:
-                  FontWeight.w800,
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -1662,8 +1848,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             Expanded(
               child: Column(
                 crossAxisAlignment:
-                    CrossAxisAlignment
-                        .start,
+                    CrossAxisAlignment.start,
                 children: [
                   Text(
                     'Reporting Tip',
@@ -1710,59 +1895,46 @@ class _ReportsScreenState extends State<ReportsScreen> {
     IconData icon,
   ) {
     return Row(
+      crossAxisAlignment:
+          CrossAxisAlignment.start,
       children: [
-        Container(
-          width: 38,
-          height: 38,
-          decoration:
-              BoxDecoration(
-            color: AppColors.primary
-                .withValues(
-              alpha: 0.10,
-            ),
-            borderRadius:
-                BorderRadius.circular(
-              11,
-            ),
-          ),
-          child: Icon(
-            icon,
-            color:
-                AppColors.primary,
-            size: 20,
-          ),
+        Icon(
+          icon,
+          size: 22,
+          color:
+              AppColors.primary,
         ),
         const SizedBox(
-          width: 11,
+          width: 9,
         ),
         Expanded(
           child: Column(
             crossAxisAlignment:
-                CrossAxisAlignment
-                    .start,
+                CrossAxisAlignment.start,
             children: [
               Text(
                 title,
                 style: theme
                     .textTheme
-                    .titleMedium
+                    .titleLarge
                     ?.copyWith(
                   fontWeight:
-                      FontWeight.w800,
+                      FontWeight.w900,
                 ),
               ),
               const SizedBox(
-                height: 2,
+                height: 3,
               ),
               Text(
                 subtitle,
-                maxLines: 2,
-                overflow:
-                    TextOverflow
-                        .ellipsis,
                 style: theme
                     .textTheme
-                    .bodySmall,
+                    .bodySmall
+                    ?.copyWith(
+                  color: theme
+                      .colorScheme
+                      .onSurfaceVariant,
+                ),
               ),
             ],
           ),
@@ -1771,142 +1943,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  // ===========================================================================
-  // ERROR STATE
-  // ===========================================================================
-
-  Widget _buildErrorState(
-    ThemeData theme,
-  ) {
-    return Center(
-      child: Padding(
-        padding:
-            const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize:
-              MainAxisSize.min,
-          children: [
-            Container(
-              width: 72,
-              height: 72,
-              decoration:
-                  BoxDecoration(
-                color: AppColors
-                    .danger
-                    .withValues(
-                  alpha: 0.10,
-                ),
-                shape:
-                    BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons
-                    .error_outline_rounded,
-                color:
-                    AppColors.danger,
-                size: 38,
-              ),
-            ),
-            const SizedBox(
-              height: 16,
-            ),
-            Text(
-              'Unable to load reports',
-              style: theme
-                  .textTheme
-                  .titleLarge
-                  ?.copyWith(
-                fontWeight:
-                    FontWeight.w800,
-              ),
-            ),
-            const SizedBox(
-              height: 8,
-            ),
-            Text(
-              _errorMessage ??
-                  'Something went wrong.',
-              textAlign:
-                  TextAlign.center,
-              style: theme
-                  .textTheme
-                  .bodyMedium,
-            ),
-            const SizedBox(
-              height: 20,
-            ),
-            FilledButton.icon(
-              onPressed:
-                  _initialize,
-              icon: const Icon(
-                Icons
-                    .refresh_rounded,
-              ),
-              label: const Text(
-                'Try Again',
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ===========================================================================
-  // EMPTY BUSINESS
-  // ===========================================================================
-
-  Widget _buildEmptyBusinessState(
-    ThemeData theme,
-  ) {
-    return Center(
-      child: Padding(
-        padding:
-            const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize:
-              MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.business_outlined,
-              size: 60,
-              color:
-                  AppColors.primary,
-            ),
-            const SizedBox(
-              height: 16,
-            ),
-            Text(
-              'Business setup required',
-              style: theme
-                  .textTheme
-                  .titleLarge
-                  ?.copyWith(
-                fontWeight:
-                    FontWeight.w800,
-              ),
-            ),
-            const SizedBox(
-              height: 8,
-            ),
-            const Text(
-              'Complete your business profile before viewing reports.',
-              textAlign:
-                  TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ===========================================================================
-  // FORMATTING
-  // ===========================================================================
-
-  String _currency(
-    double value,
-  ) {
+  String _currency(double value) {
     return NumberFormat.currency(
       locale: 'en_IN',
       symbol: '₹',
@@ -1916,7 +1953,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 }
 
 // =============================================================================
-// METRIC ITEM
+// DATA CLASSES
 // =============================================================================
 
 class _MetricItem {
@@ -1932,10 +1969,6 @@ class _MetricItem {
     required this.color,
   });
 }
-
-// =============================================================================
-// REPORT ITEM
-// =============================================================================
 
 class _ReportItem {
   final String title;

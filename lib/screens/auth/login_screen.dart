@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../repositories/auth_repository.dart';
-import '../business_setup/business_setup_screen.dart';
+import '../splash/splash_screen.dart';
 import 'forgot_password_screen.dart';
 import 'register_screen.dart';
 
@@ -73,19 +73,6 @@ class _LoginScreenState
     });
 
     try {
-      // -----------------------------------------------------------------------
-      // Firebase Authentication only.
-      //
-      // IMPORTANT:
-      // Do NOT query Firestore here to decide whether a business exists.
-      //
-      // Earlier implementation was doing:
-      // getBusinessForOwner(user.uid)
-      //
-      // That could trigger Firestore permission-denied before the authenticated
-      // business flow was fully established.
-      // -----------------------------------------------------------------------
-
       await _authRepository.login(
         email: email,
         password: password,
@@ -119,21 +106,30 @@ class _LoginScreenState
       }
 
       // -----------------------------------------------------------------------
-      // Current intended authentication flow:
+      // AUTHENTICATION ROUTING
       //
-      // Login
-      //   ↓
-      // Business Setup
-      //   ↓
-      // Dashboard routing will be connected after the auth/business flow
-      // is finalized.
+      // SplashScreen is the single startup/router authority.
+      //
+      // Login success
+      //      ↓
+      // SplashScreen
+      //      ↓
+      // Check authenticated user
+      //      ↓
+      // Check business profile
+      //      ↓
+      // Existing business → Dashboard
+      // New user          → Business Setup
+      //
+      // Keeping this decision inside SplashScreen prevents an existing
+      // business owner from being sent to Business Setup after every login.
       // -----------------------------------------------------------------------
 
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(
           builder: (_) =>
-              const BusinessSetupScreen(),
+              const SplashScreen(),
         ),
         (route) => false,
       );
@@ -371,44 +367,44 @@ class _LoginScreenState
                           TextInputType
                               .emailAddress,
                       textInputAction:
-                          TextInputAction.next,
+                          TextInputAction
+                              .next,
                       enabled:
                           !_isLoading,
-                      autocorrect: false,
-                      textCapitalization:
-                          TextCapitalization.none,
+                      autofillHints: const [
+                        AutofillHints.email,
+                      ],
                       decoration:
                           const InputDecoration(
-                        labelText: 'Email',
+                        labelText:
+                            'Email',
                         hintText:
-                            'Enter email address',
-                        prefixIcon: Icon(
+                            'Enter your email',
+                        prefixIcon:
+                            Icon(
                           Icons
                               .email_outlined,
                         ),
                       ),
                       validator:
                           (String? value) {
-                        final String
-                            email =
-                            value?.trim() ??
-                                '';
+                        final String email =
+                            (value ?? '')
+                                .trim();
 
                         if (email.isEmpty) {
                           return 'Email is required';
                         }
 
-                        final RegExp
-                            emailPattern =
+                        final bool isValid =
                             RegExp(
                           r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                        ).hasMatch(
+                          email,
                         );
 
-                        if (!emailPattern
-                            .hasMatch(
-                          email,
-                        )) {
-                          return 'Enter a valid email';
+                        if (!isValid) {
+                          return 'Please enter a valid email';
                         }
 
                         return null;
@@ -432,6 +428,9 @@ class _LoginScreenState
                           TextInputAction.done,
                       enabled:
                           !_isLoading,
+                      autofillHints: const [
+                        AutofillHints.password,
+                      ],
                       onFieldSubmitted:
                           (_) {
                         if (!_isLoading) {
@@ -616,8 +615,8 @@ class _LoginScreenState
                                     },
                           child:
                               const Text(
-                            'Create Account',
-                          ),
+                                'Create Account',
+                              ),
                         ),
                       ],
                     ),

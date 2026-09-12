@@ -3,8 +3,10 @@ import 'package:intl/intl.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../models/sale_model.dart';
+import '../../models/payment_model.dart';
 import '../../repositories/business_repository.dart';
 import '../../repositories/sale_repository.dart';
+import '../../repositories/payment_repository.dart';
 
 class SalesReportScreen extends StatefulWidget {
   const SalesReportScreen({
@@ -12,12 +14,19 @@ class SalesReportScreen extends StatefulWidget {
   });
 
   @override
-  State<SalesReportScreen> createState() => _SalesReportScreenState();
+  State<SalesReportScreen> createState() =>
+      _SalesReportScreenState();
 }
 
 class _SalesReportScreenState extends State<SalesReportScreen> {
-  final BusinessRepository _businessRepository = BusinessRepository();
-  final SaleRepository _saleRepository = SaleRepository();
+  final BusinessRepository _businessRepository =
+      BusinessRepository();
+
+  final SaleRepository _saleRepository =
+      SaleRepository();
+
+  final PaymentRepository _paymentRepository =
+      PaymentRepository();
 
   final TextEditingController _searchController =
       TextEditingController();
@@ -34,6 +43,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   String _paymentFilter = 'All';
 
   List<SaleModel> _allSales = <SaleModel>[];
+  List<PaymentModel> _allPayments = <PaymentModel>[];
 
   @override
   void initState() {
@@ -76,15 +86,27 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
         );
       }
 
+      final List<dynamic> result =
+          await Future.wait<dynamic>([
+        _saleRepository.getSales(
+          businessId: business.id,
+        ),
+        _paymentRepository.getPayments(
+          businessId: business.id,
+        ),
+      ]);
+
       final List<SaleModel> sales =
-          await _saleRepository.getSales(
-        businessId: business.id,
-      );
+          result[0] as List<SaleModel>;
+
+      final List<PaymentModel> payments =
+          result[1] as List<PaymentModel>;
 
       if (!mounted) return;
 
       setState(() {
         _allSales = sales;
+        _allPayments = payments;
         _loading = false;
         _refreshing = false;
         _errorMessage = null;
@@ -128,16 +150,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                   start: _startDate!,
                   end: _endDate!,
                 )
-              : DateTimeRange(
-                  start: DateTime(
-                    now.year,
-                    now.month,
-                    1,
-                  ),
-                  end: now,
-                ),
-      helpText: 'Select Sales Report Period',
-      saveText: 'Apply',
+              : null,
     );
 
     if (selected == null) {
@@ -175,7 +188,8 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   // ===========================================================================
 
   List<SaleModel> get _filteredSales {
-    final String query = _searchQuery.trim().toLowerCase();
+    final String query =
+        _searchQuery.trim().toLowerCase();
 
     return _allSales.where((sale) {
       // -----------------------------------------------------------------------
@@ -214,15 +228,22 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
       }
 
       final bool invoiceMatch =
-          sale.invoiceNumber.toLowerCase().contains(query);
+          sale.invoiceNumber
+              .toLowerCase()
+              .contains(query);
 
       final bool customerMatch =
-          sale.customerName.toLowerCase().contains(query);
+          sale.customerName
+              .toLowerCase()
+              .contains(query);
 
       final bool notesMatch =
-          sale.notes.toLowerCase().contains(query);
+          sale.notes
+              .toLowerCase()
+              .contains(query);
 
-      final bool productMatch = sale.items.any(
+      final bool productMatch =
+          sale.items.any(
         (item) {
           return item.productName
               .toLowerCase()
@@ -241,43 +262,109 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   }
 
   // ===========================================================================
+  // FILTERED CUSTOMER PAYMENTS
+  // ===========================================================================
+
+  List<PaymentModel> get _filteredPayments {
+    return _allPayments.where((payment) {
+      if (_startDate != null &&
+          payment.date.isBefore(_startDate!)) {
+        return false;
+      }
+
+      if (_endDate != null &&
+          payment.date.isAfter(_endDate!)) {
+        return false;
+      }
+
+      return true;
+    }).toList();
+  }
+
+  // ===========================================================================
   // CALCULATIONS
   // ===========================================================================
 
   double _totalSales(List<SaleModel> sales) {
-    return sales.fold(
+    return sales.fold<double>(
       0,
       (sum, sale) => sum + sale.total,
     );
   }
 
-  double _totalCollected(List<SaleModel> sales) {
-    return sales.fold(
+  double _totalCollected(
+    List<SaleModel> sales,
+    List<PaymentModel> payments,
+  ) {
+    final double saleLevelPaid =
+        sales.fold<double>(
       0,
       (sum, sale) => sum + sale.paidAmount,
     );
+
+    final double separatePayments =
+        payments.fold<double>(
+      0,
+      (sum, payment) => sum + payment.amount,
+    );
+
+    return saleLevelPaid + separatePayments;
   }
 
-  double _totalOutstanding(List<SaleModel> sales) {
-    return sales.fold(
-      0,
-      (sum, sale) {
-        final double outstanding =
-            sale.total - sale.paidAmount;
+  double _totalOutstanding(
+    List<SaleModel> sales,
+    List<PaymentModel> payments,
+  ) {
+    final double totalSales =
+        _totalSales(sales);
 
-        return sum +
-            (outstanding > 0 ? outstanding : 0);
-      },
+    final double collected =
+        _totalCollected(
+      sales,
+      payments,
+    );
+
+    final double outstanding =
+        totalSales - collected;
+
+    return outstanding > 0
+        ? outstanding
+        : 0;
+  }
+
+  double _saleGrossProfit(
+    SaleModel sale,
+  ) {
+    double cost = 0;
+
+    for (final item in sale.items) {
+      cost +=
+          item.costPrice *
+              item.quantity;
+    }
+
+    return sale.total - cost;
+  }
+
+  double _totalGrossProfit(
+    List<SaleModel> sales,
+  ) {
+    return sales.fold<double>(
+      0,
+      (sum, sale) =>
+          sum + _saleGrossProfit(sale),
     );
   }
 
-  double _totalGrossProfit(List<SaleModel> sales) {
+  double _totalCost(
+    List<SaleModel> sales,
+  ) {
     double total = 0;
 
     for (final sale in sales) {
       for (final item in sale.items) {
         total +=
-            (item.sellingRate - item.costPrice) *
+            item.costPrice *
                 item.quantity;
       }
     }
@@ -285,20 +372,9 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     return total;
   }
 
-  double _totalCost(List<SaleModel> sales) {
-    double total = 0;
-
-    for (final sale in sales) {
-      for (final item in sale.items) {
-        total +=
-            item.costPrice * item.quantity;
-      }
-    }
-
-    return total;
-  }
-
-  double _totalQuantity(List<SaleModel> sales) {
+  double _totalQuantity(
+    List<SaleModel> sales,
+  ) {
     double total = 0;
 
     for (final sale in sales) {
@@ -310,8 +386,11 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     return total;
   }
 
-  double _profitMargin(List<SaleModel> sales) {
-    final double salesAmount = _totalSales(sales);
+  double _profitMargin(
+    List<SaleModel> sales,
+  ) {
+    final double salesAmount =
+        _totalSales(sales);
 
     if (salesAmount <= 0) {
       return 0;
@@ -322,14 +401,21 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
         100;
   }
 
-  double _collectionRate(List<SaleModel> sales) {
-    final double salesAmount = _totalSales(sales);
+  double _collectionRate(
+    List<SaleModel> sales,
+    List<PaymentModel> payments,
+  ) {
+    final double salesAmount =
+        _totalSales(sales);
 
     if (salesAmount <= 0) {
       return 0;
     }
 
-    return (_totalCollected(sales) /
+    return (_totalCollected(
+              sales,
+              payments,
+            ) /
             salesAmount) *
         100;
   }
@@ -338,10 +424,13 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   // GROUPING
   // ===========================================================================
 
-  Map<String, _CustomerSalesSummary> _customerWiseSales(
+  Map<String, _CustomerSalesSummary>
+      _customerWiseSales(
     List<SaleModel> sales,
+    List<PaymentModel> payments,
   ) {
-    final Map<String, _CustomerSalesSummary> result =
+    final Map<String, _CustomerSalesSummary>
+        result =
         <String, _CustomerSalesSummary>{};
 
     for (final sale in sales) {
@@ -359,45 +448,91 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
       final double outstanding =
           sale.total - sale.paidAmount;
 
-      double profit = 0;
-
-      for (final item in sale.items) {
-        profit +=
-            (item.sellingRate - item.costPrice) *
-                item.quantity;
-      }
+      final double profit =
+          _saleGrossProfit(sale);
 
       result[customerName] =
           _CustomerSalesSummary(
         name: customerName,
-        sales: existing.sales + sale.total,
+        sales:
+            existing.sales +
+                sale.total,
         collected:
-            existing.collected + sale.paidAmount,
+            existing.collected +
+                sale.paidAmount,
         outstanding:
             existing.outstanding +
-                (outstanding > 0 ? outstanding : 0),
-        profit: existing.profit + profit,
+                (outstanding > 0
+                    ? outstanding
+                    : 0),
+        profit:
+            existing.profit +
+                profit,
         invoiceCount:
-            existing.invoiceCount + 1,
+            existing.invoiceCount +
+                1,
       );
     }
 
-    final List<_CustomerSalesSummary> values =
+    // Separate customer-payment records are
+    // added exactly once per customer.
+    for (final payment in payments) {
+      final String customerName =
+          payment.customerName.trim().isEmpty
+              ? 'Walk-in Customer'
+              : payment.customerName.trim();
+
+      final _CustomerSalesSummary existing =
+          result[customerName] ??
+              _CustomerSalesSummary(
+                name: customerName,
+              );
+
+      final double collected =
+          existing.collected +
+              payment.amount;
+
+      final double outstanding =
+          existing.sales -
+              collected;
+
+      result[customerName] =
+          _CustomerSalesSummary(
+        name: customerName,
+        sales: existing.sales,
+        collected: collected,
+        outstanding:
+            outstanding > 0
+                ? outstanding
+                : 0,
+        profit: existing.profit,
+        invoiceCount:
+            existing.invoiceCount,
+      );
+    }
+
+    final List<_CustomerSalesSummary>
+        values =
         result.values.toList();
 
     values.sort(
-      (a, b) => b.sales.compareTo(a.sales),
+      (a, b) =>
+          b.sales.compareTo(a.sales),
     );
 
-    return <String, _CustomerSalesSummary>{
-      for (final item in values) item.name: item,
+    return <String,
+        _CustomerSalesSummary>{
+      for (final item in values)
+        item.name: item,
     };
   }
 
-  Map<String, _ProductSalesSummary> _productWiseSales(
+  Map<String, _ProductSalesSummary>
+      _productWiseSales(
     List<SaleModel> sales,
   ) {
-    final Map<String, _ProductSalesSummary> result =
+    final Map<String, _ProductSalesSummary>
+        result =
         <String, _ProductSalesSummary>{};
 
     for (final sale in sales) {
@@ -413,11 +548,29 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                   name: productName,
                 );
 
-        final double revenue =
-            item.total;
+        final double itemRevenue =
+            item.quantity *
+                item.sellingRate;
 
         final double cost =
-            item.costPrice * item.quantity;
+            item.costPrice *
+                item.quantity;
+
+        final double saleAdjustment =
+            sale.total -
+                sale.subtotal;
+
+        final double allocatedAdjustment =
+            sale.subtotal > 0 &&
+                    sale.subtotal.isFinite
+                ? saleAdjustment *
+                    (itemRevenue /
+                        sale.subtotal)
+                : 0;
+
+        final double revenue =
+            itemRevenue +
+                allocatedAdjustment;
 
         final double profit =
             revenue - cost;
@@ -426,15 +579,20 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
             _ProductSalesSummary(
           name: productName,
           quantity:
-              existing.quantity + item.quantity,
+              existing.quantity +
+                  item.quantity,
           revenue:
-              existing.revenue + revenue,
+              existing.revenue +
+                  revenue,
           cost:
-              existing.cost + cost,
+              existing.cost +
+                  cost,
           profit:
-              existing.profit + profit,
+              existing.profit +
+                  profit,
           invoiceCount:
-              existing.invoiceCount + 1,
+              existing.invoiceCount +
+                  1,
           unit: item.unit,
         );
       }
@@ -453,7 +611,8 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   ) {
     return sales.where(
       (sale) {
-        return sale.paymentStatus.toLowerCase() ==
+        return sale.paymentStatus
+                .toLowerCase() ==
             status.toLowerCase();
       },
     ).length;
@@ -491,7 +650,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     }
 
     return '${DateFormat('dd MMM yyyy').format(_startDate!)}'
-        ' → '
+        ' - '
         '${DateFormat('dd MMM yyyy').format(_endDate!)}';
   }
 
@@ -517,11 +676,13 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final ThemeData theme =
+        Theme.of(context);
 
     if (_loading) {
       return const Center(
-        child: CircularProgressIndicator(),
+        child:
+            CircularProgressIndicator(),
       );
     }
 
@@ -529,7 +690,8 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
       return _buildErrorState(theme);
     }
 
-    final List<SaleModel> sales = _filteredSales;
+    final List<SaleModel> sales =
+        _filteredSales;
 
     return RefreshIndicator(
       onRefresh: _refreshReport,
@@ -539,21 +701,24 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
           constraints,
         ) {
           final bool isDesktop =
-              constraints.maxWidth >= 1000;
+              constraints.maxWidth >=
+                  1000;
 
           final bool isTablet =
               constraints.maxWidth >= 650 &&
-              constraints.maxWidth < 1000;
+                  constraints.maxWidth < 1000;
 
           return SingleChildScrollView(
             physics:
                 const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.symmetric(
-              horizontal: isDesktop
-                  ? 28
-                  : isTablet
-                      ? 22
-                      : 16,
+            padding:
+                EdgeInsets.symmetric(
+              horizontal:
+                  isDesktop
+                      ? 28
+                      : isTablet
+                          ? 22
+                          : 16,
               vertical: 20,
             ),
             child: Center(
@@ -571,59 +736,78 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                       isDesktop,
                     ),
 
-                    const SizedBox(height: 20),
+                    const SizedBox(
+                      height: 20,
+                    ),
 
                     _buildDateFilter(
                       theme,
                     ),
 
-                    const SizedBox(height: 20),
+                    const SizedBox(
+                      height: 20,
+                    ),
 
                     _buildSummaryCards(
                       theme,
                       sales,
+                      _filteredPayments,
                       isDesktop,
                     ),
 
-                    const SizedBox(height: 20),
+                    const SizedBox(
+                      height: 20,
+                    ),
 
                     _buildPaymentStatusSection(
                       theme,
                       sales,
                     ),
 
-                    const SizedBox(height: 20),
+                    const SizedBox(
+                      height: 20,
+                    ),
 
                     _buildSearchAndFilters(
                       theme,
                     ),
 
-                    const SizedBox(height: 20),
+                    const SizedBox(
+                      height: 20,
+                    ),
 
                     _buildCustomerWiseSection(
                       theme,
                       sales,
+                      _filteredPayments,
                     ),
 
-                    const SizedBox(height: 20),
+                    const SizedBox(
+                      height: 20,
+                    ),
 
                     _buildProductWiseSection(
                       theme,
                       sales,
                     ),
 
-                    const SizedBox(height: 20),
+                    const SizedBox(
+                      height: 20,
+                    ),
 
                     _buildInvoiceSection(
                       theme,
                       sales,
                     ),
 
-                    const SizedBox(height: 20),
+                    const SizedBox(
+                      height: 20,
+                    ),
 
                     _buildReportFooter(
                       theme,
                       sales,
+                      _filteredPayments,
                     ),
                   ],
                 ),
@@ -643,131 +827,88 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     ThemeData theme,
     bool isDesktop,
   ) {
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(
-        isDesktop ? 26 : 20,
-      ),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppColors.primary,
-            AppColors.secondary,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius:
-            BorderRadius.circular(22),
-      ),
-      child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 54,
-            height: 54,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(
-                alpha: 0.15,
+    return Row(
+      crossAxisAlignment:
+          CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment:
+                CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Sales Report',
+                style:
+                    theme.textTheme.headlineSmall
+                        ?.copyWith(
+                  fontWeight:
+                      FontWeight.w800,
+                ),
               ),
-              borderRadius:
-                  BorderRadius.circular(16),
-            ),
-            child: const Icon(
-              Icons.point_of_sale_rounded,
-              color: Colors.white,
-              size: 28,
-            ),
+              const SizedBox(
+                height: 6,
+              ),
+              Text(
+                'Analyze sales, collections, '
+                'customers and product performance.',
+                style:
+                    theme.textTheme.bodyMedium
+                        ?.copyWith(
+                  color: theme
+                      .textTheme
+                      .bodyMedium
+                      ?.color
+                      ?.withValues(alpha: 0.7),
+                ),
+              ),
+            ],
           ),
-
-          const SizedBox(width: 16),
-
-          Expanded(
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Sales Report',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight:
-                        FontWeight.w800,
-                  ),
-                ),
-
-                const SizedBox(height: 5),
-
-                Text(
-                  'Analyze sales, collection, profit and customer performance.',
-                  style: TextStyle(
-                    color: Colors.white
-                        .withValues(
-                      alpha: 0.82,
-                    ),
-                    fontSize: 13,
-                    height: 1.4,
-                  ),
-                ),
-
-                const SizedBox(height: 10),
-
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(
-                    horizontal: 11,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white
-                        .withValues(
-                      alpha: 0.14,
-                    ),
-                    borderRadius:
-                        BorderRadius.circular(
-                      30,
-                    ),
-                  ),
-                  child: Text(
-                    _dateRangeText(),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight:
-                          FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          if (isDesktop)
-            IconButton(
-              tooltip: 'Refresh',
-              onPressed:
-                  _refreshing
-                      ? null
-                      : _refreshReport,
-              icon: _refreshing
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child:
-                          CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
+        ),
+        const SizedBox(width: 12),
+        if (isDesktop)
+          OutlinedButton.icon(
+            onPressed:
+                _refreshing
+                    ? null
+                    : _refreshReport,
+            icon:
+                _refreshing
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child:
+                            CircularProgressIndicator(
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Icon(
+                        Icons.refresh_rounded,
                       ),
-                    )
-                  : const Icon(
-                      Icons.refresh_rounded,
-                      color: Colors.white,
-                    ),
-            ),
-        ],
-      ),
+            label:
+                const Text('Refresh'),
+          )
+        else
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed:
+                _refreshing
+                    ? null
+                    : _refreshReport,
+            icon:
+                _refreshing
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child:
+                            CircularProgressIndicator(
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Icon(
+                        Icons.refresh_rounded,
+                      ),
+          ),
+      ],
     );
   }
 
@@ -780,76 +921,103 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   ) {
     final bool hasFilter =
         _startDate != null &&
-        _endDate != null;
+            _endDate != null;
 
     return _ReportCard(
-      child: Wrap(
-        spacing: 10,
-        runSpacing: 10,
-        crossAxisAlignment:
-            WrapCrossAlignment.center,
+      child: Row(
         children: [
-          const Icon(
-            Icons.date_range_rounded,
-            size: 21,
-          ),
-
-          Text(
-            'Report Period',
-            style: theme.textTheme.titleMedium
-                ?.copyWith(
-              fontWeight:
-                  FontWeight.w700,
-            ),
-          ),
-
-          const SizedBox(width: 4),
-
-          Container(
-            padding:
-                const EdgeInsets.symmetric(
-              horizontal: 13,
-              vertical: 9,
-            ),
-            decoration: BoxDecoration(
-              color: theme.colorScheme
-                  .surfaceContainerHighest,
+          Expanded(
+            child: InkWell(
+              onTap: _selectDateRange,
               borderRadius:
-                  BorderRadius.circular(10),
-            ),
-            child: Text(
-              _dateRangeText(),
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(
-                fontWeight:
-                    FontWeight.w600,
+                  BorderRadius.circular(
+                12,
+              ),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                decoration:
+                    BoxDecoration(
+                  border: Border.all(
+                    color:
+                        theme.dividerColor,
+                  ),
+                  borderRadius:
+                      BorderRadius.circular(
+                    12,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons
+                          .date_range_rounded,
+                      size: 20,
+                      color:
+                          AppColors.primary,
+                    ),
+                    const SizedBox(
+                      width: 10,
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment:
+                            CrossAxisAlignment
+                                .start,
+                        children: [
+                          Text(
+                            'Date Range',
+                            style: theme
+                                .textTheme
+                                .labelMedium
+                                ?.copyWith(
+                              color: theme
+                                  .textTheme
+                                  .bodySmall
+                                  ?.color
+                                  ?.withValues(alpha: 0.7),
+                            ),
+                          ),
+                          const SizedBox(
+                            height: 2,
+                          ),
+                          Text(
+                            _dateRangeText(),
+                            style: theme
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
+                              fontWeight:
+                                  FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(
+                      Icons
+                          .keyboard_arrow_down_rounded,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-
-          FilledButton.icon(
-            onPressed: _selectDateRange,
-            icon: const Icon(
-              Icons.calendar_month_rounded,
-              size: 18,
-            ),
-            label: Text(
-              hasFilter
-                  ? 'Change Period'
-                  : 'Select Period',
-            ),
-          ),
-
+          if (hasFilter)
+            const SizedBox(width: 10),
           if (hasFilter)
             OutlinedButton.icon(
-              onPressed: _clearDateFilter,
+              onPressed:
+                  _clearDateFilter,
               icon: const Icon(
                 Icons.clear_rounded,
                 size: 18,
               ),
-              label: const Text(
-                'Clear',
-              ),
+              label:
+                  const Text('Clear'),
             ),
         ],
       ),
@@ -863,16 +1031,23 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   Widget _buildSummaryCards(
     ThemeData theme,
     List<SaleModel> sales,
+    List<PaymentModel> payments,
     bool isDesktop,
   ) {
     final double totalSales =
         _totalSales(sales);
 
     final double collected =
-        _totalCollected(sales);
+        _totalCollected(
+      sales,
+      payments,
+    );
 
     final double outstanding =
-        _totalOutstanding(sales);
+        _totalOutstanding(
+      sales,
+      payments,
+    );
 
     final double profit =
         _totalGrossProfit(sales);
@@ -880,35 +1055,48 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     final List<_SummaryItem> items = [
       _SummaryItem(
         title: 'Total Sales',
-        value: _currency(totalSales),
+        value:
+            _currency(totalSales),
         subtitle:
             '${sales.length} invoices',
-        icon: Icons.trending_up_rounded,
-        color: AppColors.primary,
+        icon:
+            Icons.trending_up_rounded,
+        color:
+            AppColors.primary,
       ),
       _SummaryItem(
         title: 'Collected',
-        value: _currency(collected),
+        value:
+            _currency(collected),
         subtitle:
-            '${_collectionRate(sales).toStringAsFixed(1)}% collection',
-        icon: Icons.payments_rounded,
-        color: AppColors.success,
+            '${_collectionRate(sales, payments).toStringAsFixed(1)}% collection',
+        icon:
+            Icons.payments_rounded,
+        color:
+            AppColors.success,
       ),
       _SummaryItem(
         title: 'Outstanding',
-        value: _currency(outstanding),
+        value:
+            _currency(outstanding),
         subtitle:
             'Customer receivable',
-        icon: Icons.account_balance_wallet_rounded,
-        color: AppColors.warning,
+        icon:
+            Icons
+                .account_balance_wallet_rounded,
+        color:
+            AppColors.warning,
       ),
       _SummaryItem(
         title: 'Gross Profit',
-        value: _currency(profit),
+        value:
+            _currency(profit),
         subtitle:
             '${_profitMargin(sales).toStringAsFixed(1)}% margin',
-        icon: Icons.auto_graph_rounded,
-        color: AppColors.secondary,
+        icon:
+            Icons.auto_graph_rounded,
+        color:
+            AppColors.secondary,
       ),
     ];
 
@@ -919,9 +1107,8 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
       itemCount: items.length,
       gridDelegate:
           SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: isDesktop
-            ? 4
-            : 2,
+        crossAxisCount:
+            isDesktop ? 4 : 2,
         crossAxisSpacing: 14,
         mainAxisSpacing: 14,
         childAspectRatio:
@@ -952,19 +1139,19 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     final int paid =
         _countStatus(
       sales,
-      'Paid',
+      'paid',
     );
 
     final int partial =
         _countStatus(
       sales,
-      'Partial',
+      'partial',
     );
 
     final int unpaid =
         _countStatus(
       sales,
-      'Unpaid',
+      'unpaid',
     );
 
     return _ReportCard(
@@ -974,91 +1161,39 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
         children: [
           _SectionHeader(
             icon:
-                Icons.payments_outlined,
+                Icons
+                    .pie_chart_rounded,
             title:
                 'Payment Status',
             subtitle:
-                'Sales payment collection breakdown',
+                'Invoice-level payment status distribution',
           ),
-
-          const SizedBox(height: 18),
-
-          LayoutBuilder(
-            builder: (
-              context,
-              constraints,
-            ) {
-              final bool compact =
-                  constraints.maxWidth < 600;
-
-              final List<_StatusItem> items = [
-                _StatusItem(
-                  label: 'Paid',
-                  count: paid,
-                  color:
-                      AppColors.success,
-                  icon:
-                      Icons.check_circle_rounded,
-                ),
-                _StatusItem(
-                  label: 'Partial',
-                  count: partial,
-                  color:
-                      AppColors.warning,
-                  icon:
-                      Icons.timelapse_rounded,
-                ),
-                _StatusItem(
-                  label: 'Unpaid',
-                  count: unpaid,
-                  color:
-                      AppColors.danger,
-                  icon:
-                      Icons.pending_actions_rounded,
-                ),
-              ];
-
-              if (compact) {
-                return Column(
-                  children: items
-                      .map(
-                        (item) => Padding(
-                          padding:
-                              const EdgeInsets
-                                  .only(
-                            bottom: 10,
-                          ),
-                          child:
-                              _StatusTile(
-                            item: item,
-                          ),
-                        ),
-                      )
-                      .toList(),
-                );
-              }
-
-              return Row(
-                children: items
-                    .map(
-                      (item) => Expanded(
-                        child:
-                            Padding(
-                          padding:
-                              const EdgeInsets
-                                  .only(
-                            right: 10,
-                          ),
-                          child:
-                              _StatusTile(
-                            item: item,
-                          ),
-                        ),
-                      ),
-                    )
-                    .toList(),
-              );
-            },
+          const SizedBox(
+            height: 18,
+          ),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _StatusChip(
+                label: 'Paid',
+                count: paid,
+                color:
+                    AppColors.success,
+              ),
+              _StatusChip(
+                label: 'Partial',
+                count: partial,
+                color:
+                    AppColors.warning,
+              ),
+              _StatusChip(
+                label: 'Unpaid',
+                count: unpaid,
+                color:
+                    AppColors.danger,
+              ),
+            ],
           ),
         ],
       ),
@@ -1066,35 +1201,44 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   }
 
   // ===========================================================================
-  // SEARCH / FILTERS
+  // SEARCH + FILTERS
   // ===========================================================================
 
   Widget _buildSearchAndFilters(
     ThemeData theme,
   ) {
     return _ReportCard(
-      child: Column(
-        children: [
-          TextField(
+      child: LayoutBuilder(
+        builder: (
+          context,
+          constraints,
+        ) {
+          final bool compact =
+              constraints.maxWidth <
+                  700;
+
+          final Widget search =
+              TextField(
             controller:
                 _searchController,
             onChanged: (value) {
               setState(() {
                 _searchQuery =
-                    value.trim().toLowerCase();
+                    value;
               });
             },
             decoration:
                 InputDecoration(
               hintText:
-                  'Search invoice, customer, product or notes...',
+                  'Search invoice, customer, notes or product',
               prefixIcon:
                   const Icon(
                 Icons.search_rounded,
               ),
               suffixIcon:
-                  _searchQuery.isNotEmpty
-                      ? IconButton(
+                  _searchQuery.isEmpty
+                      ? null
+                      : IconButton(
                           onPressed: () {
                             _searchController
                                 .clear();
@@ -1106,80 +1250,89 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                           },
                           icon:
                               const Icon(
-                            Icons.clear_rounded,
+                            Icons
+                                .clear_rounded,
                           ),
-                        )
-                      : null,
+                        ),
             ),
-          ),
+          );
 
-          const SizedBox(height: 14),
+          final Widget filter =
+              DropdownButtonFormField<
+                  String>(
+            initialValue:
+                _paymentFilter,
+            decoration:
+                const InputDecoration(
+              labelText:
+                  'Payment Status',
+              prefixIcon:
+                  Icon(
+                Icons
+                    .filter_alt_rounded,
+              ),
+            ),
+            items: const [
+              DropdownMenuItem(
+                value: 'All',
+                child:
+                    Text('All'),
+              ),
+              DropdownMenuItem(
+                value: 'Paid',
+                child:
+                    Text('Paid'),
+              ),
+              DropdownMenuItem(
+                value: 'Partial',
+                child:
+                    Text('Partial'),
+              ),
+              DropdownMenuItem(
+                value: 'Unpaid',
+                child:
+                    Text('Unpaid'),
+              ),
+            ],
+            onChanged: (value) {
+              if (value == null) {
+                return;
+              }
 
-          Align(
-            alignment:
-                Alignment.centerLeft,
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
+              setState(() {
+                _paymentFilter =
+                    value;
+              });
+            },
+          );
+
+          if (compact) {
+            return Column(
               children: [
-                _FilterChip(
-                  label: 'All',
-                  selected:
-                      _paymentFilter ==
-                          'All',
-                  onSelected: () {
-                    setState(() {
-                      _paymentFilter =
-                          'All';
-                    });
-                  },
+                search,
+                const SizedBox(
+                  height: 12,
                 ),
-                _FilterChip(
-                  label: 'Paid',
-                  selected:
-                      _paymentFilter ==
-                          'Paid',
-                  color:
-                      AppColors.success,
-                  onSelected: () {
-                    setState(() {
-                      _paymentFilter =
-                          'Paid';
-                    });
-                  },
-                ),
-                _FilterChip(
-                  label: 'Partial',
-                  selected:
-                      _paymentFilter ==
-                          'Partial',
-                  color:
-                      AppColors.warning,
-                  onSelected: () {
-                    setState(() {
-                      _paymentFilter =
-                          'Partial';
-                    });
-                  },
-                ),
-                _FilterChip(
-                  label: 'Unpaid',
-                  selected:
-                      _paymentFilter ==
-                          'Unpaid',
-                  color:
-                      AppColors.danger,
-                  onSelected: () {
-                    setState(() {
-                      _paymentFilter =
-                          'Unpaid';
-                    });
-                  },
-                ),
+                filter,
               ],
-            ),
-          ),
-        ],
+            );
+          }
+
+          return Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: search,
+              ),
+              const SizedBox(
+                width: 12,
+              ),
+              Expanded(
+                child: filter,
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -1191,10 +1344,15 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   Widget _buildCustomerWiseSection(
     ThemeData theme,
     List<SaleModel> sales,
+    List<PaymentModel> payments,
   ) {
-    final Map<String, _CustomerSalesSummary>
+    final Map<String,
+            _CustomerSalesSummary>
         customers =
-        _customerWiseSales(sales);
+        _customerWiseSales(
+      sales,
+      payments,
+    );
 
     final List<_CustomerSalesSummary>
         values =
@@ -1213,9 +1371,9 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
             subtitle:
                 'Sales and collection by hotel/customer',
           ),
-
-          const SizedBox(height: 18),
-
+          const SizedBox(
+            height: 18,
+          ),
           if (values.isEmpty)
             const _EmptyInline(
               icon:
@@ -1224,10 +1382,13 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                   'No customer sales available for the selected filters.',
             )
           else
-            ...values.take(10).map(
+            ...values
+                .take(10)
+                .map(
               (customer) {
                 return _CustomerSalesTile(
-                  summary: customer,
+                  summary:
+                      customer,
                 );
               },
             ),
@@ -1244,7 +1405,8 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     ThemeData theme,
     List<SaleModel> sales,
   ) {
-    final Map<String, _ProductSalesSummary>
+    final Map<String,
+            _ProductSalesSummary>
         products =
         _productWiseSales(sales);
 
@@ -1252,7 +1414,8 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
         values =
         products.values.toList()
           ..sort(
-            (a, b) => b.revenue.compareTo(
+            (a, b) =>
+                b.revenue.compareTo(
               a.revenue,
             ),
           );
@@ -1264,19 +1427,21 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
         children: [
           _SectionHeader(
             icon:
-                Icons.inventory_2_rounded,
+                Icons
+                    .inventory_2_rounded,
             title:
                 'Product-wise Sales',
             subtitle:
                 'Revenue, quantity and profit by product',
           ),
-
-          const SizedBox(height: 18),
-
+          const SizedBox(
+            height: 18,
+          ),
           if (values.isEmpty)
             const _EmptyInline(
               icon:
-                  Icons.inventory_2_outlined,
+                  Icons
+                      .inventory_2_outlined,
               message:
                   'No product sales available for the selected filters.',
             )
@@ -1295,14 +1460,14 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                     children: values
                         .take(15)
                         .map(
-                          (
+                      (
+                        product,
+                      ) =>
+                          _ProductSalesTile(
+                        summary:
                             product,
-                          ) =>
-                              _ProductSalesTile(
-                            summary:
-                                product,
-                          ),
-                        )
+                      ),
+                    )
                         .toList(),
                   );
                 }
@@ -1311,15 +1476,16 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                   scrollDirection:
                       Axis.horizontal,
                   child: DataTable(
-                    columnSpacing: 28,
+                    columnSpacing:
+                        28,
                     headingTextStyle:
                         theme
                             .textTheme
                             .labelLarge
                             ?.copyWith(
-                          fontWeight:
-                              FontWeight.w700,
-                        ),
+                      fontWeight:
+                          FontWeight.w700,
+                    ),
                     columns: const [
                       DataColumn(
                         label:
@@ -1345,59 +1511,63 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                     rows: values
                         .take(20)
                         .map(
-                          (
-                            product,
-                          ) {
-                            return DataRow(
-                              cells: [
-                                DataCell(
-                                  Text(
-                                    product.name,
-                                  ),
+                      (
+                        product,
+                      ) {
+                        return DataRow(
+                          cells: [
+                            DataCell(
+                              Text(
+                                product
+                                    .name,
+                              ),
+                            ),
+                            DataCell(
+                              Text(
+                                '${_number(product.quantity)} ${product.unit}',
+                              ),
+                            ),
+                            DataCell(
+                              Text(
+                                _currency(
+                                  product
+                                      .revenue,
                                 ),
-                                DataCell(
-                                  Text(
-                                    '${_number(product.quantity)} ${product.unit}',
-                                  ),
+                              ),
+                            ),
+                            DataCell(
+                              Text(
+                                _currency(
+                                  product
+                                      .cost,
                                 ),
-                                DataCell(
-                                  Text(
-                                    _currency(
-                                      product.revenue,
-                                    ),
-                                  ),
+                              ),
+                            ),
+                            DataCell(
+                              Text(
+                                _currency(
+                                  product
+                                      .profit,
                                 ),
-                                DataCell(
-                                  Text(
-                                    _currency(
-                                      product.cost,
-                                    ),
-                                  ),
+                                style:
+                                    TextStyle(
+                                  color:
+                                      product.profit >=
+                                              0
+                                          ? AppColors
+                                              .success
+                                          : AppColors
+                                              .danger,
+                                  fontWeight:
+                                      FontWeight
+                                          .w700,
                                 ),
-                                DataCell(
-                                  Text(
-                                    _currency(
-                                      product.profit,
-                                    ),
-                                    style:
-                                        TextStyle(
-                                      color:
-                                          product.profit >=
-                                                  0
-                                              ? AppColors
-                                                  .success
-                                              : AppColors
-                                                  .danger,
-                                      fontWeight:
-                                          FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            );
-                          },
-                        )
-                        .toList(),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ).toList(),
                   ),
                 );
               },
@@ -1424,34 +1594,42 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
             icon:
                 Icons.receipt_long_rounded,
             title:
-                'Invoice-wise Sales',
+                'Invoice Details',
             subtitle:
-                '${sales.length} matching invoice${sales.length == 1 ? '' : 's'}',
+                'Detailed sales invoice performance',
           ),
-
-          const SizedBox(height: 18),
-
+          const SizedBox(
+            height: 18,
+          ),
           if (sales.isEmpty)
             const _EmptyInline(
               icon:
                   Icons.receipt_long_outlined,
               message:
-                  'No sales found for the selected filters.',
+                  'No sales available for the selected filters.',
             )
           else
-            ...sales.map(
+            ...sales
+                .take(30)
+                .map(
               (sale) {
-                return _InvoiceTile(
-                  sale: sale,
-                  currency: _currency,
-                  date: _date,
-                  statusColor:
-                      _statusColor,
-                  onTap: () {
-                    _showSaleDetails(
+                return Padding(
+                  padding:
+                      const EdgeInsets.only(
+                    bottom: 10,
+                  ),
+                  child: _InvoiceTile(
+                    sale: sale,
+                    currency:
+                        _currency,
+                    date: _date,
+                    statusColor:
+                        _statusColor,
+                    onTap: () =>
+                        _showSaleDetails(
                       sale,
-                    );
-                  },
+                    ),
+                  ),
                 );
               },
             ),
@@ -1476,15 +1654,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
             Theme.of(sheetContext);
 
         final double profit =
-            sale.items.fold(
-          0,
-          (sum, item) {
-            return sum +
-                (item.sellingRate -
-                        item.costPrice) *
-                    item.quantity;
-          },
-        );
+            _saleGrossProfit(sale);
 
         return SafeArea(
           child: Padding(
@@ -1498,7 +1668,8 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
             child: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                    CrossAxisAlignment
+                        .start,
                 children: [
                   Text(
                     sale.invoiceNumber
@@ -1508,15 +1679,15 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                         : sale.invoiceNumber,
                     style: theme
                         .textTheme
-                        .headlineSmall
+                        .titleLarge
                         ?.copyWith(
                       fontWeight:
                           FontWeight.w800,
                     ),
                   ),
-
-                  const SizedBox(height: 6),
-
+                  const SizedBox(
+                    height: 6,
+                  ),
                   Text(
                     _date(sale.date),
                     style: theme
@@ -1524,13 +1695,15 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                         .bodyMedium
                         ?.copyWith(
                       color: theme
-                          .colorScheme
-                          .onSurfaceVariant,
+                          .textTheme
+                          .bodyMedium
+                          ?.color
+                          ?.withValues(alpha: 0.7),
                     ),
                   ),
-
-                  const SizedBox(height: 18),
-
+                  const SizedBox(
+                    height: 18,
+                  ),
                   _DetailInfoRow(
                     label: 'Customer',
                     value:
@@ -1540,7 +1713,20 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                             ? 'Walk-in Customer'
                             : sale.customerName,
                   ),
-
+                  _DetailInfoRow(
+                    label: 'Payment Method',
+                    value:
+                        sale.paymentMethod
+                                .trim()
+                                .isEmpty
+                            ? 'Not specified'
+                            : sale.paymentMethod,
+                  ),
+                  _DetailInfoRow(
+                    label: 'Payment Status',
+                    value:
+                        sale.paymentStatus,
+                  ),
                   _DetailInfoRow(
                     label: 'Subtotal',
                     value:
@@ -1548,7 +1734,6 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                       sale.subtotal,
                     ),
                   ),
-
                   _DetailInfoRow(
                     label: 'Discount',
                     value:
@@ -1556,7 +1741,6 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                       sale.discount,
                     ),
                   ),
-
                   _DetailInfoRow(
                     label: 'Tax',
                     value:
@@ -1564,7 +1748,6 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                       sale.tax,
                     ),
                   ),
-
                   _DetailInfoRow(
                     label: 'Total',
                     value:
@@ -1573,7 +1756,6 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                     ),
                     bold: true,
                   ),
-
                   _DetailInfoRow(
                     label: 'Paid',
                     value:
@@ -1581,20 +1763,18 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                       sale.paidAmount,
                     ),
                   ),
-
                   _DetailInfoRow(
                     label: 'Outstanding',
                     value:
                         _currency(
                       sale.total -
-                          sale.paidAmount >
-                          0
+                                  sale.paidAmount >
+                              0
                           ? sale.total -
                               sale.paidAmount
                           : 0,
                     ),
                   ),
-
                   _DetailInfoRow(
                     label:
                         'Gross Profit',
@@ -1608,127 +1788,25 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                                 .danger,
                     bold: true,
                   ),
-
-                  const SizedBox(height: 18),
-
-                  Text(
-                    'Products',
-                    style: theme
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(
-                      fontWeight:
-                          FontWeight.w800,
-                    ),
-                  ),
-
-                  const SizedBox(height: 10),
-
-                  ...sale.items.map(
-                    (item) {
-                      final double
-                          itemProfit =
-                          (item.sellingRate -
-                                  item.costPrice) *
-                              item.quantity;
-
-                      return Container(
-                        margin:
-                            const EdgeInsets
-                                .only(
-                          bottom: 10,
-                        ),
-                        padding:
-                            const EdgeInsets.all(
-                          13,
-                        ),
-                        decoration:
-                            BoxDecoration(
-                          color: theme
-                              .colorScheme
-                              .surfaceContainerHighest,
-                          borderRadius:
-                              BorderRadius
-                                  .circular(
-                            12,
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment
-                                  .start,
-                          children: [
-                            Text(
-                              item.productName,
-                              style: const TextStyle(
-                                fontWeight:
-                                    FontWeight.w700,
-                              ),
-                            ),
-
-                            const SizedBox(
-                              height: 6,
-                            ),
-
-                            Text(
-                              '${_number(item.quantity)} ${item.unit} × ${_currency(item.sellingRate)}',
-                              style:
-                                  theme.textTheme.bodySmall,
-                            ),
-
-                            const SizedBox(
-                              height: 4,
-                            ),
-
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    'Total: ${_currency(item.total)}',
-                                  ),
-                                ),
-                                Text(
-                                  'Profit: ${_currency(itemProfit)}',
-                                  style:
-                                      TextStyle(
-                                    color: itemProfit >=
-                                            0
-                                        ? AppColors
-                                            .success
-                                        : AppColors
-                                            .danger,
-                                    fontWeight:
-                                        FontWeight.w700,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-
                   if (sale.notes
                       .trim()
                       .isNotEmpty) ...[
-                    const SizedBox(height: 8),
-
+                    const SizedBox(
+                      height: 12,
+                    ),
                     Text(
                       'Notes',
                       style: theme
                           .textTheme
-                          .titleMedium
+                          .titleSmall
                           ?.copyWith(
                         fontWeight:
-                            FontWeight.w800,
+                            FontWeight.w700,
                       ),
                     ),
-
                     const SizedBox(
                       height: 6,
                     ),
-
                     Text(
                       sale.notes,
                       style: theme
@@ -1736,6 +1814,102 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                           .bodyMedium,
                     ),
                   ],
+                  const SizedBox(
+                    height: 18,
+                  ),
+                  Text(
+                    'Items',
+                    style: theme
+                        .textTheme
+                        .titleSmall
+                        ?.copyWith(
+                      fontWeight:
+                          FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(
+                    height: 10,
+                  ),
+                  ...sale.items.map(
+                    (item) {
+                      return Container(
+                        margin:
+                            const EdgeInsets
+                                .only(
+                          bottom: 8,
+                        ),
+                        padding:
+                            const EdgeInsets
+                                .all(12),
+                        decoration:
+                            BoxDecoration(
+                          border: Border.all(
+                            color: theme
+                                .dividerColor,
+                          ),
+                          borderRadius:
+                              BorderRadius
+                                  .circular(
+                            12,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment
+                                        .start,
+                                children: [
+                                  Text(
+                                    item.productName,
+                                    style: theme
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(
+                                      fontWeight:
+                                          FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(
+                                    height: 4,
+                                  ),
+                                  Text(
+                                    '${_number(item.quantity)} ${item.unit} × ${_currency(item.sellingRate)}',
+                                    style: theme
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(
+                                      color: theme
+                                          .textTheme
+                                          .bodySmall
+                                          ?.color
+                                          ?.withValues(alpha: 0.7),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(
+                              width: 12,
+                            ),
+                            Text(
+                              _currency(
+                                item.total,
+                              ),
+                              style: theme
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(
+                                fontWeight:
+                                    FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
                 ],
               ),
             ),
@@ -1752,6 +1926,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   Widget _buildReportFooter(
     ThemeData theme,
     List<SaleModel> sales,
+    List<PaymentModel> payments,
   ) {
     return _ReportCard(
       child: Wrap(
@@ -1783,9 +1958,20 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                 '${_profitMargin(sales).toStringAsFixed(2)}%',
           ),
           _FooterMetric(
+            label: 'Customer Payments',
+            value:
+                _currency(
+              payments.fold<double>(
+                0,
+                (sum, payment) =>
+                    sum + payment.amount,
+              ),
+            ),
+          ),
+          _FooterMetric(
             label: 'Collection Rate',
             value:
-                '${_collectionRate(sales).toStringAsFixed(2)}%',
+                '${_collectionRate(sales, payments).toStringAsFixed(2)}%',
           ),
         ],
       ),
@@ -1803,89 +1989,58 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
       child: Padding(
         padding:
             const EdgeInsets.all(24),
-        child: ConstrainedBox(
-          constraints:
-              const BoxConstraints(
-            maxWidth: 500,
-          ),
-          child: _ReportCard(
-            child: Column(
-              mainAxisSize:
-                  MainAxisSize.min,
-              children: [
-                Container(
-                  width: 64,
-                  height: 64,
-                  decoration:
-                      BoxDecoration(
-                    color: AppColors.danger
-                        .withValues(
-                      alpha: 0.10,
-                    ),
-                    shape:
-                        BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.error_outline_rounded,
-                    color:
-                        AppColors.danger,
-                    size: 32,
-                  ),
+        child: _ReportCard(
+          child: Column(
+            mainAxisSize:
+                MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons
+                    .error_outline_rounded,
+                size: 52,
+                color:
+                    AppColors.danger,
+              ),
+              const SizedBox(
+                height: 12,
+              ),
+              Text(
+                'Unable to load sales report',
+                style: theme
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(
+                  fontWeight:
+                      FontWeight.w800,
                 ),
-
-                const SizedBox(
-                  height: 16,
+                textAlign:
+                    TextAlign.center,
+              ),
+              const SizedBox(
+                height: 8,
+              ),
+              Text(
+                _errorMessage ??
+                    'Something went wrong.',
+                style: theme
+                    .textTheme
+                    .bodyMedium,
+                textAlign:
+                    TextAlign.center,
+              ),
+              const SizedBox(
+                height: 16,
+              ),
+              ElevatedButton.icon(
+                onPressed:
+                    _loadReport,
+                icon: const Icon(
+                  Icons.refresh_rounded,
                 ),
-
-                Text(
-                  'Unable to load Sales Report',
-                  textAlign:
-                      TextAlign.center,
-                  style: theme
-                      .textTheme
-                      .titleLarge
-                      ?.copyWith(
-                    fontWeight:
-                        FontWeight.w800,
-                  ),
-                ),
-
-                const SizedBox(
-                  height: 8,
-                ),
-
-                Text(
-                  _errorMessage ??
-                      'Something went wrong.',
-                  textAlign:
-                      TextAlign.center,
-                  style: theme
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(
-                    color: theme
-                        .colorScheme
-                        .onSurfaceVariant,
-                  ),
-                ),
-
-                const SizedBox(
-                  height: 20,
-                ),
-
-                FilledButton.icon(
-                  onPressed:
-                      () => _loadReport(),
-                  icon: const Icon(
-                    Icons.refresh_rounded,
-                  ),
-                  label:
-                      const Text(
-                    'Try Again',
-                  ),
-                ),
-              ],
-            ),
+                label:
+                    const Text('Retry'),
+              ),
+            ],
           ),
         ),
       ),
@@ -1894,7 +2049,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
 }
 
 // =============================================================================
-// DATA CLASSES
+// SUMMARY MODEL
 // =============================================================================
 
 class _SummaryItem {
@@ -1913,6 +2068,10 @@ class _SummaryItem {
   });
 }
 
+// =============================================================================
+// CUSTOMER SUMMARY
+// =============================================================================
+
 class _CustomerSalesSummary {
   final String name;
   final double sales;
@@ -1930,6 +2089,10 @@ class _CustomerSalesSummary {
     this.invoiceCount = 0,
   });
 }
+
+// =============================================================================
+// PRODUCT SUMMARY
+// =============================================================================
 
 class _ProductSalesSummary {
   final String name;
@@ -1951,22 +2114,8 @@ class _ProductSalesSummary {
   });
 }
 
-class _StatusItem {
-  final String label;
-  final int count;
-  final Color color;
-  final IconData icon;
-
-  const _StatusItem({
-    required this.label,
-    required this.count,
-    required this.color,
-    required this.icon,
-  });
-}
-
 // =============================================================================
-// COMMON CARD
+// REPORT CARD
 // =============================================================================
 
 class _ReportCard extends StatelessWidget {
@@ -1977,7 +2126,9 @@ class _ReportCard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
@@ -1985,30 +2136,25 @@ class _ReportCard extends StatelessWidget {
       width: double.infinity,
       padding:
           const EdgeInsets.all(18),
-      decoration: BoxDecoration(
+      decoration:
+          BoxDecoration(
         color: theme
-            .colorScheme
-            .surface,
+            .cardColor,
         borderRadius:
-            BorderRadius.circular(18),
+            BorderRadius.circular(
+          18,
+        ),
         border: Border.all(
-          color: theme
-              .colorScheme
-              .outlineVariant
-              .withValues(
-            alpha: 0.55,
-          ),
+          color:
+              theme.dividerColor,
         ),
         boxShadow: [
           BoxShadow(
             color: Colors.black
                 .withValues(
-              alpha: theme.brightness ==
-                      Brightness.dark
-                  ? 0.08
-                  : 0.035,
+              alpha: 0.04,
             ),
-            blurRadius: 16,
+            blurRadius: 18,
             offset:
                 const Offset(0, 6),
           ),
@@ -2023,7 +2169,8 @@ class _ReportCard extends StatelessWidget {
 // SUMMARY CARD
 // =============================================================================
 
-class _SummaryCard extends StatelessWidget {
+class _SummaryCard
+    extends StatelessWidget {
   final _SummaryItem item;
 
   const _SummaryCard({
@@ -2031,25 +2178,13 @@ class _SummaryCard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
-    return Container(
-      padding:
-          const EdgeInsets.all(17),
-      decoration: BoxDecoration(
-        color: theme
-            .colorScheme
-            .surface,
-        borderRadius:
-            BorderRadius.circular(17),
-        border: Border.all(
-          color: item.color.withValues(
-            alpha: 0.20,
-          ),
-        ),
-      ),
+    return _ReportCard(
       child: Column(
         crossAxisAlignment:
             CrossAxisAlignment.start,
@@ -2057,13 +2192,13 @@ class _SummaryCard extends StatelessWidget {
           Row(
             children: [
               Container(
-                width: 40,
-                height: 40,
+                width: 42,
+                height: 42,
                 decoration:
                     BoxDecoration(
                   color: item.color
                       .withValues(
-                    alpha: 0.10,
+                    alpha: 0.12,
                   ),
                   borderRadius:
                       BorderRadius.circular(
@@ -2077,41 +2212,42 @@ class _SummaryCard extends StatelessWidget {
                   size: 21,
                 ),
               ),
-
               const Spacer(),
-
               Icon(
-                Icons.arrow_outward_rounded,
-                color: item.color
-                    .withValues(
-                  alpha: 0.65,
-                ),
+                Icons
+                    .arrow_outward_rounded,
                 size: 18,
+                color: theme
+                    .textTheme
+                    .bodySmall
+                    ?.color
+                    ?.withValues(
+                  alpha: 0.5,
+                ),
               ),
             ],
           ),
-
           const Spacer(),
-
           Text(
             item.title,
-            maxLines: 1,
-            overflow:
-                TextOverflow.ellipsis,
             style: theme
                 .textTheme
                 .bodySmall
                 ?.copyWith(
-              color: theme
-                  .colorScheme
-                  .onSurfaceVariant,
               fontWeight:
                   FontWeight.w600,
+              color: theme
+                  .textTheme
+                  .bodySmall
+                  ?.color
+                  ?.withValues(
+                alpha: 0.7,
+              ),
             ),
           ),
-
-          const SizedBox(height: 3),
-
+          const SizedBox(
+            height: 4,
+          ),
           Text(
             item.value,
             maxLines: 1,
@@ -2119,15 +2255,15 @@ class _SummaryCard extends StatelessWidget {
                 TextOverflow.ellipsis,
             style: theme
                 .textTheme
-                .titleLarge
+                .titleMedium
                 ?.copyWith(
               fontWeight:
                   FontWeight.w800,
             ),
           ),
-
-          const SizedBox(height: 2),
-
+          const SizedBox(
+            height: 2,
+          ),
           Text(
             item.subtitle,
             maxLines: 1,
@@ -2137,9 +2273,13 @@ class _SummaryCard extends StatelessWidget {
                 .textTheme
                 .bodySmall
                 ?.copyWith(
-              color: item.color,
-              fontWeight:
-                  FontWeight.w600,
+              color: theme
+                  .textTheme
+                  .bodySmall
+                  ?.color
+                  ?.withValues(
+                alpha: 0.6,
+              ),
             ),
           ),
         ],
@@ -2152,7 +2292,8 @@ class _SummaryCard extends StatelessWidget {
 // SECTION HEADER
 // =============================================================================
 
-class _SectionHeader extends StatelessWidget {
+class _SectionHeader
+    extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
@@ -2164,20 +2305,22 @@ class _SectionHeader extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
     return Row(
+      crossAxisAlignment:
+          CrossAxisAlignment.start,
       children: [
         Container(
           width: 42,
           height: 42,
           decoration:
               BoxDecoration(
-            color: theme
-                .colorScheme
-                .primary
+            color: AppColors.primary
                 .withValues(
               alpha: 0.10,
             ),
@@ -2188,15 +2331,14 @@ class _SectionHeader extends StatelessWidget {
           ),
           child: Icon(
             icon,
-            color: theme
-                .colorScheme
-                .primary,
-            size: 22,
+            color:
+                AppColors.primary,
+            size: 21,
           ),
         ),
-
-        const SizedBox(width: 12),
-
+        const SizedBox(
+          width: 12,
+        ),
         Expanded(
           child: Column(
             crossAxisAlignment:
@@ -2212,7 +2354,9 @@ class _SectionHeader extends StatelessWidget {
                       FontWeight.w800,
                 ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(
+                height: 3,
+              ),
               Text(
                 subtitle,
                 style: theme
@@ -2220,8 +2364,12 @@ class _SectionHeader extends StatelessWidget {
                     .bodySmall
                     ?.copyWith(
                   color: theme
-                      .colorScheme
-                      .onSurfaceVariant,
+                      .textTheme
+                      .bodySmall
+                      ?.color
+                      ?.withValues(
+                    alpha: 0.65,
+                  ),
                 ),
               ),
             ],
@@ -2233,66 +2381,76 @@ class _SectionHeader extends StatelessWidget {
 }
 
 // =============================================================================
-// STATUS TILE
+// STATUS CHIP
 // =============================================================================
 
-class _StatusTile extends StatelessWidget {
-  final _StatusItem item;
+class _StatusChip
+    extends StatelessWidget {
+  final String label;
+  final int count;
+  final Color color;
 
-  const _StatusTile({
-    required this.item,
+  const _StatusChip({
+    required this.label,
+    required this.count,
+    required this.color,
   });
 
   @override
-  Widget build(BuildContext context) {
-    final ThemeData theme =
-        Theme.of(context);
-
+  Widget build(
+    BuildContext context,
+  ) {
     return Container(
       padding:
-          const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: item.color.withValues(
-          alpha: 0.06,
-        ),
+          const EdgeInsets.symmetric(
+        horizontal: 14,
+        vertical: 10,
+      ),
+      decoration:
+          BoxDecoration(
+        color:
+            color.withValues(alpha: 0.10),
         borderRadius:
-            BorderRadius.circular(14),
+            BorderRadius.circular(
+          12,
+        ),
         border: Border.all(
-          color: item.color.withValues(
-            alpha: 0.16,
-          ),
+          color:
+              color.withValues(alpha: 0.20),
         ),
       ),
       child: Row(
+        mainAxisSize:
+            MainAxisSize.min,
         children: [
-          Icon(
-            item.icon,
-            color: item.color,
-            size: 23,
-          ),
-
-          const SizedBox(width: 10),
-
-          Expanded(
-            child: Text(
-              item.label,
-              style: theme
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(
-                fontWeight:
-                    FontWeight.w700,
-              ),
+          Container(
+            width: 9,
+            height: 9,
+            decoration:
+                BoxDecoration(
+              color: color,
+              shape:
+                  BoxShape.circle,
             ),
           ),
-
+          const SizedBox(
+            width: 8,
+          ),
           Text(
-            item.count.toString(),
-            style: theme
-                .textTheme
-                .titleMedium
-                ?.copyWith(
-              color: item.color,
+            label,
+            style: TextStyle(
+              color: color,
+              fontWeight:
+                  FontWeight.w700,
+            ),
+          ),
+          const SizedBox(
+            width: 8,
+          ),
+          Text(
+            count.toString(),
+            style: TextStyle(
+              color: color,
               fontWeight:
                   FontWeight.w800,
             ),
@@ -2304,70 +2462,13 @@ class _StatusTile extends StatelessWidget {
 }
 
 // =============================================================================
-// FILTER CHIP
-// =============================================================================
-
-class _FilterChip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final Color? color;
-  final VoidCallback onSelected;
-
-  const _FilterChip({
-    required this.label,
-    required this.selected,
-    required this.onSelected,
-    this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme =
-        Theme.of(context);
-
-    final Color activeColor =
-        color ??
-            theme.colorScheme.primary;
-
-    return ChoiceChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: (_) =>
-          onSelected(),
-      selectedColor:
-          activeColor.withValues(
-        alpha: 0.14,
-      ),
-      side: BorderSide(
-        color: selected
-            ? activeColor
-            : theme
-                .colorScheme
-                .outlineVariant,
-      ),
-      labelStyle:
-          TextStyle(
-        color: selected
-            ? activeColor
-            : theme
-                .colorScheme
-                .onSurface,
-        fontWeight:
-            selected
-                ? FontWeight.w700
-                : FontWeight.w500,
-      ),
-    );
-  }
-}
-
-// =============================================================================
 // CUSTOMER TILE
 // =============================================================================
 
 class _CustomerSalesTile
     extends StatelessWidget {
-  final _CustomerSalesSummary summary;
+  final _CustomerSalesSummary
+      summary;
 
   const _CustomerSalesTile({
     required this.summary,
@@ -2382,7 +2483,9 @@ class _CustomerSalesTile
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
@@ -2393,44 +2496,32 @@ class _CustomerSalesTile
       ),
       padding:
           const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: theme
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(
-          alpha: 0.42,
+      decoration:
+          BoxDecoration(
+        border: Border.all(
+          color:
+              theme.dividerColor,
         ),
         borderRadius:
-            BorderRadius.circular(14),
+            BorderRadius.circular(
+          14,
+        ),
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration:
-                BoxDecoration(
-              color: AppColors.primary
-                  .withValues(
-                alpha: 0.10,
-              ),
-              shape:
-                  BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.storefront_rounded,
-              color:
-                  AppColors.primary,
-              size: 22,
-            ),
-          ),
+      child: LayoutBuilder(
+        builder: (
+          context,
+          constraints,
+        ) {
+          final bool compact =
+              constraints.maxWidth <
+                  600;
 
-          const SizedBox(width: 12),
-
-          Expanded(
+          final Widget customer =
+              Expanded(
             child: Column(
               crossAxisAlignment:
-                  CrossAxisAlignment.start,
+                  CrossAxisAlignment
+                      .start,
               children: [
                 Text(
                   summary.name,
@@ -2439,16 +2530,15 @@ class _CustomerSalesTile
                       TextOverflow.ellipsis,
                   style: theme
                       .textTheme
-                      .bodyLarge
+                      .bodyMedium
                       ?.copyWith(
                     fontWeight:
                         FontWeight.w800,
                   ),
                 ),
-
                 const SizedBox(
-                    height: 4),
-
+                  height: 4,
+                ),
                 Text(
                   '${summary.invoiceCount} invoice${summary.invoiceCount == 1 ? '' : 's'}',
                   style: theme
@@ -2456,52 +2546,130 @@ class _CustomerSalesTile
                       .bodySmall
                       ?.copyWith(
                     color: theme
-                        .colorScheme
-                        .onSurfaceVariant,
+                        .textTheme
+                        .bodySmall
+                        ?.color
+                        ?.withValues(
+                      alpha: 0.65,
+                    ),
                   ),
                 ),
               ],
             ),
-          ),
+          );
 
-          Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.end,
+          final Widget metrics =
+              compact
+                  ? Padding(
+                      padding:
+                          const EdgeInsets.only(
+                        top: 12,
+                      ),
+                      child: Wrap(
+                        spacing: 18,
+                        runSpacing: 10,
+                        children: [
+                          _MiniMetric(
+                            label: 'Sales',
+                            value:
+                                _currency(
+                              summary.sales,
+                            ),
+                          ),
+                          _MiniMetric(
+                            label:
+                                'Collected',
+                            value:
+                                _currency(
+                              summary
+                                  .collected,
+                            ),
+                          ),
+                          _MiniMetric(
+                            label:
+                                'Outstanding',
+                            value:
+                                _currency(
+                              summary
+                                  .outstanding,
+                            ),
+                          ),
+                          _MiniMetric(
+                            label: 'Profit',
+                            value:
+                                _currency(
+                              summary.profit,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : Row(
+                      mainAxisSize:
+                          MainAxisSize.min,
+                      children: [
+                        _MiniMetric(
+                          label: 'Sales',
+                          value:
+                              _currency(
+                            summary.sales,
+                          ),
+                        ),
+                        const SizedBox(
+                          width: 22,
+                        ),
+                        _MiniMetric(
+                          label: 'Collected',
+                          value:
+                              _currency(
+                            summary
+                                .collected,
+                          ),
+                        ),
+                        const SizedBox(
+                          width: 22,
+                        ),
+                        _MiniMetric(
+                          label:
+                              'Outstanding',
+                          value:
+                              _currency(
+                            summary
+                                .outstanding,
+                          ),
+                        ),
+                        const SizedBox(
+                          width: 22,
+                        ),
+                        _MiniMetric(
+                          label: 'Profit',
+                          value:
+                              _currency(
+                            summary.profit,
+                          ),
+                        ),
+                      ],
+                    );
+
+          if (compact) {
+            return Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment
+                      .start,
+              children: [
+                customer,
+                metrics,
+              ],
+            );
+          }
+
+          return Row(
             children: [
-              Text(
-                _currency(
-                  summary.sales,
-                ),
-                style: theme
-                    .textTheme
-                    .bodyLarge
-                    ?.copyWith(
-                  fontWeight:
-                      FontWeight.w800,
-                ),
-              ),
-
-              const SizedBox(
-                  height: 3),
-
-              Text(
-                'Pending ${_currency(summary.outstanding)}',
-                style: TextStyle(
-                  color:
-                      summary.outstanding >
-                              0
-                          ? AppColors
-                              .warning
-                          : AppColors
-                              .success,
-                  fontSize: 11,
-                  fontWeight:
-                      FontWeight.w600,
-                ),
-              ),
+              customer,
+              metrics,
             ],
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -2513,7 +2681,8 @@ class _CustomerSalesTile
 
 class _ProductSalesTile
     extends StatelessWidget {
-  final _ProductSalesSummary summary;
+  final _ProductSalesSummary
+      summary;
 
   const _ProductSalesTile({
     required this.summary,
@@ -2535,7 +2704,9 @@ class _ProductSalesTile
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
@@ -2546,83 +2717,135 @@ class _ProductSalesTile
       ),
       padding:
           const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: theme
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(
-          alpha: 0.42,
+      decoration:
+          BoxDecoration(
+        border: Border.all(
+          color:
+              theme.dividerColor,
         ),
         borderRadius:
-            BorderRadius.circular(14),
+            BorderRadius.circular(
+          14,
+        ),
       ),
       child: Column(
         crossAxisAlignment:
-            CrossAxisAlignment.start,
+            CrossAxisAlignment
+                .start,
         children: [
-          Row(
+          Text(
+            summary.name,
+            style: theme
+                .textTheme
+                .bodyMedium
+                ?.copyWith(
+              fontWeight:
+                  FontWeight.w800,
+            ),
+          ),
+          const SizedBox(
+            height: 12,
+          ),
+          Wrap(
+            spacing: 18,
+            runSpacing: 10,
             children: [
-              Expanded(
-                child: Text(
-                  summary.name,
-                  style: theme
-                      .textTheme
-                      .bodyLarge
-                      ?.copyWith(
-                    fontWeight:
-                        FontWeight.w800,
-                  ),
-                ),
+              _MiniMetric(
+                label: 'Quantity',
+                value:
+                    '${_number(summary.quantity)} ${summary.unit}',
               ),
-              Text(
-                _currency(
+              _MiniMetric(
+                label: 'Revenue',
+                value:
+                    _currency(
                   summary.revenue,
                 ),
-                style: theme
-                    .textTheme
-                    .bodyLarge
-                    ?.copyWith(
-                  fontWeight:
-                      FontWeight.w800,
+              ),
+              _MiniMetric(
+                label: 'Cost',
+                value:
+                    _currency(
+                  summary.cost,
                 ),
               ),
-            ],
-          ),
-
-          const SizedBox(height: 9),
-
-          Wrap(
-            spacing: 12,
-            runSpacing: 6,
-            children: [
-              Text(
-                'Qty: ${_number(summary.quantity)} ${summary.unit}',
-                style: theme
-                    .textTheme
-                    .bodySmall,
-              ),
-              Text(
-                'Cost: ${_currency(summary.cost)}',
-                style: theme
-                    .textTheme
-                    .bodySmall,
-              ),
-              Text(
-                'Profit: ${_currency(summary.profit)}',
-                style: TextStyle(
-                  color: summary.profit >=
-                          0
-                      ? AppColors.success
-                      : AppColors.danger,
-                  fontSize: 12,
-                  fontWeight:
-                      FontWeight.w700,
+              _MiniMetric(
+                label: 'Profit',
+                value:
+                    _currency(
+                  summary.profit,
                 ),
+                valueColor:
+                    summary.profit >= 0
+                        ? AppColors.success
+                        : AppColors.danger,
               ),
             ],
           ),
         ],
       ),
+    );
+  }
+}
+
+// =============================================================================
+// MINI METRIC
+// =============================================================================
+
+class _MiniMetric
+    extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color? valueColor;
+
+  const _MiniMetric({
+    required this.label,
+    required this.value,
+    this.valueColor,
+  });
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    final ThemeData theme =
+        Theme.of(context);
+
+    return Column(
+      crossAxisAlignment:
+          CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: theme
+              .textTheme
+              .labelSmall
+              ?.copyWith(
+            color: theme
+                .textTheme
+                .labelSmall
+                ?.color
+                ?.withValues(
+              alpha: 0.65,
+            ),
+          ),
+        ),
+        const SizedBox(
+          height: 2,
+        ),
+        Text(
+          value,
+          style: theme
+              .textTheme
+              .bodySmall
+              ?.copyWith(
+            fontWeight:
+                FontWeight.w800,
+            color:
+                valueColor,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -2634,9 +2857,12 @@ class _ProductSalesTile
 class _InvoiceTile
     extends StatelessWidget {
   final SaleModel sale;
-  final String Function(double) currency;
-  final String Function(DateTime) date;
-  final Color Function(String) statusColor;
+  final String Function(double)
+      currency;
+  final String Function(DateTime)
+      date;
+  final Color Function(String)
+      statusColor;
   final VoidCallback onTap;
 
   const _InvoiceTile({
@@ -2648,7 +2874,9 @@ class _InvoiceTile
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
@@ -2658,7 +2886,8 @@ class _InvoiceTile
     );
 
     final double outstanding =
-        sale.total - sale.paidAmount;
+        sale.total -
+            sale.paidAmount;
 
     final String customer =
         sale.customerName
@@ -2670,85 +2899,101 @@ class _InvoiceTile
     return InkWell(
       onTap: onTap,
       borderRadius:
-          BorderRadius.circular(14),
+          BorderRadius.circular(
+        14,
+      ),
       child: Container(
-        margin:
-            const EdgeInsets.only(
-          bottom: 10,
-        ),
         padding:
-            const EdgeInsets.all(14),
+            const EdgeInsets.all(
+          14,
+        ),
         decoration:
             BoxDecoration(
-          color: theme
-              .colorScheme
-              .surfaceContainerHighest
-              .withValues(
-            alpha: 0.40,
+          border: Border.all(
+            color:
+                theme.dividerColor,
           ),
           borderRadius:
               BorderRadius.circular(
             14,
           ),
-          border: Border.all(
-            color: theme
-                .colorScheme
-                .outlineVariant
-                .withValues(
-              alpha: 0.35,
-            ),
-          ),
         ),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration:
-                  BoxDecoration(
-                color:
-                    color.withValues(
-                  alpha: 0.10,
-                ),
-                borderRadius:
-                    BorderRadius.circular(
-                  12,
-                ),
-              ),
-              child: Icon(
-                Icons.receipt_long_rounded,
-                color: color,
-                size: 22,
-              ),
-            ),
+        child: LayoutBuilder(
+          builder: (
+            context,
+            constraints,
+          ) {
+            final bool compact =
+                constraints.maxWidth <
+                    650;
 
-            const SizedBox(
-                width: 12),
-
-            Expanded(
+            final Widget mainInfo =
+                Expanded(
               child: Column(
                 crossAxisAlignment:
                     CrossAxisAlignment
                         .start,
                 children: [
-                  Text(
-                    sale.invoiceNumber
-                            .trim()
-                            .isEmpty
-                        ? 'Sale'
-                        : sale.invoiceNumber,
-                    style: theme
-                        .textTheme
-                        .bodyLarge
-                        ?.copyWith(
-                      fontWeight:
-                          FontWeight.w800,
-                    ),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          sale.invoiceNumber
+                                  .trim()
+                                  .isEmpty
+                              ? 'Invoice'
+                              : sale.invoiceNumber,
+                          maxLines: 1,
+                          overflow:
+                              TextOverflow
+                                  .ellipsis,
+                          style: theme
+                              .textTheme
+                              .bodyMedium
+                              ?.copyWith(
+                            fontWeight:
+                                FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(
+                        width: 8,
+                      ),
+                      Container(
+                        padding:
+                            const EdgeInsets
+                                .symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration:
+                            BoxDecoration(
+                          color: color
+                              .withValues(
+                            alpha: 0.10,
+                          ),
+                          borderRadius:
+                              BorderRadius
+                                  .circular(
+                            8,
+                          ),
+                        ),
+                        child: Text(
+                          sale.paymentStatus,
+                          style:
+                              TextStyle(
+                            color: color,
+                            fontSize: 11,
+                            fontWeight:
+                                FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-
                   const SizedBox(
-                      height: 4),
-
+                    height: 5,
+                  ),
                   Text(
                     customer,
                     maxLines: 1,
@@ -2757,12 +3002,20 @@ class _InvoiceTile
                             .ellipsis,
                     style: theme
                         .textTheme
-                        .bodySmall,
+                        .bodySmall
+                        ?.copyWith(
+                      color: theme
+                          .textTheme
+                          .bodySmall
+                          ?.color
+                          ?.withValues(
+                        alpha: 0.70,
+                      ),
+                    ),
                   ),
-
                   const SizedBox(
-                      height: 3),
-
+                    height: 3,
+                  ),
                   Text(
                     date(sale.date),
                     style: theme
@@ -2770,97 +3023,122 @@ class _InvoiceTile
                         .bodySmall
                         ?.copyWith(
                       color: theme
-                          .colorScheme
-                          .onSurfaceVariant,
+                          .textTheme
+                          .bodySmall
+                          ?.color
+                          ?.withValues(
+                        alpha: 0.60,
+                      ),
                     ),
                   ),
                 ],
               ),
-            ),
+            );
 
-            const SizedBox(
-                width: 10),
+            final Widget financials =
+                compact
+                    ? Padding(
+                        padding:
+                            const EdgeInsets
+                                .only(
+                          top: 12,
+                        ),
+                        child: Wrap(
+                          spacing: 18,
+                          runSpacing: 10,
+                          children: [
+                            _MiniMetric(
+                              label: 'Total',
+                              value:
+                                  currency(
+                                sale.total,
+                              ),
+                            ),
+                            _MiniMetric(
+                              label: 'Paid',
+                              value:
+                                  currency(
+                                sale.paidAmount,
+                              ),
+                            ),
+                            _MiniMetric(
+                              label:
+                                  'Outstanding',
+                              value:
+                                  currency(
+                                outstanding >
+                                        0
+                                    ? outstanding
+                                    : 0,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : Row(
+                        mainAxisSize:
+                            MainAxisSize.min,
+                        children: [
+                          _MiniMetric(
+                            label: 'Total',
+                            value:
+                                currency(
+                              sale.total,
+                            ),
+                          ),
+                          const SizedBox(
+                            width: 20,
+                          ),
+                          _MiniMetric(
+                            label: 'Paid',
+                            value:
+                                currency(
+                              sale.paidAmount,
+                            ),
+                          ),
+                          const SizedBox(
+                            width: 20,
+                          ),
+                          _MiniMetric(
+                            label:
+                                'Outstanding',
+                            value:
+                                currency(
+                              outstanding >
+                                      0
+                                  ? outstanding
+                                  : 0,
+                            ),
+                          ),
+                        ],
+                      );
 
-            Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.end,
+            if (compact) {
+              return Column(
+                crossAxisAlignment:
+                    CrossAxisAlignment
+                        .start,
+                children: [
+                  mainInfo,
+                  financials,
+                ],
+              );
+            }
+
+            return Row(
               children: [
-                Text(
-                  currency(
-                    sale.total,
-                  ),
-                  style: theme
-                      .textTheme
-                      .bodyLarge
-                      ?.copyWith(
-                    fontWeight:
-                        FontWeight.w800,
-                  ),
-                ),
-
+                mainInfo,
+                financials,
                 const SizedBox(
-                    height: 5),
-
-                Container(
-                  padding:
-                      const EdgeInsets
-                          .symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration:
-                      BoxDecoration(
-                    color: color
-                        .withValues(
-                      alpha: 0.10,
-                    ),
-                    borderRadius:
-                        BorderRadius
-                            .circular(
-                      20,
-                    ),
-                  ),
-                  child: Text(
-                    sale.paymentStatus,
-                    style: TextStyle(
-                      color: color,
-                      fontSize: 10,
-                      fontWeight:
-                          FontWeight.w800,
-                    ),
-                  ),
+                  width: 12,
                 ),
-
-                if (outstanding > 0)
-                  Padding(
-                    padding:
-                        const EdgeInsets
-                            .only(
-                      top: 4,
-                    ),
-                    child: Text(
-                      'Due ${currency(outstanding)}',
-                      style:
-                          const TextStyle(
-                        color:
-                            AppColors.warning,
-                        fontSize: 10,
-                        fontWeight:
-                            FontWeight.w600,
-                      ),
-                    ),
-                  ),
+                const Icon(
+                  Icons
+                      .chevron_right_rounded,
+                ),
               ],
-            ),
-
-            const SizedBox(
-                width: 5),
-
-            const Icon(
-              Icons.chevron_right_rounded,
-              size: 21,
-            ),
-          ],
+            );
+          },
         ),
       ),
     );
@@ -2868,7 +3146,7 @@ class _InvoiceTile
 }
 
 // =============================================================================
-// DETAIL ROW
+// DETAIL INFO ROW
 // =============================================================================
 
 class _DetailInfoRow
@@ -2886,16 +3164,20 @@ class _DetailInfoRow
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
     return Padding(
       padding:
-          const EdgeInsets.only(
-        bottom: 9,
+          const EdgeInsets.symmetric(
+        vertical: 6,
       ),
       child: Row(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
           Expanded(
             child: Text(
@@ -2905,24 +3187,34 @@ class _DetailInfoRow
                   .bodyMedium
                   ?.copyWith(
                 color: theme
-                    .colorScheme
-                    .onSurfaceVariant,
+                    .textTheme
+                    .bodyMedium
+                    ?.color
+                    ?.withValues(
+                      alpha: 0.70,
+                    ),
               ),
             ),
           ),
-          Text(
-            value,
-            textAlign:
-                TextAlign.end,
-            style: theme
-                .textTheme
-                .bodyMedium
-                ?.copyWith(
-              color: valueColor,
-              fontWeight:
-                  bold
-                      ? FontWeight.w800
-                      : FontWeight.w600,
+          const SizedBox(
+            width: 16,
+          ),
+          Flexible(
+            child: Text(
+              value,
+              textAlign:
+                  TextAlign.right,
+              style: theme
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(
+                fontWeight:
+                    bold
+                        ? FontWeight.w800
+                        : FontWeight.w600,
+                color:
+                    valueColor,
+              ),
             ),
           ),
         ],
@@ -2932,7 +3224,7 @@ class _DetailInfoRow
 }
 
 // =============================================================================
-// EMPTY
+// EMPTY INLINE
 // =============================================================================
 
 class _EmptyInline
@@ -2946,35 +3238,46 @@ class _EmptyInline
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
     return Container(
       width: double.infinity,
       padding:
-          const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: theme
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(
-          alpha: 0.35,
+          const EdgeInsets.symmetric(
+        vertical: 28,
+        horizontal: 18,
+      ),
+      decoration:
+          BoxDecoration(
+        border: Border.all(
+          color:
+              theme.dividerColor,
         ),
         borderRadius:
-            BorderRadius.circular(14),
+            BorderRadius.circular(
+          14,
+        ),
       ),
       child: Column(
         children: [
           Icon(
             icon,
-            size: 34,
+            size: 38,
             color: theme
-                .colorScheme
-                .onSurfaceVariant,
+                .textTheme
+                .bodySmall
+                ?.color
+                ?.withValues(
+              alpha: 0.45,
+            ),
           ),
           const SizedBox(
-              height: 10),
+            height: 10,
+          ),
           Text(
             message,
             textAlign:
@@ -2984,10 +3287,13 @@ class _EmptyInline
                 .bodyMedium
                 ?.copyWith(
               color: theme
-                  .colorScheme
-                  .onSurfaceVariant,
+                  .textTheme
+                  .bodyMedium
+                  ?.color
+                  ?.withValues(
+              alpha: 0.65,
             ),
-          ),
+          ),),
         ],
       ),
     );
@@ -3009,30 +3315,39 @@ class _FooterMetric
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
-    return Row(
-      mainAxisSize:
-          MainAxisSize.min,
+    return Column(
+      crossAxisAlignment:
+          CrossAxisAlignment.start,
       children: [
         Text(
-          '$label: ',
+          label,
           style: theme
               .textTheme
-              .bodySmall
+              .labelSmall
               ?.copyWith(
             color: theme
-                .colorScheme
-                .onSurfaceVariant,
+                .textTheme
+                .labelSmall
+                ?.color
+                ?.withValues(
+              alpha: 0.65,
+            ),
           ),
+        ),
+        const SizedBox(
+          height: 3,
         ),
         Text(
           value,
           style: theme
               .textTheme
-              .bodySmall
+              .bodyMedium
               ?.copyWith(
             fontWeight:
                 FontWeight.w800,

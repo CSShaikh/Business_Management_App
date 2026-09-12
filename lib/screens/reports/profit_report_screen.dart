@@ -112,8 +112,6 @@ class _ProfitReportScreenState
         _allExpenses =
             results[1] as List<ExpenseModel>;
 
-      
-
         _loading = false;
         _refreshing = false;
         _errorMessage = null;
@@ -299,12 +297,25 @@ class _ProfitReportScreenState
     double profit = 0;
 
     for (final sale in sales) {
+      double saleCost = 0;
+
       for (final item in sale.items) {
-        profit +=
-            (item.sellingRate -
-                    item.costPrice) *
-                item.quantity;
+        final double quantity = item.quantity.isFinite
+            ? item.quantity
+            : 0;
+
+        final double costPrice =
+            item.costPrice.isFinite
+                ? item.costPrice
+                : 0;
+
+        saleCost += quantity * costPrice;
       }
+
+      // Gross profit is based on the actual invoice total,
+      // after sale-level discount/tax adjustments, less the
+      // historical cost of the goods sold.
+      profit += sale.total - saleCost;
     }
 
     return profit;
@@ -360,13 +371,35 @@ class _ProfitReportScreenState
                 ? 'Unknown Product'
                 : item.productName;
 
-        final double revenue =
+        final double itemRevenue =
             item.quantity *
                 item.sellingRate;
 
         final double cost =
             item.quantity *
                 item.costPrice;
+
+        // Sale-level discount/tax is stored on SaleModel
+        // rather than on individual SaleItemModel records.
+        // Allocate that adjustment proportionally so the
+        // product-wise profit reconciles with invoice-level
+        // gross profit.
+        final double subtotal =
+            sale.subtotal;
+
+        final double saleAdjustment =
+            sale.total - subtotal;
+
+        final double allocatedAdjustment =
+            subtotal > 0 &&
+                    subtotal.isFinite
+                ? saleAdjustment *
+                    (itemRevenue / subtotal)
+                : 0;
+
+        final double revenue =
+            itemRevenue +
+                allocatedAdjustment;
 
         final double profit =
             revenue - cost;
@@ -569,10 +602,10 @@ class _ProfitReportScreenState
     ).format(value);
   }
 
-  String _date(DateTime value) {
+  String _date(DateTime date) {
     return DateFormat(
       'dd MMM yyyy',
-    ).format(value);
+    ).format(date);
   }
 
   String _monthName(
@@ -589,12 +622,10 @@ class _ProfitReportScreenState
   String _dateRangeText() {
     if (_startDate == null ||
         _endDate == null) {
-      return 'All Dates';
+      return 'Current Report Period';
     }
 
-    return '${DateFormat('dd MMM yyyy').format(_startDate!)}'
-        ' → '
-        '${DateFormat('dd MMM yyyy').format(_endDate!)}';
+    return '${_date(_startDate!)} → ${_date(_endDate!)}';
   }
 
   // ===========================================================================
@@ -755,7 +786,7 @@ class _ProfitReportScreenState
             child: const Icon(
               Icons.trending_up_rounded,
               color: Colors.white,
-              size: 29,
+              size: 28,
             ),
           ),
           const SizedBox(width: 16),
@@ -775,7 +806,7 @@ class _ProfitReportScreenState
                 ),
                 const SizedBox(height: 5),
                 Text(
-                  'Understand gross profit, net profit, margins and business performance.',
+                  'Analyze sales profitability, product margins and operating expenses.',
                   style: TextStyle(
                     color:
                         Colors.white.withValues(
@@ -877,56 +908,76 @@ class _ProfitReportScreenState
                   FontWeight.w700,
             ),
           ),
-          Container(
-            padding:
-                const EdgeInsets.symmetric(
-              horizontal: 13,
-              vertical: 9,
-            ),
-            decoration:
-                BoxDecoration(
-              color: theme
-                  .colorScheme
-                  .surfaceContainerHighest,
-              borderRadius:
-                  BorderRadius.circular(10),
-            ),
-            child: Text(
-              _dateRangeText(),
-              style: theme
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(
-                fontWeight:
-                    FontWeight.w600,
-              ),
-            ),
-          ),
-          FilledButton.icon(
-            onPressed:
-                _selectDateRange,
+          OutlinedButton.icon(
+            onPressed: _selectDateRange,
             icon: const Icon(
               Icons.calendar_month_rounded,
-              size: 18,
             ),
             label: Text(
               hasFilter
-                  ? 'Change Period'
-                  : 'Select Period',
+                  ? '${_date(_startDate!)} - ${_date(_endDate!)}'
+                  : 'Select Date Range',
             ),
           ),
           if (hasFilter)
-            OutlinedButton.icon(
-              onPressed:
-                  _clearDateFilter,
+            TextButton.icon(
+              onPressed: _clearDateFilter,
               icon: const Icon(
                 Icons.clear_rounded,
-                size: 18,
               ),
-              label:
-                  const Text('Clear'),
+              label: const Text('Clear'),
             ),
         ],
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // SEARCH
+  // ===========================================================================
+
+  Widget _buildSearch(
+    ThemeData theme,
+  ) {
+    return _ReportCard(
+      child: TextField(
+        controller: _searchController,
+        onChanged: (value) {
+          setState(() {
+            _searchQuery = value;
+          });
+        },
+        decoration:
+            InputDecoration(
+          hintText:
+              'Search customer, invoice or product...',
+          prefixIcon:
+              const Icon(
+            Icons.search_rounded,
+          ),
+          suffixIcon:
+              _searchQuery.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'Clear',
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() {
+                          _searchQuery = '';
+                        });
+                      },
+                      icon: const Icon(
+                        Icons.clear_rounded,
+                      ),
+                    ),
+          border:
+              OutlineInputBorder(
+            borderRadius:
+                BorderRadius.circular(
+              14,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -1031,81 +1082,68 @@ class _ProfitReportScreenState
       ),
     ];
 
-    return GridView.builder(
-      shrinkWrap: true,
-      physics:
-          const NeverScrollableScrollPhysics(),
-      itemCount: items.length,
-      gridDelegate:
-          SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount:
-            isDesktop ? 3 : 2,
-        crossAxisSpacing: 14,
-        mainAxisSpacing: 14,
-        childAspectRatio:
-            isDesktop ? 2.0 : 1.48,
-      ),
-      itemBuilder: (
+    if (isDesktop) {
+      return GridView.builder(
+        shrinkWrap: true,
+        physics:
+            const NeverScrollableScrollPhysics(),
+        itemCount: items.length,
+        gridDelegate:
+            const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: 14,
+          mainAxisSpacing: 14,
+          childAspectRatio: 1.9,
+        ),
+        itemBuilder:
+            (context, index) {
+          return _SummaryCard(
+            item: items[index],
+          );
+        },
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (
         context,
-        index,
+        constraints,
       ) {
-        return _SummaryCard(
-          item: items[index],
+        final int columns =
+            constraints.maxWidth >= 650
+                ? 2
+                : 1;
+
+        final double ratio =
+            columns == 2 ? 2.0 : 2.5;
+
+        return GridView.builder(
+          shrinkWrap: true,
+          physics:
+              const NeverScrollableScrollPhysics(),
+          itemCount: items.length,
+          gridDelegate:
+              SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount:
+                columns,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            childAspectRatio:
+                ratio,
+          ),
+          itemBuilder:
+              (context, index) {
+            return _SummaryCard(
+              item: items[index],
+            );
+          },
         );
       },
     );
   }
 
   // ===========================================================================
-  // SEARCH
-  // ===========================================================================
-
-  Widget _buildSearch(
-    ThemeData theme,
-  ) {
-    return _ReportCard(
-      child: TextField(
-        controller:
-            _searchController,
-        onChanged: (value) {
-          setState(() {
-            _searchQuery =
-                value.trim().toLowerCase();
-          });
-        },
-        decoration:
-            InputDecoration(
-          hintText:
-              'Search invoice, customer or product...',
-          prefixIcon:
-              const Icon(
-            Icons.search_rounded,
-          ),
-          suffixIcon:
-              _searchQuery.isNotEmpty
-                  ? IconButton(
-                      onPressed: () {
-                        _searchController
-                            .clear();
-
-                        setState(() {
-                          _searchQuery =
-                              '';
-                        });
-                      },
-                      icon:
-                          const Icon(
-                        Icons.clear_rounded,
-                      ),
-                    )
-                  : null,
-        ),
-      ),
-    );
-  }
-
-  // ===========================================================================
-  // MONTHLY
+  // MONTHLY SECTION
   // ===========================================================================
 
   Widget _buildMonthlySection(
@@ -1114,71 +1152,73 @@ class _ProfitReportScreenState
     List<ExpenseModel> expenses,
   ) {
     final Map<String, _MonthlyProfitData>
-        data =
+        monthly =
         _monthlyProfitData(
       sales,
       expenses,
     );
 
     final List<_MonthlyProfitData>
-        months =
-        data.values.toList()
-          ..sort(
-            (a, b) {
-              final DateTime da =
-                  DateTime(
-                a.year,
-                a.month,
-              );
+        values =
+        monthly.values.toList();
 
-              final DateTime db =
-                  DateTime(
-                b.year,
-                b.month,
-              );
+    values.sort(
+      (a, b) {
+        final DateTime aDate =
+            DateTime(a.year, a.month);
 
-              return db.compareTo(da);
-            },
-          );
+        final DateTime bDate =
+            DateTime(b.year, b.month);
+
+        return bDate.compareTo(aDate);
+      },
+    );
 
     return _ReportCard(
       child: Column(
         crossAxisAlignment:
             CrossAxisAlignment.start,
         children: [
-          const _SectionHeader(
+          _SectionHeader(
             icon:
                 Icons.calendar_view_month_rounded,
             title:
-                'Monthly Profit Performance',
+                'Monthly Profit Overview',
             subtitle:
-                'Sales, gross profit, expenses and net profit',
+                'Sales, cost, gross profit and expenses',
           ),
           const SizedBox(height: 18),
-          if (months.isEmpty)
+          if (values.isEmpty)
             const _EmptyInline(
               icon:
-                  Icons.analytics_outlined,
+                  Icons.bar_chart_rounded,
               message:
-                  'No profit data available for this period.',
+                  'No profit data available for the selected period.',
             )
           else
-            ...months.map(
-              (month) {
+            ...values.take(12).map(
+              (item) {
                 final double net =
-                    month.grossProfit -
-                        month.expenses;
+                    item.grossProfit -
+                        item.expenses;
 
-                return _MonthlyTile(
-                  month: month,
-                  netProfit: net,
-                  monthName:
-                      _monthName(
-                    month.year,
-                    month.month,
+                return Padding(
+                  padding:
+                      const EdgeInsets.only(
+                    bottom: 12,
                   ),
-                  currency:
-                      _currency,
+                  child:
+                      _MonthlyProfitTile(
+                    data: item,
+                    month:
+                        _monthName(
+                      item.year,
+                      item.month,
+                    ),
+                    netProfit: net,
+                    currency:
+                        _currency,
+                  ),
                 );
               },
             ),
@@ -1195,32 +1235,30 @@ class _ProfitReportScreenState
     ThemeData theme,
     List<SaleModel> sales,
   ) {
-    final Map<String, _ProductProfitData>
-        map =
-        _productProfitData(sales);
-
     final List<_ProductProfitData>
         products =
-        map.values.toList()
-          ..sort(
-            (a, b) =>
-                b.profit.compareTo(
-              a.profit,
-            ),
-          );
+        _productProfitData(
+      sales,
+    ).values.toList();
+
+    products.sort(
+      (a, b) => b.profit.compareTo(
+        a.profit,
+      ),
+    );
 
     return _ReportCard(
       child: Column(
         crossAxisAlignment:
             CrossAxisAlignment.start,
         children: [
-          const _SectionHeader(
+          _SectionHeader(
             icon:
                 Icons.inventory_2_rounded,
             title:
                 'Product-wise Profit',
             subtitle:
-                'Profit generated by each sold product',
+                'Revenue, cost and profit by product',
           ),
           const SizedBox(height: 18),
           if (products.isEmpty)
@@ -1231,21 +1269,130 @@ class _ProfitReportScreenState
                   'No product profit data available.',
             )
           else
-            ...products.map(
-              (product) {
-                final double margin =
-                    product.revenue > 0
-                        ? (product.profit /
-                                product.revenue) *
-                            100
-                        : 0;
+            LayoutBuilder(
+              builder: (
+                context,
+                constraints,
+              ) {
+                if (constraints.maxWidth <
+                    650) {
+                  return Column(
+                    children:
+                        products.take(15).map(
+                      (product) {
+                        return Padding(
+                          padding:
+                              const EdgeInsets
+                                  .only(
+                            bottom: 10,
+                          ),
+                          child:
+                              _ProductProfitTile(
+                            data: product,
+                            currency:
+                                _currency,
+                            number:
+                                _number,
+                          ),
+                        );
+                      },
+                    ).toList(),
+                  );
+                }
 
-                return _ProductProfitTile(
-                  data: product,
-                  margin: margin,
-                  currency:
-                      _currency,
-                  number: _number,
+                return SingleChildScrollView(
+                  scrollDirection:
+                      Axis.horizontal,
+                  child: DataTable(
+                    columnSpacing: 28,
+                    columns: const [
+                      DataColumn(
+                        label:
+                            Text('Product'),
+                      ),
+                      DataColumn(
+                        label:
+                            Text('Quantity'),
+                      ),
+                      DataColumn(
+                        label:
+                            Text('Revenue'),
+                      ),
+                      DataColumn(
+                        label:
+                            Text('Cost'),
+                      ),
+                      DataColumn(
+                        label:
+                            Text('Profit'),
+                      ),
+                      DataColumn(
+                        label:
+                            Text('Margin'),
+                      ),
+                    ],
+                    rows: products
+                        .take(20)
+                        .map(
+                      (product) {
+                        final double margin =
+                            product.revenue <=
+                                    0
+                                ? 0
+                                : (product.profit /
+                                        product.revenue) *
+                                    100;
+
+                        return DataRow(
+                          cells: [
+                            DataCell(
+                              Text(
+                                product
+                                    .productName,
+                              ),
+                            ),
+                            DataCell(
+                              Text(
+                                _number(
+                                  product
+                                      .quantity,
+                                ),
+                              ),
+                            ),
+                            DataCell(
+                              Text(
+                                _currency(
+                                  product
+                                      .revenue,
+                                ),
+                              ),
+                            ),
+                            DataCell(
+                              Text(
+                                _currency(
+                                  product
+                                      .cost,
+                                ),
+                              ),
+                            ),
+                            DataCell(
+                              Text(
+                                _currency(
+                                  product
+                                      .profit,
+                                ),
+                              ),
+                            ),
+                            DataCell(
+                              Text(
+                                '${margin.toStringAsFixed(1)}%',
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ).toList(),
+                  ),
                 );
               },
             ),
@@ -1262,32 +1409,30 @@ class _ProfitReportScreenState
     ThemeData theme,
     List<SaleModel> sales,
   ) {
-    final Map<String, _CustomerProfitData>
-        map =
-        _customerProfitData(sales);
-
     final List<_CustomerProfitData>
         customers =
-        map.values.toList()
-          ..sort(
-            (a, b) =>
-                b.profit.compareTo(
-              a.profit,
-            ),
-          );
+        _customerProfitData(
+      sales,
+    ).values.toList();
+
+    customers.sort(
+      (a, b) => b.profit.compareTo(
+        a.profit,
+      ),
+    );
 
     return _ReportCard(
       child: Column(
         crossAxisAlignment:
             CrossAxisAlignment.start,
         children: [
-          const _SectionHeader(
+          _SectionHeader(
             icon:
                 Icons.people_alt_rounded,
             title:
                 'Customer-wise Profit',
             subtitle:
-                'Profit contribution from each customer',
+                'Profit contribution by customer',
           ),
           const SizedBox(height: 18),
           if (customers.isEmpty)
@@ -1298,20 +1443,27 @@ class _ProfitReportScreenState
                   'No customer profit data available.',
             )
           else
-            ...customers.map(
+            ...customers.take(15).map(
               (customer) {
                 final double margin =
-                    customer.sales > 0
-                        ? (customer.profit /
+                    customer.sales <= 0
+                        ? 0
+                        : (customer.profit /
                                 customer.sales) *
-                            100
-                        : 0;
+                            100;
 
-                return _CustomerProfitTile(
-                  data: customer,
-                  margin: margin,
-                  currency:
-                      _currency,
+                return Padding(
+                  padding:
+                      const EdgeInsets.only(
+                    bottom: 10,
+                  ),
+                  child:
+                      _CustomerProfitTile(
+                    data: customer,
+                    margin: margin,
+                    currency:
+                        _currency,
+                  ),
                 );
               },
             ),
@@ -1333,13 +1485,13 @@ class _ProfitReportScreenState
         crossAxisAlignment:
             CrossAxisAlignment.start,
         children: [
-          const _SectionHeader(
+          _SectionHeader(
             icon:
                 Icons.receipt_long_rounded,
             title:
-                'Invoice-wise Profit',
+                'Sale-wise Profit',
             subtitle:
-                'Profit calculated using each sale item cost',
+                '${sales.length} matching sale${sales.length == 1 ? '' : 's'}',
           ),
           const SizedBox(height: 18),
           if (sales.isEmpty)
@@ -1350,7 +1502,7 @@ class _ProfitReportScreenState
                   'No sales found for the selected filters.',
             )
           else
-            ...sales.map(
+            ...sales.take(50).map(
               (sale) {
                 double cost = 0;
 
@@ -1361,23 +1513,31 @@ class _ProfitReportScreenState
                           item.costPrice;
                 }
 
-                final double gross =
+                final double profit =
                     sale.total - cost;
 
-                return _SaleProfitTile(
-                  sale: sale,
-                  cost: cost,
-                  profit: gross,
-                  currency:
-                      _currency,
-                  date: _date,
-                  onTap: () {
-                    _showSaleProfitDetails(
-                      sale,
-                      cost,
-                      gross,
-                    );
-                  },
+                final double margin =
+                    sale.total <= 0
+                        ? 0
+                        : (profit /
+                                sale.total) *
+                            100;
+
+                return Padding(
+                  padding:
+                      const EdgeInsets.only(
+                    bottom: 10,
+                  ),
+                  child:
+                      _SaleProfitTile(
+                    sale: sale,
+                    cost: cost,
+                    profit: profit,
+                    margin: margin,
+                    currency:
+                        _currency,
+                    date: _date,
+                  ),
                 );
               },
             ),
@@ -1394,7 +1554,8 @@ class _ProfitReportScreenState
     ThemeData theme,
     List<ExpenseModel> expenses,
   ) {
-    final Map<String, double> categoryTotals =
+    final Map<String, double>
+        categoryTotals =
         <String, double>{};
 
     for (final expense in expenses) {
@@ -1409,50 +1570,57 @@ class _ProfitReportScreenState
     }
 
     final List<MapEntry<String, double>>
-        entries =
-        categoryTotals.entries.toList()
-          ..sort(
-            (a, b) =>
-                b.value.compareTo(
-              a.value,
-            ),
-          );
+        categories =
+        categoryTotals.entries.toList();
+
+    categories.sort(
+      (a, b) => b.value.compareTo(
+        a.value,
+      ),
+    );
 
     return _ReportCard(
       child: Column(
         crossAxisAlignment:
             CrossAxisAlignment.start,
         children: [
-          const _SectionHeader(
+          _SectionHeader(
             icon:
-                Icons.money_off_csred_rounded,
+                Icons.account_balance_wallet_rounded,
             title:
                 'Expense Impact',
             subtitle:
-                'Expenses deducted from gross profit',
+                'Operating expenses reducing net profit',
           ),
           const SizedBox(height: 18),
-          if (entries.isEmpty)
+          if (categories.isEmpty)
             const _EmptyInline(
               icon:
-                  Icons.money_off_rounded,
+                  Icons.receipt_long_outlined,
               message:
-                  'No expenses available for this period.',
+                  'No expenses found for the selected period.',
             )
           else
-            ...entries.map(
+            ...categories.map(
               (entry) {
-                return _ExpenseImpactTile(
-                  category:
-                      entry.key,
-                  amount:
-                      entry.value,
-                  total:
-                      _totalExpenses(
-                    expenses,
+                return Padding(
+                  padding:
+                      const EdgeInsets.only(
+                    bottom: 12,
                   ),
-                  currency:
-                      _currency,
+                  child:
+                      _ExpenseCategoryTile(
+                    category:
+                        entry.key,
+                    amount:
+                        entry.value,
+                    total:
+                        _totalExpenses(
+                      expenses,
+                    ),
+                    currency:
+                        _currency,
+                  ),
                 );
               },
             ),
@@ -1462,212 +1630,7 @@ class _ProfitReportScreenState
   }
 
   // ===========================================================================
-  // SALE DETAILS
-  // ===========================================================================
-
-  void _showSaleProfitDetails(
-    SaleModel sale,
-    double cost,
-    double profit,
-  ) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (sheetContext) {
-        final ThemeData theme =
-            Theme.of(sheetContext);
-
-        return SafeArea(
-          child: Padding(
-            padding:
-                const EdgeInsets.fromLTRB(
-              20,
-              8,
-              20,
-              24,
-            ),
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Profit Details',
-                    style: theme
-                        .textTheme
-                        .headlineSmall
-                        ?.copyWith(
-                      fontWeight:
-                          FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    sale.invoiceNumber,
-                    style: theme
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(
-                      color: theme
-                          .colorScheme
-                          .onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  _DetailRow(
-                    label: 'Customer',
-                    value:
-                        sale.customerName,
-                  ),
-                  _DetailRow(
-                    label: 'Date',
-                    value:
-                        _date(sale.date),
-                  ),
-                  _DetailRow(
-                    label: 'Sales Amount',
-                    value:
-                        _currency(
-                      sale.total,
-                    ),
-                  ),
-                  _DetailRow(
-                    label:
-                        'Cost of Goods',
-                    value:
-                        _currency(cost),
-                  ),
-                  _DetailRow(
-                    label:
-                        'Gross Profit',
-                    value:
-                        _currency(profit),
-                    bold: true,
-                    valueColor:
-                        profit >= 0
-                            ? AppColors.success
-                            : AppColors.danger,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Items',
-                    style: theme
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(
-                      fontWeight:
-                          FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  ...sale.items.map(
-                    (item) {
-                      final double itemCost =
-                          item.quantity *
-                              item.costPrice;
-
-                      final double itemRevenue =
-                          item.quantity *
-                              item.sellingRate;
-
-                      final double itemProfit =
-                          itemRevenue -
-                              itemCost;
-
-                      return Container(
-                        margin:
-                            const EdgeInsets
-                                .only(
-                          bottom: 8,
-                        ),
-                        padding:
-                            const EdgeInsets
-                                .all(12),
-                        decoration:
-                            BoxDecoration(
-                          color: theme
-                              .colorScheme
-                              .surfaceContainerHighest
-                              .withValues(
-                            alpha: 0.35,
-                          ),
-                          borderRadius:
-                              BorderRadius
-                                  .circular(
-                            12,
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment
-                                        .start,
-                                children: [
-                                  Text(
-                                    item.productName,
-                                    style: theme
-                                        .textTheme
-                                        .bodyMedium
-                                        ?.copyWith(
-                                      fontWeight:
-                                          FontWeight
-                                              .w700,
-                                    ),
-                                  ),
-                                  const SizedBox(
-                                      height: 3),
-                                  Text(
-                                    '${_number(item.quantity)} ${item.unit} × ${_currency(item.sellingRate)}',
-                                    style: theme
-                                        .textTheme
-                                        .bodySmall
-                                        ?.copyWith(
-                                      color: theme
-                                          .colorScheme
-                                          .onSurfaceVariant,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Text(
-                              _currency(
-                                itemProfit,
-                              ),
-                              style: theme
-                                  .textTheme
-                                  .bodyMedium
-                                  ?.copyWith(
-                                color: itemProfit >=
-                                        0
-                                    ? AppColors
-                                        .success
-                                    : AppColors
-                                        .danger,
-                                fontWeight:
-                                    FontWeight
-                                        .w800,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  // ===========================================================================
-  // ERROR
+  // ERROR STATE
   // ===========================================================================
 
   Widget _buildErrorState(
@@ -1677,78 +1640,57 @@ class _ProfitReportScreenState
       child: Padding(
         padding:
             const EdgeInsets.all(24),
-        child: ConstrainedBox(
-          constraints:
-              const BoxConstraints(
-            maxWidth: 500,
-          ),
-          child: _ReportCard(
-            child: Column(
-              mainAxisSize:
-                  MainAxisSize.min,
-              children: [
-                Container(
-                  width: 64,
-                  height: 64,
-                  decoration:
-                      BoxDecoration(
-                    color:
-                        AppColors.danger
-                            .withValues(
-                      alpha: 0.10,
-                    ),
-                    shape:
-                        BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.error_outline_rounded,
-                    color:
-                        AppColors.danger,
-                    size: 32,
-                  ),
+        child: _ReportCard(
+          child: Column(
+            mainAxisSize:
+                MainAxisSize.min,
+            children: [
+              Icon(
+                Icons
+                    .error_outline_rounded,
+                size: 52,
+                color:
+                    AppColors.danger,
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'Unable to Load Profit Report',
+                textAlign:
+                    TextAlign.center,
+                style: theme
+                    .textTheme
+                    .titleLarge
+                    ?.copyWith(
+                  fontWeight:
+                      FontWeight.w800,
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  'Unable to load Profit Report',
-                  textAlign:
-                      TextAlign.center,
-                  style: theme
-                      .textTheme
-                      .titleLarge
-                      ?.copyWith(
-                    fontWeight:
-                        FontWeight.w800,
-                  ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _errorMessage ??
+                    'Something went wrong.',
+                textAlign:
+                    TextAlign.center,
+                style: theme
+                    .textTheme
+                    .bodyMedium
+                    ?.copyWith(
+                  color: theme
+                      .colorScheme
+                      .onSurfaceVariant,
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  _errorMessage ??
-                      'Something went wrong.',
-                  textAlign:
-                      TextAlign.center,
-                  style: theme
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(
-                    color: theme
-                        .colorScheme
-                        .onSurfaceVariant,
-                  ),
+              ),
+              const SizedBox(height: 18),
+              FilledButton.icon(
+                onPressed:
+                    _refreshReport,
+                icon: const Icon(
+                  Icons.refresh_rounded,
                 ),
-                const SizedBox(height: 20),
-                FilledButton.icon(
-                  onPressed:
-                      () => _loadReport(),
-                  icon: const Icon(
-                    Icons.refresh_rounded,
-                  ),
-                  label:
-                      const Text(
-                    'Try Again',
-                  ),
-                ),
-              ],
-            ),
+                label:
+                    const Text('Retry'),
+              ),
+            ],
           ),
         ),
       ),
@@ -1756,9 +1698,29 @@ class _ProfitReportScreenState
   }
 }
 
-// =============================================================================
-// DATA CLASSES
-// =============================================================================
+// ============================================================================
+// SUMMARY MODEL
+// ============================================================================
+
+class _SummaryItem {
+  final String title;
+  final String value;
+  final String subtitle;
+  final IconData icon;
+  final Color color;
+
+  const _SummaryItem({
+    required this.title,
+    required this.value,
+    required this.subtitle,
+    required this.icon,
+    required this.color,
+  });
+}
+
+// ============================================================================
+// PRODUCT MODEL
+// ============================================================================
 
 class _ProductProfitData {
   final String productId;
@@ -1778,6 +1740,10 @@ class _ProductProfitData {
   });
 }
 
+// ============================================================================
+// CUSTOMER MODEL
+// ============================================================================
+
 class _CustomerProfitData {
   final String customerName;
   final double sales;
@@ -1793,6 +1759,10 @@ class _CustomerProfitData {
     required this.invoiceCount,
   });
 }
+
+// ============================================================================
+// MONTHLY MODEL
+// ============================================================================
 
 class _MonthlyProfitData {
   final int year;
@@ -1812,28 +1782,11 @@ class _MonthlyProfitData {
   });
 }
 
-class _SummaryItem {
-  final String title;
-  final String value;
-  final String subtitle;
-  final IconData icon;
-  final Color color;
-
-  const _SummaryItem({
-    required this.title,
-    required this.value,
-    required this.subtitle,
-    required this.icon,
-    required this.color,
-  });
-}
-
-// =============================================================================
+// ============================================================================
 // REPORT CARD
-// =============================================================================
+// ============================================================================
 
-class _ReportCard
-    extends StatelessWidget {
+class _ReportCard extends StatelessWidget {
   final Widget child;
 
   const _ReportCard({
@@ -1841,38 +1794,32 @@ class _ReportCard
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
     return Container(
       width: double.infinity,
       padding:
-          const EdgeInsets.all(18),
+          const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color:
             theme.colorScheme.surface,
         borderRadius:
-            BorderRadius.circular(18),
+            BorderRadius.circular(20),
         border: Border.all(
           color: theme
               .colorScheme
               .outlineVariant
-              .withValues(
-            alpha: 0.55,
-          ),
+              .withValues(alpha: 0.55),
         ),
         boxShadow: [
           BoxShadow(
-            color:
-                Colors.black.withValues(
-              alpha:
-                  theme.brightness ==
-                          Brightness.dark
-                      ? 0.08
-                      : 0.035,
-            ),
-            blurRadius: 16,
+            color: Colors.black
+                .withValues(alpha: 0.04),
+            blurRadius: 18,
             offset:
                 const Offset(0, 6),
           ),
@@ -1883,130 +1830,9 @@ class _ReportCard
   }
 }
 
-// =============================================================================
-// SUMMARY CARD
-// =============================================================================
-
-class _SummaryCard
-    extends StatelessWidget {
-  final _SummaryItem item;
-
-  const _SummaryCard({
-    required this.item,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme =
-        Theme.of(context);
-
-    return Container(
-      padding:
-          const EdgeInsets.all(17),
-      decoration: BoxDecoration(
-        color:
-            theme.colorScheme.surface,
-        borderRadius:
-            BorderRadius.circular(17),
-        border: Border.all(
-          color:
-              item.color.withValues(
-            alpha: 0.20,
-          ),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration:
-                    BoxDecoration(
-                  color:
-                      item.color.withValues(
-                    alpha: 0.10,
-                  ),
-                  borderRadius:
-                      BorderRadius.circular(
-                    12,
-                  ),
-                ),
-                child: Icon(
-                  item.icon,
-                  color: item.color,
-                  size: 21,
-                ),
-              ),
-              const Spacer(),
-              Icon(
-                Icons.arrow_outward_rounded,
-                color:
-                    item.color.withValues(
-                  alpha: 0.65,
-                ),
-                size: 18,
-              ),
-            ],
-          ),
-          const Spacer(),
-          Text(
-            item.title,
-            maxLines: 1,
-            overflow:
-                TextOverflow.ellipsis,
-            style: theme
-                .textTheme
-                .bodySmall
-                ?.copyWith(
-              color: theme
-                  .colorScheme
-                  .onSurfaceVariant,
-              fontWeight:
-                  FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            item.value,
-            maxLines: 1,
-            overflow:
-                TextOverflow.ellipsis,
-            style: theme
-                .textTheme
-                .titleLarge
-                ?.copyWith(
-              fontWeight:
-                  FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            item.subtitle,
-            maxLines: 1,
-            overflow:
-                TextOverflow.ellipsis,
-            style: theme
-                .textTheme
-                .bodySmall
-                ?.copyWith(
-              color: item.color,
-              fontWeight:
-                  FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// =============================================================================
+// ============================================================================
 // SECTION HEADER
-// =============================================================================
+// ============================================================================
 
 class _SectionHeader
     extends StatelessWidget {
@@ -2021,33 +1847,31 @@ class _SectionHeader
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
     return Row(
+      crossAxisAlignment:
+          CrossAxisAlignment.start,
       children: [
         Container(
           width: 42,
           height: 42,
-          decoration:
-              BoxDecoration(
+          decoration: BoxDecoration(
             color: theme
                 .colorScheme
                 .primary
-                .withValues(
-              alpha: 0.10,
-            ),
+                .withValues(alpha: 0.10),
             borderRadius:
-                BorderRadius.circular(
-              12,
-            ),
+                BorderRadius.circular(13),
           ),
           child: Icon(
             icon,
             color:
                 theme.colorScheme.primary,
-            size: 22,
           ),
         ),
         const SizedBox(width: 12),
@@ -2060,13 +1884,13 @@ class _SectionHeader
                 title,
                 style: theme
                     .textTheme
-                    .titleMedium
+                    .titleLarge
                     ?.copyWith(
                   fontWeight:
                       FontWeight.w800,
                 ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 3),
               Text(
                 subtitle,
                 style: theme
@@ -2086,63 +1910,173 @@ class _SectionHeader
   }
 }
 
-// =============================================================================
-// MONTHLY TILE
-// =============================================================================
+// ============================================================================
+// SUMMARY CARD
+// ============================================================================
 
-class _MonthlyTile
+class _SummaryCard
     extends StatelessWidget {
-  final _MonthlyProfitData month;
+  final _SummaryItem item;
+
+  const _SummaryCard({
+    required this.item,
+  });
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    final ThemeData theme =
+        Theme.of(context);
+
+    return Container(
+      padding:
+          const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color:
+            theme.colorScheme.surface,
+        borderRadius:
+            BorderRadius.circular(18),
+        border: Border.all(
+          color:
+              item.color.withValues(
+            alpha: 0.18,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration:
+                BoxDecoration(
+              color:
+                  item.color.withValues(
+                alpha: 0.11,
+              ),
+              borderRadius:
+                  BorderRadius.circular(
+                14,
+              ),
+            ),
+            child: Icon(
+              item.icon,
+              color: item.color,
+              size: 23,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              mainAxisAlignment:
+                  MainAxisAlignment.center,
+              children: [
+                Text(
+                  item.title,
+                  maxLines: 1,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style: theme
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(
+                    fontWeight:
+                        FontWeight.w600,
+                    color: theme
+                        .colorScheme
+                        .onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  item.value,
+                  maxLines: 1,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style: theme
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(
+                    fontWeight:
+                        FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  item.subtitle,
+                  maxLines: 1,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style: theme
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(
+                    fontSize: 10,
+                    color: theme
+                        .colorScheme
+                        .onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// MONTHLY TILE
+// ============================================================================
+
+class _MonthlyProfitTile
+    extends StatelessWidget {
+  final _MonthlyProfitData data;
+  final String month;
   final double netProfit;
-  final String monthName;
   final String Function(double) currency;
 
-  const _MonthlyTile({
+  const _MonthlyProfitTile({
+    required this.data,
     required this.month,
     required this.netProfit,
-    required this.monthName,
     required this.currency,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
-    final double margin =
-        month.sales > 0
-            ? (netProfit /
-                    month.sales) *
-                100
-            : 0;
-
     return Container(
-      margin:
-          const EdgeInsets.only(
-        bottom: 10,
-      ),
       padding:
-          const EdgeInsets.all(14),
+          const EdgeInsets.all(15),
       decoration: BoxDecoration(
         color: theme
             .colorScheme
             .surfaceContainerHighest
-            .withValues(
-          alpha: 0.40,
-        ),
+            .withValues(alpha: 0.35),
         borderRadius:
-            BorderRadius.circular(14),
+            BorderRadius.circular(15),
       ),
       child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Expanded(
                 child: Text(
-                  monthName,
+                  month,
                   style: theme
                       .textTheme
-                      .bodyLarge
+                      .titleMedium
                       ?.copyWith(
                     fontWeight:
                         FontWeight.w800,
@@ -2155,11 +2089,11 @@ class _MonthlyTile
                     .textTheme
                     .titleMedium
                     ?.copyWith(
+                  fontWeight:
+                      FontWeight.w800,
                   color: netProfit >= 0
                       ? AppColors.success
                       : AppColors.danger,
-                  fontWeight:
-                      FontWeight.w800,
                 ),
               ),
             ],
@@ -2172,28 +2106,26 @@ class _MonthlyTile
               _MiniMetric(
                 label: 'Sales',
                 value:
-                    currency(month.sales),
+                    currency(data.sales),
               ),
               _MiniMetric(
                 label: 'Cost',
                 value:
-                    currency(month.cost),
+                    currency(data.cost),
               ),
               _MiniMetric(
                 label: 'Gross',
-                value: currency(
-                  month.grossProfit,
+                value:
+                    currency(
+                  data.grossProfit,
                 ),
               ),
               _MiniMetric(
                 label: 'Expenses',
                 value:
-                    currency(month.expenses),
-              ),
-              _MiniMetric(
-                label: 'Margin',
-                value:
-                    '${margin.toStringAsFixed(1)}%',
+                    currency(
+                  data.expenses,
+                ),
               ),
             ],
           ),
@@ -2203,119 +2135,87 @@ class _MonthlyTile
   }
 }
 
-// =============================================================================
-// PRODUCT PROFIT TILE
-// =============================================================================
+// ============================================================================
+// PRODUCT TILE
+// ============================================================================
 
 class _ProductProfitTile
     extends StatelessWidget {
   final _ProductProfitData data;
-  final double margin;
   final String Function(double) currency;
   final String Function(double) number;
 
   const _ProductProfitTile({
     required this.data,
-    required this.margin,
     required this.currency,
     required this.number,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
+    final double margin =
+        data.revenue <= 0
+            ? 0
+            : (data.profit /
+                    data.revenue) *
+                100;
+
     return Container(
-      margin:
-          const EdgeInsets.only(
-        bottom: 10,
-      ),
       padding:
           const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: theme
             .colorScheme
             .surfaceContainerHighest
-            .withValues(
-          alpha: 0.40,
-        ),
+            .withValues(alpha: 0.35),
         borderRadius:
-            BorderRadius.circular(14),
+            BorderRadius.circular(15),
       ),
       child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Expanded(
-                child: Row(
-                  children: [
-                    Container(
-                      width: 38,
-                      height: 38,
-                      decoration:
-                          BoxDecoration(
-                        color:
-                            AppColors.success
-                                .withValues(
-                          alpha: 0.10,
-                        ),
-                        borderRadius:
-                            BorderRadius
-                                .circular(
-                          10,
-                        ),
-                      ),
-                      child: const Icon(
-                        Icons.inventory_2_rounded,
-                        color:
-                            AppColors.success,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(
-                      width: 10,
-                    ),
-                    Expanded(
-                      child: Text(
-                        data.productName,
-                        maxLines: 1,
-                        overflow:
-                            TextOverflow
-                                .ellipsis,
-                        style: theme
-                            .textTheme
-                            .bodyLarge
-                            ?.copyWith(
-                          fontWeight:
-                              FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  data.productName,
+                  maxLines: 2,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style: theme
+                      .textTheme
+                      .titleSmall
+                      ?.copyWith(
+                    fontWeight:
+                        FontWeight.w800,
+                  ),
                 ),
               ),
+              const SizedBox(width: 10),
               Text(
                 currency(data.profit),
                 style: theme
                     .textTheme
-                    .bodyLarge
+                    .titleSmall
                     ?.copyWith(
-                  color:
-                      data.profit >= 0
-                          ? AppColors
-                              .success
-                          : AppColors
-                              .danger,
                   fontWeight:
                       FontWeight.w800,
+                  color: data.profit >= 0
+                      ? AppColors.success
+                      : AppColors.danger,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 10),
           Wrap(
-            spacing: 18,
+            spacing: 16,
             runSpacing: 7,
             children: [
               _MiniMetric(
@@ -2326,9 +2226,7 @@ class _ProductProfitTile
               _MiniMetric(
                 label: 'Revenue',
                 value:
-                    currency(
-                  data.revenue,
-                ),
+                    currency(data.revenue),
               ),
               _MiniMetric(
                 label: 'Cost',
@@ -2348,9 +2246,9 @@ class _ProductProfitTile
   }
 }
 
-// =============================================================================
-// CUSTOMER PROFIT TILE
-// =============================================================================
+// ============================================================================
+// CUSTOMER TILE
+// ============================================================================
 
 class _CustomerProfitTile
     extends StatelessWidget {
@@ -2365,26 +2263,22 @@ class _CustomerProfitTile
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
     return Container(
-      margin:
-          const EdgeInsets.only(
-        bottom: 10,
-      ),
       padding:
           const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: theme
             .colorScheme
             .surfaceContainerHighest
-            .withValues(
-          alpha: 0.40,
-        ),
+            .withValues(alpha: 0.35),
         borderRadius:
-            BorderRadius.circular(14),
+            BorderRadius.circular(15),
       ),
       child: Row(
         children: [
@@ -2393,24 +2287,22 @@ class _CustomerProfitTile
             height: 42,
             decoration:
                 BoxDecoration(
-              color:
-                  AppColors.primary
-                      .withValues(
-                alpha: 0.10,
-              ),
+              color: theme
+                  .colorScheme
+                  .primary
+                  .withValues(alpha: 0.10),
               borderRadius:
                   BorderRadius.circular(
-                11,
+                13,
               ),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.person_rounded,
               color:
-                  AppColors.primary,
-              size: 22,
+                  theme.colorScheme.primary,
             ),
           ),
-          const SizedBox(width: 11),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment:
@@ -2423,7 +2315,7 @@ class _CustomerProfitTile
                       TextOverflow.ellipsis,
                   style: theme
                       .textTheme
-                      .bodyLarge
+                      .titleSmall
                       ?.copyWith(
                     fontWeight:
                         FontWeight.w800,
@@ -2431,7 +2323,7 @@ class _CustomerProfitTile
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${data.invoiceCount} invoice${data.invoiceCount == 1 ? '' : 's'} • ${margin.toStringAsFixed(1)}% margin',
+                  '${data.invoiceCount} invoice${data.invoiceCount == 1 ? '' : 's'} • Margin ${margin.toStringAsFixed(1)}%',
                   style: theme
                       .textTheme
                       .bodySmall
@@ -2444,19 +2336,18 @@ class _CustomerProfitTile
               ],
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
           Text(
             currency(data.profit),
             style: theme
                 .textTheme
-                .bodyLarge
+                .titleSmall
                 ?.copyWith(
-              color:
-                  data.profit >= 0
-                      ? AppColors.success
-                      : AppColors.danger,
               fontWeight:
                   FontWeight.w800,
+              color: data.profit >= 0
+                  ? AppColors.success
+                  : AppColors.danger,
             ),
           ),
         ],
@@ -2465,166 +2356,151 @@ class _CustomerProfitTile
   }
 }
 
-// =============================================================================
-// SALE PROFIT TILE
-// =============================================================================
+// ============================================================================
+// SALE TILE
+// ============================================================================
 
 class _SaleProfitTile
     extends StatelessWidget {
   final SaleModel sale;
   final double cost;
   final double profit;
+  final double margin;
   final String Function(double) currency;
   final String Function(DateTime) date;
-  final VoidCallback onTap;
 
   const _SaleProfitTile({
     required this.sale,
     required this.cost,
     required this.profit,
+    required this.margin,
     required this.currency,
     required this.date,
-    required this.onTap,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius:
-          BorderRadius.circular(14),
-      child: Container(
-        margin:
-            const EdgeInsets.only(
-          bottom: 10,
-        ),
-        padding:
-            const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: theme
-              .colorScheme
-              .surfaceContainerHighest
-              .withValues(
-            alpha: 0.40,
-          ),
-          borderRadius:
-              BorderRadius.circular(14),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 43,
-              height: 43,
-              decoration:
-                  BoxDecoration(
-                color:
-                    AppColors.success
-                        .withValues(
-                  alpha: 0.10,
-                ),
-                borderRadius:
-                    BorderRadius.circular(
-                  11,
-                ),
-              ),
-              child: const Icon(
-                Icons.receipt_rounded,
-                color:
-                    AppColors.success,
-                size: 22,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    sale.invoiceNumber,
-                    maxLines: 1,
-                    overflow:
-                        TextOverflow.ellipsis,
-                    style: theme
-                        .textTheme
-                        .bodyLarge
-                        ?.copyWith(
-                      fontWeight:
-                          FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    sale.customerName,
-                    maxLines: 1,
-                    overflow:
-                        TextOverflow.ellipsis,
-                    style: theme
-                        .textTheme
-                        .bodySmall,
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    '${date(sale.date)} • Cost ${currency(cost)}',
-                    style: theme
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(
-                      color: theme
-                          .colorScheme
-                          .onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.end,
-              children: [
-                Text(
-                  currency(profit),
+    return Container(
+      padding:
+          const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: theme
+            .colorScheme
+            .surfaceContainerHighest
+            .withValues(alpha: 0.35),
+        borderRadius:
+            BorderRadius.circular(15),
+      ),
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  sale.invoiceNumber
+                          .trim()
+                          .isEmpty
+                      ? 'Sale'
+                      : sale.invoiceNumber,
                   style: theme
                       .textTheme
-                      .bodyLarge
+                      .titleSmall
                       ?.copyWith(
-                    color: profit >= 0
-                        ? AppColors.success
-                        : AppColors.danger,
                     fontWeight:
                         FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 4),
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  size: 20,
+              ),
+              Text(
+                currency(profit),
+                style: theme
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(
+                  fontWeight:
+                      FontWeight.w800,
+                  color: profit >= 0
+                      ? AppColors.success
+                      : AppColors.danger,
                 ),
-              ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          Text(
+            sale.customerName.trim().isEmpty
+                ? 'Walk-in Customer'
+                : sale.customerName,
+            maxLines: 1,
+            overflow:
+                TextOverflow.ellipsis,
+            style: theme
+                .textTheme
+                .bodyMedium
+                ?.copyWith(
+              fontWeight:
+                  FontWeight.w600,
             ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            date(sale.date),
+            style: theme
+                .textTheme
+                .bodySmall
+                ?.copyWith(
+              color: theme
+                  .colorScheme
+                  .onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 18,
+            runSpacing: 8,
+            children: [
+              _MiniMetric(
+                label: 'Sales',
+                value:
+                    currency(sale.total),
+              ),
+              _MiniMetric(
+                label: 'Cost',
+                value:
+                    currency(cost),
+              ),
+              _MiniMetric(
+                label: 'Margin',
+                value:
+                    '${margin.toStringAsFixed(1)}%',
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
 }
 
-// =============================================================================
-// EXPENSE IMPACT TILE
-// =============================================================================
+// ============================================================================
+// EXPENSE TILE
+// ============================================================================
 
-class _ExpenseImpactTile
+class _ExpenseCategoryTile
     extends StatelessWidget {
   final String category;
   final double amount;
   final double total;
   final String Function(double) currency;
 
-  const _ExpenseImpactTile({
+  const _ExpenseCategoryTile({
     required this.category,
     required this.amount,
     required this.total,
@@ -2632,31 +2508,27 @@ class _ExpenseImpactTile
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
     final double percentage =
-        total > 0
-            ? (amount / total) * 100
-            : 0;
+        total <= 0
+            ? 0
+            : (amount / total) * 100;
 
     return Container(
-      margin:
-          const EdgeInsets.only(
-        bottom: 10,
-      ),
       padding:
           const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: theme
             .colorScheme
             .surfaceContainerHighest
-            .withValues(
-          alpha: 0.40,
-        ),
+            .withValues(alpha: 0.35),
         borderRadius:
-            BorderRadius.circular(14),
+            BorderRadius.circular(15),
       ),
       child: Column(
         children: [
@@ -2667,7 +2539,7 @@ class _ExpenseImpactTile
                   category,
                   style: theme
                       .textTheme
-                      .bodyLarge
+                      .titleSmall
                       ?.copyWith(
                     fontWeight:
                         FontWeight.w700,
@@ -2678,10 +2550,8 @@ class _ExpenseImpactTile
                 currency(amount),
                 style: theme
                     .textTheme
-                    .bodyLarge
+                    .titleSmall
                     ?.copyWith(
-                  color:
-                      AppColors.danger,
                   fontWeight:
                       FontWeight.w800,
                 ),
@@ -2691,39 +2561,42 @@ class _ExpenseImpactTile
           const SizedBox(height: 9),
           ClipRRect(
             borderRadius:
-                BorderRadius.circular(20),
+                BorderRadius.circular(
+              20,
+            ),
             child:
                 LinearProgressIndicator(
-              value: (percentage / 100)
-                  .clamp(0.0, 1.0),
+              value:
+                  percentage.clamp(
+                0,
+                100,
+              ) /
+                      100,
               minHeight: 7,
-              backgroundColor: theme
-                  .colorScheme
-                  .outlineVariant
-                  .withValues(
-                alpha: 0.35,
-              ),
-              valueColor:
-                  const AlwaysStoppedAnimation<
-                      Color>(
-                AppColors.danger,
-              ),
+              backgroundColor:
+                  theme
+                      .colorScheme
+                      .outlineVariant
+                      .withValues(
+                    alpha: 0.35,
+                  ),
+              color:
+                  AppColors.danger,
             ),
           ),
-          const SizedBox(height: 5),
+          const SizedBox(height: 6),
           Align(
             alignment:
                 Alignment.centerRight,
             child: Text(
-              '${percentage.toStringAsFixed(1)}%',
+              '${percentage.toStringAsFixed(1)}% of total expenses',
               style: theme
                   .textTheme
                   .bodySmall
                   ?.copyWith(
-                color:
-                    AppColors.danger,
-                fontWeight:
-                    FontWeight.w700,
+                color: theme
+                    .colorScheme
+                    .onSurfaceVariant,
               ),
             ),
           ),
@@ -2733,9 +2606,9 @@ class _ExpenseImpactTile
   }
 }
 
-// =============================================================================
+// ============================================================================
 // MINI METRIC
-// =============================================================================
+// ============================================================================
 
 class _MiniMetric
     extends StatelessWidget {
@@ -2748,7 +2621,9 @@ class _MiniMetric
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
@@ -2774,7 +2649,7 @@ class _MiniMetric
               .bodySmall
               ?.copyWith(
             fontWeight:
-                FontWeight.w800,
+                FontWeight.w700,
           ),
         ),
       ],
@@ -2782,78 +2657,9 @@ class _MiniMetric
   }
 }
 
-// =============================================================================
-// DETAIL ROW
-// =============================================================================
-
-class _DetailRow
-    extends StatelessWidget {
-  final String label;
-  final String value;
-  final bool bold;
-  final Color? valueColor;
-
-  const _DetailRow({
-    required this.label,
-    required this.value,
-    this.bold = false,
-    this.valueColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme =
-        Theme.of(context);
-
-    return Padding(
-      padding:
-          const EdgeInsets.only(
-        bottom: 10,
-      ),
-      child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: theme
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(
-                color: theme
-                    .colorScheme
-                    .onSurfaceVariant,
-              ),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Flexible(
-            child: Text(
-              value,
-              textAlign:
-                  TextAlign.end,
-              style: theme
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(
-                color: valueColor,
-                fontWeight:
-                    bold
-                        ? FontWeight.w800
-                        : FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// =============================================================================
-// EMPTY
-// =============================================================================
+// ============================================================================
+// EMPTY INLINE
+// ============================================================================
 
 class _EmptyInline
     extends StatelessWidget {
@@ -2866,34 +2672,37 @@ class _EmptyInline
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
     return Container(
       width: double.infinity,
       padding:
-          const EdgeInsets.all(24),
+          const EdgeInsets.symmetric(
+        horizontal: 18,
+        vertical: 24,
+      ),
       decoration: BoxDecoration(
         color: theme
             .colorScheme
             .surfaceContainerHighest
-            .withValues(
-          alpha: 0.35,
-        ),
+            .withValues(alpha: 0.25),
         borderRadius:
-            BorderRadius.circular(14),
+            BorderRadius.circular(15),
       ),
       child: Column(
         children: [
           Icon(
             icon,
-            size: 34,
+            size: 38,
             color: theme
                 .colorScheme
                 .onSurfaceVariant,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 9),
           Text(
             message,
             textAlign:

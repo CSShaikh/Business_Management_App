@@ -5,9 +5,11 @@ import '../../core/theme/app_colors.dart';
 import '../../models/business_model.dart';
 import '../../models/purchase_model.dart';
 import '../../models/supplier_model.dart';
+import '../../models/supplier_payment_model.dart';
 import '../../repositories/business_repository.dart';
 import '../../repositories/purchase_repository.dart';
 import '../../repositories/supplier_repository.dart';
+import '../../repositories/supplier_payment_repository.dart';
 
 class SupplierReportScreen extends StatefulWidget {
   const SupplierReportScreen({
@@ -30,6 +32,9 @@ class _SupplierReportScreenState
   final PurchaseRepository _purchaseRepository =
       PurchaseRepository();
 
+  final SupplierPaymentRepository _supplierPaymentRepository =
+      SupplierPaymentRepository();
+
   final TextEditingController _searchController =
       TextEditingController();
 
@@ -44,8 +49,14 @@ class _SupplierReportScreenState
   DateTime? _startDate;
   DateTime? _endDate;
 
-  List<SupplierModel> _suppliers = <SupplierModel>[];
-  List<PurchaseModel> _purchases = <PurchaseModel>[];
+  List<SupplierModel> _suppliers =
+      <SupplierModel>[];
+
+  List<PurchaseModel> _purchases =
+      <PurchaseModel>[];
+
+  List<SupplierPaymentModel> _supplierPayments =
+      <SupplierPaymentModel>[];
 
   static const List<String> _paymentStatuses = [
     'All',
@@ -103,6 +114,9 @@ class _SupplierReportScreenState
         _purchaseRepository.getPurchases(
           businessId: business.id,
         ),
+        _supplierPaymentRepository.getPayments(
+          businessId: business.id,
+        ),
       ]);
 
       if (!mounted) return;
@@ -113,6 +127,9 @@ class _SupplierReportScreenState
 
         _purchases =
             results[1] as List<PurchaseModel>;
+
+        _supplierPayments =
+            results[2] as List<SupplierPaymentModel>;
 
         _loading = false;
         _refreshing = false;
@@ -213,20 +230,64 @@ class _SupplierReportScreenState
     }).toList();
   }
 
+  // ===========================================================================
+  // FILTERED SUPPLIER PAYMENTS
+  // ===========================================================================
+
+  List<SupplierPaymentModel>
+      get _filteredSupplierPayments {
+    return _supplierPayments.where((payment) {
+      final DateTime date = payment.date;
+
+      if (_startDate != null &&
+          date.isBefore(_startDate!)) {
+        return false;
+      }
+
+      if (_endDate != null &&
+          date.isAfter(_endDate!)) {
+        return false;
+      }
+
+      return true;
+    }).toList();
+  }
+
+  List<SupplierPaymentModel> _supplierPaymentsFor(
+    SupplierModel supplier,
+  ) {
+    return _filteredSupplierPayments.where((payment) {
+      return payment.supplierId.trim() ==
+          supplier.id.trim();
+    }).toList();
+  }
+
+  // ===========================================================================
+  // FILTERED SUPPLIERS
+  // ===========================================================================
+
   List<SupplierModel> get _filteredSuppliers {
     final String query =
         _searchQuery.trim().toLowerCase();
 
-    final Set<String> supplierIds =
-        _filteredPurchases
-            .map(
-              (purchase) =>
-                  purchase.supplierId.trim(),
-            )
-            .where(
-              (id) => id.isNotEmpty,
-            )
-            .toSet();
+    final Set<String> supplierIds = <String>{
+      ..._filteredPurchases
+          .map(
+            (purchase) =>
+                purchase.supplierId.trim(),
+          )
+          .where(
+            (id) => id.isNotEmpty,
+          ),
+      ..._filteredSupplierPayments
+          .map(
+            (payment) =>
+                payment.supplierId.trim(),
+          )
+          .where(
+            (id) => id.isNotEmpty,
+          ),
+    };
 
     final List<SupplierModel> suppliers =
         _suppliers.where((supplier) {
@@ -300,7 +361,7 @@ class _SupplierReportScreenState
     );
   }
 
-  double _supplierPaidAmount(
+  double _supplierPurchasePaidAmount(
     SupplierModel supplier,
   ) {
     return _supplierPurchases(supplier).fold(
@@ -310,22 +371,41 @@ class _SupplierReportScreenState
     );
   }
 
+  double _supplierPaymentAmount(
+    SupplierModel supplier,
+  ) {
+    return _supplierPaymentsFor(supplier).fold(
+      0,
+      (sum, payment) =>
+          sum + payment.amount,
+    );
+  }
+
+  double _supplierPaidAmount(
+    SupplierModel supplier,
+  ) {
+    return _supplierPurchasePaidAmount(
+          supplier,
+        ) +
+        _supplierPaymentAmount(
+          supplier,
+        );
+  }
+
   double _supplierOutstandingAmount(
     SupplierModel supplier,
   ) {
-    return _supplierPurchases(supplier).fold(
-      0,
-      (sum, purchase) {
-        final double outstanding =
-            purchase.total -
-                purchase.paidAmount;
+    final double outstanding =
+        _supplierPurchaseAmount(
+          supplier,
+        ) -
+        _supplierPaidAmount(
+          supplier,
+        );
 
-        return sum +
-            (outstanding > 0
-                ? outstanding
-                : 0);
-      },
-    );
+    return outstanding > 0
+        ? outstanding
+        : 0;
   }
 
   double _supplierQuantity(
@@ -362,7 +442,7 @@ class _SupplierReportScreenState
     );
   }
 
-  double get _totalPaid {
+  double get _totalPurchasePaid {
     return _filteredPurchases.fold(
       0,
       (sum, purchase) =>
@@ -370,20 +450,27 @@ class _SupplierReportScreenState
     );
   }
 
-  double get _totalOutstanding {
-    return _filteredPurchases.fold(
+  double get _totalSupplierPayments {
+    return _filteredSupplierPayments.fold(
       0,
-      (sum, purchase) {
-        final double outstanding =
-            purchase.total -
-                purchase.paidAmount;
-
-        return sum +
-            (outstanding > 0
-                ? outstanding
-                : 0);
-      },
+      (sum, payment) =>
+          sum + payment.amount,
     );
+  }
+
+  double get _totalPaid {
+    return _totalPurchasePaid +
+        _totalSupplierPayments;
+  }
+
+  double get _totalOutstanding {
+    final double outstanding =
+        _totalPurchases -
+            _totalPaid;
+
+    return outstanding > 0
+        ? outstanding
+        : 0;
   }
 
   int get _paidPurchaseCount {
@@ -427,7 +514,9 @@ class _SupplierReportScreenState
   // FORMATTERS
   // ===========================================================================
 
-  String _currency(double value) {
+  String _currency(
+    double value,
+  ) {
     return NumberFormat.currency(
       locale: 'en_IN',
       symbol: '₹',
@@ -435,17 +524,25 @@ class _SupplierReportScreenState
     ).format(value);
   }
 
-  String _number(double value) {
-    return NumberFormat(
-      '#,##0.##',
-      'en_IN',
-    ).format(value);
+  String _number(
+    double value,
+  ) {
+    if (value ==
+        value.roundToDouble()) {
+      return value
+          .toInt()
+          .toString();
+    }
+
+    return value.toStringAsFixed(2);
   }
 
-  String _date(DateTime value) {
+  String _date(
+    DateTime date,
+  ) {
     return DateFormat(
       'dd MMM yyyy',
-    ).format(value);
+    ).format(date);
   }
 
   // ===========================================================================
@@ -453,55 +550,123 @@ class _SupplierReportScreenState
   // ===========================================================================
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
     if (_loading) {
-      return const Center(
-        child: CircularProgressIndicator(),
+      return Scaffold(
+        backgroundColor:
+            theme.scaffoldBackgroundColor,
+        appBar: AppBar(
+          title:
+              const Text(
+            'Supplier Report',
+          ),
+        ),
+        body:
+            const Center(
+          child:
+              CircularProgressIndicator(),
+        ),
       );
     }
 
     if (_errorMessage != null) {
-      return _buildErrorState(theme);
+      return Scaffold(
+        backgroundColor:
+            theme.scaffoldBackgroundColor,
+        appBar: AppBar(
+          title:
+              const Text(
+            'Supplier Report',
+          ),
+        ),
+        body:
+            _buildErrorState(theme),
+      );
     }
 
-    final List<SupplierModel> suppliers =
+    final List<SupplierModel>
+        suppliers =
         _filteredSuppliers;
 
-    return RefreshIndicator(
-      onRefresh: _refreshReport,
-      child: LayoutBuilder(
-        builder: (
+    return Scaffold(
+      backgroundColor:
+          theme.scaffoldBackgroundColor,
+      appBar: AppBar(
+        title:
+            const Text(
+          'Supplier Report',
+        ),
+        actions: [
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed:
+                _refreshing
+                    ? null
+                    : _refreshReport,
+            icon: _refreshing
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child:
+                        CircularProgressIndicator(
+                      strokeWidth: 2,
+                    ),
+                  )
+                : const Icon(
+                    Icons
+                        .refresh_rounded,
+                  ),
+          ),
+          const SizedBox(
+            width: 4,
+          ),
+        ],
+      ),
+      body:
+          LayoutBuilder(
+        builder:
+            (
           context,
           constraints,
         ) {
           final bool isDesktop =
-              constraints.maxWidth >= 1000;
+              constraints.maxWidth >=
+                  1000;
 
           final bool isTablet =
-              constraints.maxWidth >= 650 &&
-                  constraints.maxWidth < 1000;
+              constraints.maxWidth >=
+                      650 &&
+                  constraints.maxWidth <
+                      1000;
 
           return SingleChildScrollView(
             physics:
                 const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.symmetric(
-              horizontal: isDesktop
-                  ? 28
-                  : isTablet
-                      ? 22
-                      : 16,
+            padding:
+                EdgeInsets.symmetric(
+              horizontal:
+                  isDesktop
+                      ? 28
+                      : isTablet
+                          ? 22
+                          : 16,
               vertical: 20,
             ),
-            child: Center(
-              child: ConstrainedBox(
+            child:
+                Center(
+              child:
+                  ConstrainedBox(
                 constraints:
                     const BoxConstraints(
                   maxWidth: 1250,
                 ),
-                child: Column(
+                child:
+                    Column(
                   crossAxisAlignment:
                       CrossAxisAlignment.start,
                   children: [
@@ -509,15 +674,25 @@ class _SupplierReportScreenState
                       theme,
                       isDesktop,
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(
+                      height: 20,
+                    ),
                     _buildSummary(
                       isDesktop,
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(
+                      height: 20,
+                    ),
                     _buildPaymentOverview(),
-                    const SizedBox(height: 20),
-                    _buildFilters(theme),
-                    const SizedBox(height: 20),
+                    const SizedBox(
+                      height: 20,
+                    ),
+                    _buildFilters(
+                      theme,
+                    ),
+                    const SizedBox(
+                      height: 20,
+                    ),
                     _buildSupplierList(
                       theme,
                       suppliers,
@@ -547,88 +722,135 @@ class _SupplierReportScreenState
             : 'All dates';
 
     return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(
-        isDesktop ? 26 : 20,
+      width:
+          double.infinity,
+      padding:
+          EdgeInsets.all(
+        isDesktop
+            ? 26
+            : 20,
       ),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
+      decoration:
+          const BoxDecoration(
+        gradient:
+            LinearGradient(
           colors: [
             AppColors.primary,
             AppColors.secondary,
           ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+          begin:
+              Alignment.topLeft,
+          end:
+              Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.all(
-          Radius.circular(22),
+        borderRadius:
+            BorderRadius.all(
+          Radius.circular(
+            22,
+          ),
         ),
       ),
-      child: Row(
+      child:
+          Row(
         crossAxisAlignment:
             CrossAxisAlignment.start,
         children: [
           Container(
             width: 54,
             height: 54,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(
+            decoration:
+                BoxDecoration(
+              color: Colors.white
+                  .withValues(
                 alpha: 0.15,
               ),
               borderRadius:
-                  BorderRadius.circular(16),
+                  BorderRadius.circular(
+                16,
+              ),
             ),
-            child: const Icon(
-              Icons.local_shipping_rounded,
-              color: Colors.white,
+            child:
+                const Icon(
+              Icons
+                  .local_shipping_rounded,
+              color:
+                  Colors.white,
               size: 29,
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(
+            width: 16,
+          ),
           Expanded(
-            child: Column(
+            child:
+                Column(
               crossAxisAlignment:
                   CrossAxisAlignment.start,
               children: [
                 const Text(
                   'Supplier Report',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.w800,
+                  style:
+                      TextStyle(
+                    color:
+                        Colors.white,
+                    fontSize:
+                        24,
+                    fontWeight:
+                        FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 5),
+                const SizedBox(
+                  height: 5,
+                ),
                 Text(
                   'Analyse supplier-wise purchases, payments, outstanding balances and purchase activity.',
-                  style: TextStyle(
-                    color: Colors.white.withValues(
-                      alpha: 0.82,
+                  style:
+                      TextStyle(
+                    color: Colors
+                        .white
+                        .withValues(
+                      alpha:
+                          0.82,
                     ),
-                    fontSize: 13,
-                    height: 1.4,
+                    fontSize:
+                        13,
+                    height:
+                        1.4,
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(
+                  height: 10,
+                ),
                 Container(
                   padding:
                       const EdgeInsets.symmetric(
-                    horizontal: 11,
-                    vertical: 6,
+                    horizontal:
+                        11,
+                    vertical:
+                        6,
                   ),
-                  decoration: BoxDecoration(
-                    color:
-                        Colors.white.withValues(
-                      alpha: 0.14,
+                  decoration:
+                      BoxDecoration(
+                    color: Colors
+                        .white
+                        .withValues(
+                      alpha:
+                          0.14,
                     ),
                     borderRadius:
-                        BorderRadius.circular(30),
+                        BorderRadius.circular(
+                      30,
+                    ),
                   ),
-                  child: Text(
+                  child:
+                      Text(
                     dateText,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
+                    style:
+                        const TextStyle(
+                      color:
+                          Colors.white,
+                      fontSize:
+                          12,
                       fontWeight:
                           FontWeight.w600,
                     ),
@@ -639,23 +861,29 @@ class _SupplierReportScreenState
           ),
           if (isDesktop)
             IconButton(
-              tooltip: 'Refresh',
-              onPressed: _refreshing
-                  ? null
-                  : _refreshReport,
+              tooltip:
+                  'Refresh',
+              onPressed:
+                  _refreshing
+                      ? null
+                      : _refreshReport,
               icon: _refreshing
                   ? const SizedBox(
                       width: 20,
                       height: 20,
                       child:
                           CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
+                        strokeWidth:
+                            2,
+                        color:
+                            Colors.white,
                       ),
                     )
                   : const Icon(
-                      Icons.refresh_rounded,
-                      color: Colors.white,
+                      Icons
+                          .refresh_rounded,
+                      color:
+                          Colors.white,
                     ),
             ),
         ],
@@ -670,45 +898,64 @@ class _SupplierReportScreenState
   Widget _buildSummary(
     bool isDesktop,
   ) {
-    final List<_SummaryItem> items = [
+    final List<_SummaryItem>
+        items = [
       _SummaryItem(
-        title: 'Total Purchases',
+        title:
+            'Total Purchases',
         value:
-            _currency(_totalPurchases),
+            _currency(
+          _totalPurchases,
+        ),
         subtitle:
             'Purchase amount',
         icon:
-            Icons.shopping_cart_rounded,
-        color: AppColors.primary,
+            Icons
+                .shopping_cart_rounded,
+        color:
+            AppColors.primary,
       ),
       _SummaryItem(
-        title: 'Paid',
-        value: _currency(_totalPaid),
+        title:
+            'Paid',
+        value:
+            _currency(
+          _totalPaid,
+        ),
         subtitle:
-            'Amount paid to suppliers',
+            'Purchase + supplier payments',
         icon:
             Icons.payments_rounded,
-        color: AppColors.success,
+        color:
+            AppColors.success,
       ),
       _SummaryItem(
-        title: 'Outstanding',
+        title:
+            'Outstanding',
         value:
-            _currency(_totalOutstanding),
+            _currency(
+          _totalOutstanding,
+        ),
         subtitle:
             'Supplier payable',
         icon:
-            Icons.account_balance_wallet_rounded,
-        color: AppColors.warning,
+            Icons
+                .account_balance_wallet_rounded,
+        color:
+            AppColors.warning,
       ),
       _SummaryItem(
-        title: 'Suppliers',
+        title:
+            'Suppliers',
         value:
             '${_filteredSuppliers.length}',
         subtitle:
             'Suppliers in report',
         icon:
-            Icons.local_shipping_rounded,
-        color: AppColors.secondary,
+            Icons
+                .local_shipping_rounded,
+        color:
+            AppColors.secondary,
       ),
     ];
 
@@ -716,22 +963,31 @@ class _SupplierReportScreenState
       shrinkWrap: true,
       physics:
           const NeverScrollableScrollPhysics(),
-      itemCount: items.length,
+      itemCount:
+          items.length,
       gridDelegate:
           SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount:
-            isDesktop ? 4 : 2,
-        crossAxisSpacing: 14,
-        mainAxisSpacing: 14,
+            isDesktop
+                ? 4
+                : 2,
+        crossAxisSpacing:
+            14,
+        mainAxisSpacing:
+            14,
         childAspectRatio:
-            isDesktop ? 1.85 : 1.48,
+            isDesktop
+                ? 1.85
+                : 1.48,
       ),
-      itemBuilder: (
+      itemBuilder:
+          (
         context,
         index,
       ) {
         return _SummaryCard(
-          item: items[index],
+          item:
+              items[index],
         );
       },
     );
@@ -743,7 +999,8 @@ class _SupplierReportScreenState
 
   Widget _buildPaymentOverview() {
     return _ReportCard(
-      child: Column(
+      child:
+          Column(
         crossAxisAlignment:
             CrossAxisAlignment.start,
         children: [
@@ -753,34 +1010,42 @@ class _SupplierReportScreenState
             title:
                 'Supplier Payment Overview',
             subtitle:
-                'Purchase payment status breakdown',
+                'Purchase payment status and supplier payment activity',
           ),
-          const SizedBox(height: 18),
+          const SizedBox(
+            height: 18,
+          ),
           LayoutBuilder(
-            builder: (
+            builder:
+                (
               context,
               constraints,
             ) {
               final bool compact =
-                  constraints.maxWidth < 650;
+                  constraints.maxWidth <
+                      650;
 
-              final List<Widget> items = [
+              final List<Widget>
+                  items = [
                 _PaymentStatusTile(
-                  title: 'Paid',
+                  title:
+                      'Paid',
                   count:
                       _paidPurchaseCount,
                   color:
                       AppColors.success,
                 ),
                 _PaymentStatusTile(
-                  title: 'Partial',
+                  title:
+                      'Partial',
                   count:
                       _partialPurchaseCount,
                   color:
                       AppColors.warning,
                 ),
                 _PaymentStatusTile(
-                  title: 'Unpaid',
+                  title:
+                      'Unpaid',
                   count:
                       _unpaidPurchaseCount,
                   color:
@@ -790,60 +1055,82 @@ class _SupplierReportScreenState
 
               if (compact) {
                 return Column(
-                  children: items
-                      .map(
-                        (item) => Padding(
-                          padding:
-                              const EdgeInsets
-                                  .only(
-                            bottom: 10,
-                          ),
-                          child: item,
-                        ),
-                      )
-                      .toList(),
+                  children:
+                      items
+                          .map(
+                            (
+                              item,
+                            ) =>
+                                Padding(
+                              padding:
+                                  const EdgeInsets.only(
+                                bottom:
+                                    10,
+                              ),
+                              child:
+                                  item,
+                            ),
+                          )
+                          .toList(),
                 );
               }
 
               return Row(
-                children: items
-                    .map(
-                      (item) => Expanded(
-                        child: Padding(
-                          padding:
-                              const EdgeInsets
-                                  .only(
-                            right: 10,
+                children:
+                    items
+                        .map(
+                          (
+                            item,
+                          ) =>
+                              Expanded(
+                            child:
+                                Padding(
+                              padding:
+                                  const EdgeInsets.only(
+                                right:
+                                    10,
+                              ),
+                              child:
+                                  item,
+                            ),
                           ),
-                          child: item,
-                        ),
-                      ),
-                    )
-                    .toList(),
+                        )
+                        .toList(),
               );
             },
           ),
-          const SizedBox(height: 16),
+          const SizedBox(
+            height: 16,
+          ),
           Row(
             children: [
               Expanded(
-                child: ClipRRect(
+                child:
+                    ClipRRect(
                   borderRadius:
                       BorderRadius.circular(
                     20,
                   ),
                   child:
                       LinearProgressIndicator(
-                    value: (_paymentRate /
-                            100)
-                        .clamp(0.0, 1.0),
-                    minHeight: 8,
+                    value:
+                        (_paymentRate /
+                                100)
+                            .clamp(
+                      0.0,
+                      1.0,
+                    ),
+                    minHeight:
+                        8,
                     backgroundColor:
-                        Theme.of(context)
+                        Theme.of(
+                          context,
+                        )
                             .colorScheme
                             .outlineVariant
                             .withValues(
-                          alpha: 0.35,
+                          alpha:
+                              0.35,
                         ),
                     valueColor:
                         const AlwaysStoppedAnimation<
@@ -853,15 +1140,57 @@ class _SupplierReportScreenState
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(
+                width: 10,
+              ),
               Text(
                 '${_paymentRate.toStringAsFixed(1)}% paid',
-                style: const TextStyle(
+                style:
+                    const TextStyle(
                   color:
                       AppColors.success,
                   fontWeight:
                       FontWeight.w700,
-                  fontSize: 12,
+                  fontSize:
+                      12,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(
+            height: 12,
+          ),
+          Row(
+            children: [
+              Expanded(
+                child:
+                    _MiniMetric(
+                  label:
+                      'Purchase Payments',
+                  value:
+                      _currency(
+                    _totalPurchasePaid,
+                  ),
+                  icon:
+                      Icons
+                          .receipt_long_outlined,
+                ),
+              ),
+              const SizedBox(
+                width: 10,
+              ),
+              Expanded(
+                child:
+                    _MiniMetric(
+                  label:
+                      'Supplier Payments',
+                  value:
+                      _currency(
+                    _totalSupplierPayments,
+                  ),
+                  icon:
+                      Icons
+                          .account_balance_wallet_outlined,
                 ),
               ),
             ],
@@ -883,88 +1212,122 @@ class _SupplierReportScreenState
             _endDate != null;
 
     return _ReportCard(
-      child: Column(
+      child:
+          Column(
         crossAxisAlignment:
             CrossAxisAlignment.start,
         children: [
           Text(
             'Search & Filters',
-            style: theme
-                .textTheme
-                .titleMedium
-                ?.copyWith(
+            style:
+                theme.textTheme.titleMedium?.copyWith(
               fontWeight:
                   FontWeight.w800,
             ),
           ),
-          const SizedBox(height: 13),
+          const SizedBox(
+            height: 13,
+          ),
           TextField(
-            controller: _searchController,
-            onChanged: (value) {
+            controller:
+                _searchController,
+            onChanged:
+                (value) {
               setState(() {
                 _searchQuery =
-                    value.trim().toLowerCase();
+                    value
+                        .trim()
+                        .toLowerCase();
               });
             },
-            decoration: InputDecoration(
+            decoration:
+                InputDecoration(
               hintText:
                   'Search supplier, contact, mobile, email or GST...',
-              prefixIcon: const Icon(
-                Icons.search_rounded,
+              prefixIcon:
+                  const Icon(
+                Icons
+                    .search_rounded,
               ),
               suffixIcon:
-                  _searchQuery.isNotEmpty
+                  _searchQuery
+                          .isNotEmpty
                       ? IconButton(
-                          onPressed: () {
+                          onPressed:
+                              () {
                             _searchController
                                 .clear();
 
-                            setState(() {
-                              _searchQuery =
-                                  '';
-                            });
+                            setState(
+                              () {
+                                _searchQuery =
+                                    '';
+                              },
+                            );
                           },
-                          icon: const Icon(
-                            Icons.clear_rounded,
+                          icon:
+                              const Icon(
+                            Icons
+                                .clear_rounded,
                           ),
                         )
                       : null,
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(
+            height: 14,
+          ),
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing:
+                8,
+            runSpacing:
+                8,
             children:
-                _paymentStatuses.map(
-              (status) {
+                _paymentStatuses
+                    .map(
+              (
+                status,
+              ) {
                 return ChoiceChip(
-                  label: Text(status),
+                  label:
+                      Text(
+                    status,
+                  ),
                   selected:
                       _selectedPaymentStatus ==
                           status,
-                  onSelected: (_) {
-                    setState(() {
-                      _selectedPaymentStatus =
-                          status;
-                    });
+                  onSelected:
+                      (_) {
+                    setState(
+                      () {
+                        _selectedPaymentStatus =
+                            status;
+                      },
+                    );
                   },
                 );
               },
             ).toList(),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(
+            height: 12,
+          ),
           Wrap(
-            spacing: 10,
-            runSpacing: 10,
+            spacing:
+                10,
+            runSpacing:
+                10,
             children: [
               OutlinedButton.icon(
                 onPressed:
                     _selectDateRange,
-                icon: const Icon(
-                  Icons.date_range_rounded,
+                icon:
+                    const Icon(
+                  Icons
+                      .date_range_rounded,
                 ),
-                label: Text(
+                label:
+                    Text(
                   hasDateFilter
                       ? '${_date(_startDate!)} - ${_date(_endDate!)}'
                       : 'Select Date Range',
@@ -974,11 +1337,15 @@ class _SupplierReportScreenState
                 TextButton.icon(
                   onPressed:
                       _clearDateFilter,
-                  icon: const Icon(
-                    Icons.clear_rounded,
+                  icon:
+                      const Icon(
+                    Icons
+                        .clear_rounded,
                   ),
                   label:
-                      const Text('Clear Date'),
+                      const Text(
+                    'Clear Date',
+                  ),
                 ),
             ],
           ),
@@ -993,34 +1360,43 @@ class _SupplierReportScreenState
 
   Widget _buildSupplierList(
     ThemeData theme,
-    List<SupplierModel> suppliers,
+    List<SupplierModel>
+        suppliers,
   ) {
     return _ReportCard(
-      child: Column(
+      child:
+          Column(
         crossAxisAlignment:
             CrossAxisAlignment.start,
         children: [
           _SectionHeader(
             icon:
-                Icons.local_shipping_rounded,
+                Icons
+                    .local_shipping_rounded,
             title:
                 'Supplier-wise Performance',
             subtitle:
                 '${suppliers.length} supplier${suppliers.length == 1 ? '' : 's'} found',
           ),
-          const SizedBox(height: 18),
+          const SizedBox(
+            height: 18,
+          ),
           if (suppliers.isEmpty)
             const _EmptyInline(
               icon:
-                  Icons.local_shipping_outlined,
+                  Icons
+                      .local_shipping_outlined,
               message:
                   'No suppliers match the selected filters.',
             )
           else
             ...suppliers.map(
-              (supplier) {
+              (
+                supplier,
+              ) {
                 return _SupplierTile(
-                  supplier: supplier,
+                  supplier:
+                      supplier,
                   purchaseCount:
                       _supplierPurchaseCount(
                     supplier,
@@ -1041,9 +1417,12 @@ class _SupplierReportScreenState
                       _supplierOutstandingAmount(
                     supplier,
                   ),
-                  currency: _currency,
-                  number: _number,
-                  onTap: () {
+                  currency:
+                      _currency,
+                  number:
+                      _number,
+                  onTap:
+                      () {
                     _showSupplierDetails(
                       supplier,
                     );
@@ -1063,8 +1442,17 @@ class _SupplierReportScreenState
   void _showSupplierDetails(
     SupplierModel supplier,
   ) {
-    final List<PurchaseModel> purchases =
-        _supplierPurchases(supplier);
+    final List<PurchaseModel>
+        purchases =
+        _supplierPurchases(
+      supplier,
+    );
+
+    final List<SupplierPaymentModel>
+        supplierPayments =
+        _supplierPaymentsFor(
+      supplier,
+    );
 
     final double total =
         _supplierPurchaseAmount(
@@ -1076,21 +1464,33 @@ class _SupplierReportScreenState
       supplier,
     );
 
+    final double separatePayments =
+        _supplierPaymentAmount(
+      supplier,
+    );
+
     final double outstanding =
         _supplierOutstandingAmount(
       supplier,
     );
 
     showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (sheetContext) {
+      context:
+          context,
+      isScrollControlled:
+          true,
+      showDragHandle:
+          true,
+      builder:
+          (sheetContext) {
         final ThemeData theme =
-            Theme.of(sheetContext);
+            Theme.of(
+          sheetContext,
+        );
 
         return SafeArea(
-          child: Padding(
+          child:
+              Padding(
             padding:
                 const EdgeInsets.fromLTRB(
               20,
@@ -1098,66 +1498,70 @@ class _SupplierReportScreenState
               20,
               24,
             ),
-            child: SingleChildScrollView(
-              child: Column(
+            child:
+                SingleChildScrollView(
+              child:
+                  Column(
                 crossAxisAlignment:
                     CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
                       Container(
-                        width: 50,
-                        height: 50,
+                        width:
+                            50,
+                        height:
+                            50,
                         decoration:
                             BoxDecoration(
-                          color: AppColors.primary
-                              .withValues(
-                            alpha: 0.10,
+                          color:
+                              AppColors.primary
+                                  .withValues(
+                            alpha:
+                                0.10,
                           ),
                           borderRadius:
                               BorderRadius.circular(
                             14,
                           ),
                         ),
-                        child: const Icon(
+                        child:
+                            const Icon(
                           Icons
                               .local_shipping_rounded,
                           color:
                               AppColors.primary,
-                          size: 25,
+                          size:
+                              25,
                         ),
                       ),
                       const SizedBox(
                         width: 12,
                       ),
                       Expanded(
-                        child: Column(
+                        child:
+                            Column(
                           crossAxisAlignment:
-                              CrossAxisAlignment
-                                  .start,
+                              CrossAxisAlignment.start,
                           children: [
                             Text(
                               supplier.name,
-                              style: theme
-                                  .textTheme
-                                  .headlineSmall
-                                  ?.copyWith(
+                              style:
+                                  theme.textTheme.headlineSmall?.copyWith(
                                 fontWeight:
                                     FontWeight.w800,
                               ),
                             ),
-                            if (supplier.contactPerson
+                            if (supplier
+                                .contactPerson
                                 .trim()
                                 .isNotEmpty)
                               Text(
                                 supplier.contactPerson,
-                                style: theme
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(
-                                  color: theme
-                                      .colorScheme
-                                      .onSurfaceVariant,
+                                style:
+                                    theme.textTheme.bodySmall?.copyWith(
+                                  color:
+                                      theme.colorScheme.onSurfaceVariant,
                                 ),
                               ),
                           ],
@@ -1165,12 +1569,18 @@ class _SupplierReportScreenState
                       ),
                     ],
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(
+                    height: 20,
+                  ),
                   _SupplierDetailSummary(
                     total:
-                        _currency(total),
+                        _currency(
+                      total,
+                    ),
                     paid:
-                        _currency(paid),
+                        _currency(
+                      paid,
+                    ),
                     outstanding:
                         _currency(
                       outstanding,
@@ -1178,8 +1588,25 @@ class _SupplierReportScreenState
                     purchases:
                         '${purchases.length}',
                   ),
-                  const SizedBox(height: 20),
-                  if (supplier.contactPerson
+                  const SizedBox(
+                    height: 12,
+                  ),
+                  _MiniMetric(
+                    label:
+                        'Separate Supplier Payments',
+                    value:
+                        _currency(
+                      separatePayments,
+                    ),
+                    icon:
+                        Icons
+                            .payments_outlined,
+                  ),
+                  const SizedBox(
+                    height: 20,
+                  ),
+                  if (supplier
+                      .contactPerson
                       .trim()
                       .isNotEmpty)
                     _DetailRow(
@@ -1192,7 +1619,8 @@ class _SupplierReportScreenState
                       .trim()
                       .isNotEmpty)
                     _DetailRow(
-                      label: 'Mobile',
+                      label:
+                          'Mobile',
                       value:
                           supplier.mobile,
                     ),
@@ -1200,7 +1628,8 @@ class _SupplierReportScreenState
                       .trim()
                       .isNotEmpty)
                     _DetailRow(
-                      label: 'Email',
+                      label:
+                          'Email',
                       value:
                           supplier.email,
                     ),
@@ -1208,7 +1637,8 @@ class _SupplierReportScreenState
                       .trim()
                       .isNotEmpty)
                     _DetailRow(
-                      label: 'Address',
+                      label:
+                          'Address',
                       value:
                           supplier.address,
                     ),
@@ -1216,129 +1646,137 @@ class _SupplierReportScreenState
                       .trim()
                       .isNotEmpty)
                     _DetailRow(
-                      label: 'GST Number',
+                      label:
+                          'GST Number',
                       value:
                           supplier.gstNumber,
                     ),
-                  const SizedBox(height: 12),
+                  const SizedBox(
+                    height: 12,
+                  ),
                   Text(
                     'Recent Purchases',
-                    style: theme
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(
+                    style:
+                        theme.textTheme.titleMedium?.copyWith(
                       fontWeight:
                           FontWeight.w800,
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(
+                    height: 10,
+                  ),
                   if (purchases.isEmpty)
                     const _EmptyInline(
                       icon:
-                          Icons.shopping_cart_outlined,
+                          Icons
+                              .shopping_cart_outlined,
                       message:
                           'No purchases found for this supplier in the selected period.',
                     )
                   else
                     ...purchases.reversed
-                        .take(10)
+                        .take(
+                          10,
+                        )
                         .map(
-                      (purchase) {
+                      (
+                        purchase,
+                      ) {
                         final double due =
                             purchase.total -
                                 purchase.paidAmount;
 
                         return Container(
                           margin:
-                              const EdgeInsets
-                                  .only(
-                            bottom: 8,
+                              const EdgeInsets.only(
+                            bottom:
+                                8,
                           ),
                           padding:
-                              const EdgeInsets
-                                  .all(13),
+                              const EdgeInsets.all(
+                            13,
+                          ),
                           decoration:
                               BoxDecoration(
                             color: theme
                                 .colorScheme
                                 .surfaceContainerHighest
                                 .withValues(
-                              alpha: 0.35,
+                              alpha:
+                                  0.35,
                             ),
                             borderRadius:
                                 BorderRadius.circular(
                               12,
                             ),
                           ),
-                          child: Row(
+                          child:
+                              Row(
                             children: [
                               Expanded(
                                 child:
                                     Column(
                                   crossAxisAlignment:
-                                      CrossAxisAlignment
-                                          .start,
+                                      CrossAxisAlignment.start,
                                   children: [
                                     Text(
                                       purchase.id,
-                                      style: theme
-                                          .textTheme
-                                          .bodyMedium
-                                          ?.copyWith(
+                                      style:
+                                          theme.textTheme.bodyMedium?.copyWith(
                                         fontWeight:
                                             FontWeight.w800,
                                       ),
                                     ),
                                     const SizedBox(
-                                      height: 3,
+                                      height:
+                                          3,
                                     ),
                                     Text(
                                       _date(
                                         purchase.date,
                                       ),
-                                      style: theme
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(
-                                        color: theme
-                                            .colorScheme
-                                            .onSurfaceVariant,
+                                      style:
+                                          theme.textTheme.bodySmall?.copyWith(
+                                        color:
+                                            theme.colorScheme.onSurfaceVariant,
                                       ),
                                     ),
                                   ],
                                 ),
                               ),
+                              const SizedBox(
+                                width:
+                                    12,
+                              ),
                               Column(
                                 crossAxisAlignment:
-                                    CrossAxisAlignment
-                                        .end,
+                                    CrossAxisAlignment.end,
                                 children: [
                                   Text(
                                     _currency(
                                       purchase.total,
                                     ),
-                                    style: theme
-                                        .textTheme
-                                        .bodyMedium
-                                        ?.copyWith(
+                                    style:
+                                        theme.textTheme.bodyMedium?.copyWith(
                                       fontWeight:
                                           FontWeight.w800,
                                     ),
                                   ),
                                   const SizedBox(
-                                    height: 3,
+                                    height:
+                                        3,
                                   ),
                                   Text(
-                                    due > 0
+                                    due >
+                                            0
                                         ? 'Due ${_currency(due)}'
                                         : 'Paid',
                                     style:
                                         TextStyle(
-                                      color: due > 0
-                                          ? AppColors
-                                              .warning
-                                          : AppColors
-                                              .success,
+                                      color:
+                                          due > 0
+                                              ? AppColors.warning
+                                              : AppColors.success,
                                       fontSize:
                                           11,
                                       fontWeight:
@@ -1346,6 +1784,161 @@ class _SupplierReportScreenState
                                     ),
                                   ),
                                 ],
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  const SizedBox(
+                    height: 20,
+                  ),
+                  Text(
+                    'Supplier Payments',
+                    style:
+                        theme.textTheme.titleMedium?.copyWith(
+                      fontWeight:
+                          FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(
+                    height: 10,
+                  ),
+                  if (supplierPayments.isEmpty)
+                    const _EmptyInline(
+                      icon:
+                          Icons
+                              .payments_outlined,
+                      message:
+                          'No supplier payments found in the selected period.',
+                    )
+                  else
+                    ...supplierPayments
+                        .toList()
+                        .reversed
+                        .take(
+                          10,
+                        )
+                        .map(
+                      (
+                        payment,
+                      ) {
+                        return Container(
+                          margin:
+                              const EdgeInsets.only(
+                            bottom:
+                                8,
+                          ),
+                          padding:
+                              const EdgeInsets.all(
+                            13,
+                          ),
+                          decoration:
+                              BoxDecoration(
+                            color: theme
+                                .colorScheme
+                                .surfaceContainerHighest
+                                .withValues(
+                              alpha:
+                                  0.35,
+                            ),
+                            borderRadius:
+                                BorderRadius.circular(
+                              12,
+                            ),
+                          ),
+                          child:
+                              Row(
+                            children: [
+                              Container(
+                                width:
+                                    38,
+                                height:
+                                    38,
+                                decoration:
+                                    BoxDecoration(
+                                  color:
+                                      AppColors.success.withValues(
+                                    alpha:
+                                        0.10,
+                                  ),
+                                  borderRadius:
+                                      BorderRadius.circular(
+                                    11,
+                                  ),
+                                ),
+                                child:
+                                    const Icon(
+                                  Icons
+                                      .arrow_upward_rounded,
+                                  color:
+                                      AppColors.success,
+                                  size:
+                                      20,
+                                ),
+                              ),
+                              const SizedBox(
+                                width:
+                                    11,
+                              ),
+                              Expanded(
+                                child:
+                                    Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _date(
+                                        payment.date,
+                                      ),
+                                      style:
+                                          theme.textTheme.bodyMedium?.copyWith(
+                                        fontWeight:
+                                            FontWeight.w800,
+                                      ),
+                                    ),
+                                    const SizedBox(
+                                      height:
+                                          3,
+                                    ),
+                                    Text(
+                                      payment.paymentMethod
+                                              .trim()
+                                              .isEmpty
+                                          ? 'Other'
+                                          : payment.paymentMethod,
+                                      style:
+                                          theme.textTheme.bodySmall?.copyWith(
+                                        color:
+                                            theme.colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                    if (payment
+                                        .transactionReference
+                                        .trim()
+                                        .isNotEmpty)
+                                      Text(
+                                        payment.transactionReference,
+                                        style:
+                                            theme.textTheme.bodySmall?.copyWith(
+                                          color:
+                                              theme.colorScheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              Text(
+                                _currency(
+                                  payment.amount,
+                                ),
+                                style:
+                                    const TextStyle(
+                                  color:
+                                      AppColors.success,
+                                  fontWeight:
+                                      FontWeight.w800,
+                                ),
                               ),
                             ],
                           ),
@@ -1369,75 +1962,96 @@ class _SupplierReportScreenState
     ThemeData theme,
   ) {
     return Center(
-      child: Padding(
+      child:
+          Padding(
         padding:
-            const EdgeInsets.all(24),
-        child: ConstrainedBox(
+            const EdgeInsets.all(
+          24,
+        ),
+        child:
+            ConstrainedBox(
           constraints:
               const BoxConstraints(
-            maxWidth: 500,
+            maxWidth:
+                500,
           ),
-          child: _ReportCard(
-            child: Column(
+          child:
+              _ReportCard(
+            child:
+                Column(
               mainAxisSize:
                   MainAxisSize.min,
               children: [
                 Container(
-                  width: 64,
-                  height: 64,
+                  width:
+                      64,
+                  height:
+                      64,
                   decoration:
                       BoxDecoration(
-                    color: AppColors.danger
-                        .withValues(
-                      alpha: 0.10,
+                    color:
+                        AppColors.danger.withValues(
+                      alpha:
+                          0.10,
                     ),
                     shape:
                         BoxShape.circle,
                   ),
-                  child: const Icon(
-                    Icons.error_outline_rounded,
+                  child:
+                      const Icon(
+                    Icons
+                        .error_outline_rounded,
                     color:
                         AppColors.danger,
-                    size: 32,
+                    size:
+                        32,
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(
+                  height:
+                      16,
+                ),
                 Text(
                   'Unable to load Supplier Report',
                   textAlign:
                       TextAlign.center,
-                  style: theme
-                      .textTheme
-                      .titleLarge
-                      ?.copyWith(
+                  style:
+                      theme.textTheme.titleLarge?.copyWith(
                     fontWeight:
                         FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(
+                  height:
+                      8,
+                ),
                 Text(
                   _errorMessage ??
                       'Something went wrong.',
                   textAlign:
                       TextAlign.center,
-                  style: theme
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(
-                    color: theme
-                        .colorScheme
-                        .onSurfaceVariant,
+                  style:
+                      theme.textTheme.bodyMedium?.copyWith(
+                    color:
+                        theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(
+                  height:
+                      20,
+                ),
                 FilledButton.icon(
                   onPressed:
                       () => _loadReport(),
-                  icon: const Icon(
-                    Icons.refresh_rounded,
+                  icon:
+                      const Icon(
+                    Icons
+                        .refresh_rounded,
                   ),
                   label:
-                      const Text('Try Again'),
+                      const Text(
+                    'Try Again',
+                  ),
                 ),
               ],
             ),
@@ -1481,103 +2095,126 @@ class _SummaryCard
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
     return Container(
       padding:
-          const EdgeInsets.all(17),
-      decoration: BoxDecoration(
+          const EdgeInsets.all(
+        17,
+      ),
+      decoration:
+          BoxDecoration(
         color:
             theme.colorScheme.surface,
         borderRadius:
-            BorderRadius.circular(17),
-        border: Border.all(
-          color: item.color.withValues(
-            alpha: 0.20,
+            BorderRadius.circular(
+          17,
+        ),
+        border:
+            Border.all(
+          color:
+              item.color.withValues(
+            alpha:
+                0.20,
           ),
         ),
       ),
-      child: Column(
+      child:
+          Column(
         crossAxisAlignment:
             CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Container(
-                width: 40,
-                height: 40,
+                width:
+                    40,
+                height:
+                    40,
                 decoration:
                     BoxDecoration(
                   color:
                       item.color.withValues(
-                    alpha: 0.10,
+                    alpha:
+                        0.10,
                   ),
                   borderRadius:
                       BorderRadius.circular(
                     12,
                   ),
                 ),
-                child: Icon(
+                child:
+                    Icon(
                   item.icon,
-                  color: item.color,
-                  size: 21,
+                  color:
+                      item.color,
+                  size:
+                      21,
                 ),
               ),
               const Spacer(),
               Icon(
-                Icons.arrow_outward_rounded,
+                Icons
+                    .arrow_outward_rounded,
                 color:
                     item.color.withValues(
-                  alpha: 0.65,
+                  alpha:
+                      0.65,
                 ),
-                size: 18,
+                size:
+                    18,
               ),
             ],
           ),
           const Spacer(),
           Text(
             item.title,
-            maxLines: 1,
+            maxLines:
+                1,
             overflow:
                 TextOverflow.ellipsis,
-            style: theme
-                .textTheme
-                .bodySmall
-                ?.copyWith(
-              color: theme
-                  .colorScheme
-                  .onSurfaceVariant,
+            style:
+                theme.textTheme.bodySmall?.copyWith(
+              color:
+                  theme.colorScheme.onSurfaceVariant,
               fontWeight:
                   FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 3),
+          const SizedBox(
+            height:
+                3,
+          ),
           Text(
             item.value,
-            maxLines: 1,
+            maxLines:
+                1,
             overflow:
                 TextOverflow.ellipsis,
-            style: theme
-                .textTheme
-                .titleLarge
-                ?.copyWith(
+            style:
+                theme.textTheme.titleLarge?.copyWith(
               fontWeight:
                   FontWeight.w800,
             ),
           ),
-          const SizedBox(height: 2),
+          const SizedBox(
+            height:
+                2,
+          ),
           Text(
             item.subtitle,
-            maxLines: 1,
+            maxLines:
+                1,
             overflow:
                 TextOverflow.ellipsis,
-            style: theme
-                .textTheme
-                .bodySmall
-                ?.copyWith(
-              color: item.color,
+            style:
+                theme.textTheme.bodySmall?.copyWith(
+              color:
+                  item.color,
               fontWeight:
                   FontWeight.w600,
             ),
@@ -1605,57 +2242,83 @@ class _PaymentStatusTile
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
     return Container(
-      width: double.infinity,
+      width:
+          double.infinity,
       padding:
-          const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: color.withValues(
-          alpha: 0.06,
+          const EdgeInsets.all(
+        15,
+      ),
+      decoration:
+          BoxDecoration(
+        color:
+            color.withValues(
+          alpha:
+              0.06,
         ),
         borderRadius:
-            BorderRadius.circular(14),
-        border: Border.all(
-          color: color.withValues(
-            alpha: 0.15,
+            BorderRadius.circular(
+          14,
+        ),
+        border:
+            Border.all(
+          color:
+              color.withValues(
+            alpha:
+                0.15,
           ),
         ),
       ),
-      child: Row(
+      child:
+          Row(
         children: [
           Container(
-            width: 40,
-            height: 40,
+            width:
+                40,
+            height:
+                40,
             decoration:
                 BoxDecoration(
-              color: color.withValues(
-                alpha: 0.10,
+              color:
+                  color.withValues(
+                alpha:
+                    0.10,
               ),
-              shape: BoxShape.circle,
+              shape:
+                  BoxShape.circle,
             ),
-            child: Icon(
+            child:
+                Icon(
               title == 'Paid'
-                  ? Icons.check_rounded
+                  ? Icons
+                      .check_rounded
                   : title == 'Partial'
                       ? Icons
                           .remove_rounded
-                      : Icons.close_rounded,
-              color: color,
-              size: 21,
+                      : Icons
+                          .close_rounded,
+              color:
+                  color,
+              size:
+                  21,
             ),
           ),
-          const SizedBox(width: 11),
+          const SizedBox(
+            width:
+                11,
+          ),
           Expanded(
-            child: Text(
+            child:
+                Text(
               title,
-              style: theme
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(
+              style:
+                  theme.textTheme.bodyMedium?.copyWith(
                 fontWeight:
                     FontWeight.w700,
               ),
@@ -1663,11 +2326,10 @@ class _PaymentStatusTile
           ),
           Text(
             '$count',
-            style: theme
-                .textTheme
-                .titleMedium
-                ?.copyWith(
-              color: color,
+            style:
+                theme.textTheme.titleMedium?.copyWith(
+              color:
+                  color,
               fontWeight:
                   FontWeight.w900,
             ),
@@ -1707,197 +2369,278 @@ class _SupplierTile
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius:
-          BorderRadius.circular(14),
-      child: Container(
-        margin:
-            const EdgeInsets.only(
-          bottom: 10,
+    return Container(
+      margin:
+          const EdgeInsets.only(
+        bottom:
+            12,
+      ),
+      decoration:
+          BoxDecoration(
+        color:
+            theme.colorScheme.surface,
+        borderRadius:
+            BorderRadius.circular(
+          18,
         ),
-        padding:
-            const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: theme
-              .colorScheme
-              .surfaceContainerHighest
-              .withValues(
-            alpha: 0.40,
+        border:
+            Border.all(
+          color:
+              theme.colorScheme.outlineVariant.withValues(
+            alpha:
+                0.45,
           ),
-          borderRadius:
-              BorderRadius.circular(14),
         ),
-        child: Column(
-          children: [
-            Row(
+      ),
+      child:
+          Material(
+        color:
+            Colors.transparent,
+        child:
+            InkWell(
+          borderRadius:
+              BorderRadius.circular(
+            18,
+          ),
+          onTap:
+              onTap,
+          child:
+              Padding(
+            padding:
+                const EdgeInsets.all(
+              16,
+            ),
+            child:
+                Column(
               children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration:
-                      BoxDecoration(
-                    color: AppColors.primary
-                        .withValues(
-                      alpha: 0.10,
-                    ),
-                    borderRadius:
-                        BorderRadius.circular(
-                      12,
-                    ),
-                  ),
-                  child: const Icon(
-                    Icons
-                        .local_shipping_rounded,
-                    color:
-                        AppColors.primary,
-                    size: 22,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment
-                            .start,
-                    children: [
-                      Text(
-                        supplier.name,
-                        maxLines: 1,
-                        overflow:
-                            TextOverflow.ellipsis,
-                        style: theme
-                            .textTheme
-                            .bodyLarge
-                            ?.copyWith(
-                          fontWeight:
-                              FontWeight.w800,
+                Row(
+                  children: [
+                    Container(
+                      width:
+                          48,
+                      height:
+                          48,
+                      decoration:
+                          BoxDecoration(
+                        color:
+                            AppColors.primary.withValues(
+                          alpha:
+                              0.10,
+                        ),
+                        borderRadius:
+                            BorderRadius.circular(
+                          14,
                         ),
                       ),
-                      const SizedBox(
-                        height: 3,
+                      child:
+                          const Icon(
+                        Icons
+                            .local_shipping_rounded,
+                        color:
+                            AppColors.primary,
                       ),
-                      Text(
-                        supplier.mobile
-                                .trim()
-                                .isEmpty
-                            ? '$purchaseCount purchase${purchaseCount == 1 ? '' : 's'}'
-                            : supplier.mobile,
-                        maxLines: 1,
-                        overflow:
-                            TextOverflow.ellipsis,
-                        style: theme
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(
-                          color: theme
-                              .colorScheme
-                              .onSurfaceVariant,
-                        ),
+                    ),
+                    const SizedBox(
+                      width:
+                          12,
+                    ),
+                    Expanded(
+                      child:
+                          Column(
+                        crossAxisAlignment:
+                            CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            supplier.name,
+                            maxLines:
+                                1,
+                            overflow:
+                                TextOverflow.ellipsis,
+                            style:
+                                theme.textTheme.titleMedium?.copyWith(
+                              fontWeight:
+                                  FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(
+                            height:
+                                3,
+                          ),
+                          Text(
+                            supplier.mobile
+                                    .trim()
+                                    .isEmpty
+                                ? supplier
+                                    .contactPerson
+                                : supplier.mobile,
+                            maxLines:
+                                1,
+                            overflow:
+                                TextOverflow.ellipsis,
+                            style:
+                                theme.textTheme.bodySmall?.copyWith(
+                              color:
+                                  theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(
+                      width:
+                          8,
+                    ),
+                    const Icon(
+                      Icons
+                          .chevron_right_rounded,
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  size: 20,
+                const SizedBox(
+                  height:
+                      14,
+                ),
+                LayoutBuilder(
+                  builder:
+                      (
+                    context,
+                    constraints,
+                  ) {
+                    final bool compact =
+                        constraints.maxWidth <
+                            520;
+
+                    final List<Widget>
+                        metrics = [
+                      _SupplierMetric(
+                        label:
+                            'Purchases',
+                        value:
+                            currency(
+                          totalPurchases,
+                        ),
+                        icon:
+                            Icons
+                                .shopping_cart_outlined,
+                        color:
+                            AppColors.primary,
+                      ),
+                      _SupplierMetric(
+                        label:
+                            'Paid',
+                        value:
+                            currency(
+                          paid,
+                        ),
+                        icon:
+                            Icons
+                                .payments_outlined,
+                        color:
+                            AppColors.success,
+                      ),
+                      _SupplierMetric(
+                        label:
+                            'Outstanding',
+                        value:
+                            currency(
+                          outstanding,
+                        ),
+                        icon:
+                            Icons
+                                .account_balance_wallet_outlined,
+                        color:
+                            outstanding >
+                                    0
+                                ? AppColors.warning
+                                : AppColors.success,
+                      ),
+                    ];
+
+                    if (compact) {
+                      return Column(
+                        children:
+                            metrics
+                                .map(
+                                  (
+                                    metric,
+                                  ) =>
+                                      Padding(
+                                    padding:
+                                        const EdgeInsets.only(
+                                      bottom:
+                                          8,
+                                    ),
+                                    child:
+                                        metric,
+                                  ),
+                                )
+                                .toList(),
+                      );
+                    }
+
+                    return Row(
+                      children:
+                          metrics
+                              .map(
+                                (
+                                  metric,
+                                ) =>
+                                    Expanded(
+                                  child:
+                                      Padding(
+                                    padding:
+                                        const EdgeInsets.only(
+                                      right:
+                                          8,
+                                    ),
+                                    child:
+                                        metric,
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                    );
+                  },
+                ),
+                const SizedBox(
+                  height:
+                      10,
+                ),
+                Row(
+                  children: [
+                    Icon(
+                      Icons
+                          .inventory_2_outlined,
+                      size:
+                          16,
+                      color:
+                          theme.colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(
+                      width:
+                          6,
+                    ),
+                    Text(
+                      '${number(quantity)} quantity • $purchaseCount purchase${purchaseCount == 1 ? '' : 's'}',
+                      style:
+                          theme.textTheme.bodySmall?.copyWith(
+                        color:
+                            theme.colorScheme.onSurfaceVariant,
+                        fontWeight:
+                            FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-            const SizedBox(height: 14),
-            LayoutBuilder(
-              builder: (
-                context,
-                constraints,
-              ) {
-                final bool compact =
-                    constraints.maxWidth <
-                        500;
-
-                final List<Widget> metrics = [
-                  _SupplierMetric(
-                    label: 'Purchases',
-                    value:
-                        currency(totalPurchases),
-                    color:
-                        AppColors.primary,
-                  ),
-                  _SupplierMetric(
-                    label: 'Paid',
-                    value:
-                        currency(paid),
-                    color:
-                        AppColors.success,
-                  ),
-                  _SupplierMetric(
-                    label: 'Outstanding',
-                    value:
-                        currency(outstanding),
-                    color:
-                        AppColors.warning,
-                  ),
-                  _SupplierMetric(
-                    label: 'Quantity',
-                    value:
-                        number(quantity),
-                    color:
-                        AppColors.secondary,
-                  ),
-                ];
-
-                if (compact) {
-                  return Column(
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child:
-                                metrics[0],
-                          ),
-                          Expanded(
-                            child:
-                                metrics[1],
-                          ),
-                        ],
-                      ),
-                      const SizedBox(
-                        height: 12,
-                      ),
-                      Row(
-                        children: [
-                          Expanded(
-                            child:
-                                metrics[2],
-                          ),
-                          Expanded(
-                            child:
-                                metrics[3],
-                          ),
-                        ],
-                      ),
-                    ],
-                  );
-                }
-
-                return Row(
-                  children: metrics
-                      .map(
-                        (metric) =>
-                            Expanded(
-                          child:
-                              metric,
-                        ),
-                      )
-                      .toList(),
-                );
-              },
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -1912,50 +2655,195 @@ class _SupplierMetric
     extends StatelessWidget {
   final String label;
   final String value;
+  final IconData icon;
   final Color color;
 
   const _SupplierMetric({
     required this.label,
     required this.value,
+    required this.icon,
     required this.color,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
-    return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: theme
-              .textTheme
-              .bodySmall
-              ?.copyWith(
-            color: theme
-                .colorScheme
-                .onSurfaceVariant,
-          ),
+    return Container(
+      width:
+          double.infinity,
+      padding:
+          const EdgeInsets.symmetric(
+        horizontal:
+            12,
+        vertical:
+            11,
+      ),
+      decoration:
+          BoxDecoration(
+        color:
+            color.withValues(
+          alpha:
+              0.05,
         ),
-        const SizedBox(height: 3),
-        Text(
-          value,
-          maxLines: 1,
-          overflow:
-              TextOverflow.ellipsis,
-          style: theme
-              .textTheme
-              .bodyMedium
-              ?.copyWith(
-            color: color,
-            fontWeight:
-                FontWeight.w800,
-          ),
+        borderRadius:
+            BorderRadius.circular(
+          12,
         ),
-      ],
+      ),
+      child:
+          Row(
+        children: [
+          Icon(
+            icon,
+            size:
+                18,
+            color:
+                color,
+          ),
+          const SizedBox(
+            width:
+                8,
+          ),
+          Expanded(
+            child:
+                Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  maxLines:
+                      1,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style:
+                      theme.textTheme.bodySmall?.copyWith(
+                    color:
+                        theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(
+                  height:
+                      2,
+                ),
+                Text(
+                  value,
+                  maxLines:
+                      1,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style:
+                      theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight:
+                        FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// MINI METRIC
+// =============================================================================
+
+class _MiniMetric
+    extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+
+  const _MiniMetric({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    final ThemeData theme =
+        Theme.of(context);
+
+    return Container(
+      padding:
+          const EdgeInsets.all(
+        12,
+      ),
+      decoration:
+          BoxDecoration(
+        color:
+            theme.colorScheme.surfaceContainerHighest.withValues(
+          alpha:
+              0.35,
+        ),
+        borderRadius:
+            BorderRadius.circular(
+          12,
+        ),
+      ),
+      child:
+          Row(
+        children: [
+          Icon(
+            icon,
+            size:
+                18,
+            color:
+                AppColors.primary,
+          ),
+          const SizedBox(
+            width:
+                8,
+          ),
+          Expanded(
+            child:
+                Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  maxLines:
+                      1,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style:
+                      theme.textTheme.bodySmall?.copyWith(
+                    color:
+                        theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(
+                  height:
+                      2,
+                ),
+                Text(
+                  value,
+                  maxLines:
+                      1,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style:
+                      theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight:
+                        FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1979,104 +2867,173 @@ class _SupplierDetailSummary
   });
 
   @override
-  Widget build(BuildContext context) {
-    final List<_DetailMetric> items = [
-      _DetailMetric(
-        label: 'Purchases',
-        value: total,
-        color: AppColors.primary,
-      ),
-      _DetailMetric(
-        label: 'Paid',
-        value: paid,
-        color: AppColors.success,
-      ),
-      _DetailMetric(
-        label: 'Outstanding',
-        value: outstanding,
-        color: AppColors.warning,
-      ),
-      _DetailMetric(
-        label: 'Invoices',
-        value: purchases,
-        color: AppColors.secondary,
-      ),
-    ];
+  Widget build(
+    BuildContext context,
+  ) {
 
-    return GridView.builder(
-      shrinkWrap: true,
+    return GridView.count(
+      shrinkWrap:
+          true,
       physics:
           const NeverScrollableScrollPhysics(),
-      itemCount: items.length,
-      gridDelegate:
-          const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
-        childAspectRatio: 2.1,
-      ),
-      itemBuilder: (
-        context,
-        index,
-      ) {
-        final _DetailMetric item =
-            items[index];
-
-        return Container(
-          padding:
-              const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: item.color.withValues(
-              alpha: 0.07,
-            ),
-            borderRadius:
-                BorderRadius.circular(12),
-          ),
-          child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
-            mainAxisAlignment:
-                MainAxisAlignment.center,
-            children: [
-              Text(
-                item.label,
-                style: TextStyle(
-                  color: item.color,
-                  fontSize: 11,
-                  fontWeight:
-                      FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                item.value,
-                maxLines: 1,
-                overflow:
-                    TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight:
-                      FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-        );
-      },
+      crossAxisCount:
+          2,
+      crossAxisSpacing:
+          10,
+      mainAxisSpacing:
+          10,
+      childAspectRatio:
+          1.7,
+      children: [
+        _DetailMetric(
+          label:
+              'Purchases',
+          value:
+              total,
+          icon:
+              Icons
+                  .shopping_cart_outlined,
+          color:
+              AppColors.primary,
+        ),
+        _DetailMetric(
+          label:
+              'Paid',
+          value:
+              paid,
+          icon:
+              Icons
+                  .payments_outlined,
+          color:
+              AppColors.success,
+        ),
+        _DetailMetric(
+          label:
+              'Outstanding',
+          value:
+              outstanding,
+          icon:
+              Icons
+                  .account_balance_wallet_outlined,
+          color:
+              outstanding ==
+                      '₹0.00'
+                  ? AppColors.success
+                  : AppColors.warning,
+        ),
+        _DetailMetric(
+          label:
+              'Purchase Count',
+          value:
+              purchases,
+          icon:
+              Icons
+                  .receipt_long_outlined,
+          color:
+              AppColors.secondary,
+        ),
+      ],
     );
   }
 }
 
-class _DetailMetric {
+// =============================================================================
+// DETAIL METRIC
+// =============================================================================
+
+class _DetailMetric
+    extends StatelessWidget {
   final String label;
   final String value;
+  final IconData icon;
   final Color color;
 
   const _DetailMetric({
     required this.label,
     required this.value,
+    required this.icon,
     required this.color,
   });
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    final ThemeData theme =
+        Theme.of(context);
+
+    return Container(
+      padding:
+          const EdgeInsets.all(
+        12,
+      ),
+      decoration:
+          BoxDecoration(
+        color:
+            color.withValues(
+          alpha:
+              0.06,
+        ),
+        borderRadius:
+            BorderRadius.circular(
+          14,
+        ),
+        border:
+            Border.all(
+          color:
+              color.withValues(
+            alpha:
+                0.14,
+          ),
+        ),
+      ),
+      child:
+          Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          Icon(
+            icon,
+            color:
+                color,
+            size:
+                19,
+          ),
+          const Spacer(),
+          Text(
+            label,
+            maxLines:
+                1,
+            overflow:
+                TextOverflow.ellipsis,
+            style:
+                theme.textTheme.bodySmall?.copyWith(
+              color:
+                  theme.colorScheme.onSurfaceVariant,
+              fontWeight:
+                  FontWeight.w600,
+            ),
+          ),
+          const SizedBox(
+            height:
+                2,
+          ),
+          Text(
+            value,
+            maxLines:
+                1,
+            overflow:
+                TextOverflow.ellipsis,
+            style:
+                theme.textTheme.titleSmall?.copyWith(
+              fontWeight:
+                  FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // =============================================================================
@@ -2094,42 +3051,44 @@ class _DetailRow
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
     return Padding(
       padding:
           const EdgeInsets.only(
-        bottom: 11,
+        bottom:
+            9,
       ),
-      child: Row(
+      child:
+          Row(
         crossAxisAlignment:
             CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Text(
+          SizedBox(
+            width:
+                125,
+            child:
+                Text(
               label,
-              style: theme
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(
-                color: theme
-                    .colorScheme
-                    .onSurfaceVariant,
+              style:
+                  theme.textTheme.bodySmall?.copyWith(
+                color:
+                    theme.colorScheme.onSurfaceVariant,
+                fontWeight:
+                    FontWeight.w600,
               ),
             ),
           ),
-          const SizedBox(width: 16),
-          Flexible(
-            child: Text(
+          Expanded(
+            child:
+                Text(
               value,
-              textAlign:
-                  TextAlign.end,
-              style: theme
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(
+              style:
+                  theme.textTheme.bodyMedium?.copyWith(
                 fontWeight:
                     FontWeight.w600,
               ),
@@ -2137,6 +3096,55 @@ class _DetailRow
           ),
         ],
       ),
+    );
+  }
+}
+
+// =============================================================================
+// REPORT CARD
+// =============================================================================
+
+class _ReportCard
+    extends StatelessWidget {
+  final Widget child;
+
+  const _ReportCard({
+    required this.child,
+  });
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    final ThemeData theme =
+        Theme.of(context);
+
+    return Container(
+      width:
+          double.infinity,
+      padding:
+          const EdgeInsets.all(
+        18,
+      ),
+      decoration:
+          BoxDecoration(
+        color:
+            theme.colorScheme.surface,
+        borderRadius:
+            BorderRadius.circular(
+          20,
+        ),
+        border:
+            Border.all(
+          color:
+              theme.colorScheme.outlineVariant.withValues(
+            alpha:
+                0.45,
+          ),
+        ),
+      ),
+      child:
+          child,
     );
   }
 }
@@ -2158,61 +3166,70 @@ class _SectionHeader
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
     return Row(
+      crossAxisAlignment:
+          CrossAxisAlignment.start,
       children: [
         Container(
-          width: 42,
-          height: 42,
+          width:
+              42,
+          height:
+              42,
           decoration:
               BoxDecoration(
-            color: theme
-                .colorScheme
-                .primary
-                .withValues(
-              alpha: 0.10,
+            color:
+                AppColors.primary.withValues(
+              alpha:
+                  0.10,
             ),
             borderRadius:
                 BorderRadius.circular(
               12,
             ),
           ),
-          child: Icon(
+          child:
+              Icon(
             icon,
             color:
-                theme.colorScheme.primary,
-            size: 22,
+                AppColors.primary,
+            size:
+                21,
           ),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(
+          width:
+              11,
+        ),
         Expanded(
-          child: Column(
+          child:
+              Column(
             crossAxisAlignment:
                 CrossAxisAlignment.start,
             children: [
               Text(
                 title,
-                style: theme
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(
+                style:
+                    theme.textTheme.titleMedium?.copyWith(
                   fontWeight:
                       FontWeight.w800,
                 ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(
+                height:
+                    3,
+              ),
               Text(
                 subtitle,
-                style: theme
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(
-                  color: theme
-                      .colorScheme
-                      .onSurfaceVariant,
+                style:
+                    theme.textTheme.bodySmall?.copyWith(
+                  color:
+                      theme.colorScheme.onSurfaceVariant,
                 ),
               ),
             ],
@@ -2224,62 +3241,7 @@ class _SectionHeader
 }
 
 // =============================================================================
-// REPORT CARD
-// =============================================================================
-
-class _ReportCard
-    extends StatelessWidget {
-  final Widget child;
-
-  const _ReportCard({
-    required this.child,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme =
-        Theme.of(context);
-
-    return Container(
-      width: double.infinity,
-      padding:
-          const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color:
-            theme.colorScheme.surface,
-        borderRadius:
-            BorderRadius.circular(18),
-        border: Border.all(
-          color: theme
-              .colorScheme
-              .outlineVariant
-              .withValues(
-            alpha: 0.55,
-          ),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color:
-                Colors.black.withValues(
-              alpha:
-                  theme.brightness ==
-                          Brightness.dark
-                      ? 0.08
-                      : 0.035,
-            ),
-            blurRadius: 16,
-            offset:
-                const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: child,
-    );
-  }
-}
-
-// =============================================================================
-// EMPTY
+// EMPTY INLINE
 // =============================================================================
 
 class _EmptyInline
@@ -2293,45 +3255,53 @@ class _EmptyInline
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
     return Container(
-      width: double.infinity,
+      width:
+          double.infinity,
       padding:
-          const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: theme
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(
-          alpha: 0.35,
+          const EdgeInsets.all(
+        22,
+      ),
+      decoration:
+          BoxDecoration(
+        color:
+            theme.colorScheme.surfaceContainerHighest.withValues(
+          alpha:
+              0.30,
         ),
         borderRadius:
-            BorderRadius.circular(14),
+            BorderRadius.circular(
+          14,
+        ),
       ),
-      child: Column(
+      child:
+          Column(
         children: [
           Icon(
             icon,
-            size: 34,
-            color: theme
-                .colorScheme
-                .onSurfaceVariant,
+            size:
+                32,
+            color:
+                theme.colorScheme.onSurfaceVariant,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(
+            height:
+                8,
+          ),
           Text(
             message,
             textAlign:
                 TextAlign.center,
-            style: theme
-                .textTheme
-                .bodyMedium
-                ?.copyWith(
-              color: theme
-                  .colorScheme
-                  .onSurfaceVariant,
+            style:
+                theme.textTheme.bodyMedium?.copyWith(
+              color:
+                  theme.colorScheme.onSurfaceVariant,
             ),
           ),
         ],

@@ -4,9 +4,11 @@ import 'package:intl/intl.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/business_model.dart';
 import '../../models/customer_model.dart';
+import '../../models/payment_model.dart';
 import '../../models/sale_model.dart';
 import '../../repositories/business_repository.dart';
 import '../../repositories/customer_repository.dart';
+import '../../repositories/payment_repository.dart';
 import '../../repositories/sale_repository.dart';
 
 class CustomerReportScreen extends StatefulWidget {
@@ -30,6 +32,9 @@ class _CustomerReportScreenState
   final SaleRepository _saleRepository =
       SaleRepository();
 
+  final PaymentRepository _paymentRepository =
+      PaymentRepository();
+
   final TextEditingController _searchController =
       TextEditingController();
 
@@ -43,8 +48,14 @@ class _CustomerReportScreenState
 
   String _searchQuery = '';
 
-  List<CustomerModel> _customers = <CustomerModel>[];
-  List<SaleModel> _sales = <SaleModel>[];
+  List<CustomerModel> _customers =
+      <CustomerModel>[];
+
+  List<SaleModel> _sales =
+      <SaleModel>[];
+
+  List<PaymentModel> _payments =
+      <PaymentModel>[];
 
   @override
   void initState() {
@@ -95,9 +106,14 @@ class _CustomerReportScreenState
         _saleRepository.getSales(
           businessId: business.id,
         ),
+        _paymentRepository.getPayments(
+          businessId: business.id,
+        ),
       ]);
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       setState(() {
         _customers =
@@ -106,12 +122,17 @@ class _CustomerReportScreenState
         _sales =
             results[1] as List<SaleModel>;
 
+        _payments =
+            results[2] as List<PaymentModel>;
+
         _loading = false;
         _refreshing = false;
         _errorMessage = null;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       setState(() {
         _loading = false;
@@ -149,7 +170,9 @@ class _CustomerReportScreenState
               : null,
     );
 
-    if (range == null) return;
+    if (range == null) {
+      return;
+    }
 
     setState(() {
       _startDate = DateTime(
@@ -199,19 +222,66 @@ class _CustomerReportScreenState
     }).toList();
   }
 
+  // ===========================================================================
+  // FILTERED CUSTOMER PAYMENTS
+  // ===========================================================================
+
+  List<PaymentModel> get _filteredPayments {
+    return _payments.where((payment) {
+      final DateTime date = payment.date;
+
+      if (_startDate != null &&
+          date.isBefore(_startDate!)) {
+        return false;
+      }
+
+      if (_endDate != null &&
+          date.isAfter(_endDate!)) {
+        return false;
+      }
+
+      return true;
+    }).toList();
+  }
+
+  // ===========================================================================
+  // CUSTOMER PAYMENTS
+  // ===========================================================================
+
+  List<PaymentModel> _customerPayments(
+    CustomerModel customer,
+  ) {
+    return _filteredPayments.where((payment) {
+      return payment.customerId.trim() ==
+          customer.id.trim();
+    }).toList();
+  }
+
+  // ===========================================================================
+  // FILTERED CUSTOMERS
+  // ===========================================================================
+
   List<CustomerModel> get _filteredCustomers {
     final String query =
         _searchQuery.trim().toLowerCase();
 
     final Set<String> customerIds =
-        _filteredSales
-            .map(
-              (sale) => sale.customerId.trim(),
-            )
-            .where(
-              (id) => id.isNotEmpty,
-            )
-            .toSet();
+        <String>{
+      ..._filteredSales
+          .map(
+            (sale) => sale.customerId.trim(),
+          )
+          .where(
+            (id) => id.isNotEmpty,
+          ),
+      ..._filteredPayments
+          .map(
+            (payment) => payment.customerId.trim(),
+          )
+          .where(
+            (id) => id.isNotEmpty,
+          ),
+    };
 
     final List<CustomerModel> customers =
         _customers.where((customer) {
@@ -280,31 +350,51 @@ class _CustomerReportScreenState
     );
   }
 
+  // ===========================================================================
+  // CUSTOMER RECEIVED
+  // ===========================================================================
+
   double _customerReceivedAmount(
     CustomerModel customer,
   ) {
-    return _customerSales(customer).fold(
+    final double salePayments =
+        _customerSales(customer).fold<double>(
       0,
       (sum, sale) => sum + sale.paidAmount,
     );
+
+    final double separatePayments =
+        _customerPayments(customer).fold<double>(
+      0,
+      (sum, payment) =>
+          sum + payment.amount,
+    );
+
+    return salePayments +
+        separatePayments;
   }
+
+  // ===========================================================================
+  // CUSTOMER OUTSTANDING
+  // ===========================================================================
 
   double _customerOutstandingAmount(
     CustomerModel customer,
   ) {
-    return _customerSales(customer).fold(
-      0,
-      (sum, sale) {
-        final double outstanding =
-            sale.total - sale.paidAmount;
+    final double outstanding =
+        _customerSalesAmount(customer) -
+            _customerReceivedAmount(
+              customer,
+            );
 
-        return sum +
-            (outstanding > 0
-                ? outstanding
-                : 0);
-      },
-    );
+    return outstanding > 0
+        ? outstanding
+        : 0;
   }
+
+  // ===========================================================================
+  // CUSTOMER PROFIT
+  // ===========================================================================
 
   double _customerProfit(
     CustomerModel customer,
@@ -346,25 +436,30 @@ class _CustomerReportScreenState
   }
 
   double get _totalReceived {
-    return _filteredSales.fold(
+    final double salePayments =
+        _filteredSales.fold<double>(
       0,
       (sum, sale) => sum + sale.paidAmount,
     );
+
+    final double separatePayments =
+        _filteredPayments.fold<double>(
+      0,
+      (sum, payment) =>
+          sum + payment.amount,
+    );
+
+    return salePayments +
+        separatePayments;
   }
 
   double get _totalOutstanding {
-    return _filteredSales.fold(
-      0,
-      (sum, sale) {
-        final double outstanding =
-            sale.total - sale.paidAmount;
+    final double outstanding =
+        _totalSales - _totalReceived;
 
-        return sum +
-            (outstanding > 0
-                ? outstanding
-                : 0);
-      },
-    );
+    return outstanding > 0
+        ? outstanding
+        : 0;
   }
 
   double get _totalProfit {
@@ -431,21 +526,27 @@ class _CustomerReportScreenState
   // ===========================================================================
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
     if (_loading) {
       return const Center(
-        child: CircularProgressIndicator(),
+        child:
+            CircularProgressIndicator(),
       );
     }
 
     if (_errorMessage != null) {
-      return _buildErrorState(theme);
+      return _buildErrorState(
+        theme,
+      );
     }
 
-    final List<CustomerModel> customers =
+    final List<CustomerModel>
+        customers =
         _filteredCustomers;
 
     return RefreshIndicator(
@@ -456,21 +557,26 @@ class _CustomerReportScreenState
           constraints,
         ) {
           final bool isDesktop =
-              constraints.maxWidth >= 1000;
+              constraints.maxWidth >=
+                  1000;
 
           final bool isTablet =
-              constraints.maxWidth >= 650 &&
-                  constraints.maxWidth < 1000;
+              constraints.maxWidth >=
+                      650 &&
+                  constraints.maxWidth <
+                      1000;
 
           return SingleChildScrollView(
             physics:
                 const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.symmetric(
-              horizontal: isDesktop
-                  ? 28
-                  : isTablet
-                      ? 22
-                      : 16,
+            padding:
+                EdgeInsets.symmetric(
+              horizontal:
+                  isDesktop
+                      ? 28
+                      : isTablet
+                          ? 22
+                          : 16,
               vertical: 20,
             ),
             child: Center(
@@ -481,21 +587,40 @@ class _CustomerReportScreenState
                 ),
                 child: Column(
                   crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                      CrossAxisAlignment
+                          .start,
                   children: [
                     _buildHeader(
                       theme,
                       isDesktop,
                     ),
-                    const SizedBox(height: 20),
+
+                    const SizedBox(
+                      height: 20,
+                    ),
+
                     _buildSummary(
                       isDesktop,
                     ),
-                    const SizedBox(height: 20),
+
+                    const SizedBox(
+                      height: 20,
+                    ),
+
                     _buildHealthSection(),
-                    const SizedBox(height: 20),
-                    _buildFilters(theme),
-                    const SizedBox(height: 20),
+
+                    const SizedBox(
+                      height: 20,
+                    ),
+
+                    _buildFilters(
+                      theme,
+                    ),
+
+                    const SizedBox(
+                      height: 20,
+                    ),
+
                     _buildCustomerList(
                       theme,
                       customers,
@@ -530,82 +655,117 @@ class _CustomerReportScreenState
         isDesktop ? 26 : 20,
       ),
       decoration: const BoxDecoration(
-        gradient: LinearGradient(
+        gradient:
+            LinearGradient(
           colors: [
             AppColors.primary,
             AppColors.secondary,
           ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+          begin:
+              Alignment.topLeft,
+          end:
+              Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.all(
+        borderRadius:
+            BorderRadius.all(
           Radius.circular(22),
         ),
       ),
       child: Row(
         crossAxisAlignment:
-            CrossAxisAlignment.start,
+            CrossAxisAlignment
+                .start,
         children: [
           Container(
             width: 54,
             height: 54,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(
+            decoration:
+                BoxDecoration(
+              color:
+                  Colors.white.withValues(
                 alpha: 0.15,
               ),
               borderRadius:
-                  BorderRadius.circular(16),
+                  BorderRadius.circular(
+                16,
+              ),
             ),
-            child: const Icon(
-              Icons.people_alt_rounded,
-              color: Colors.white,
-              size: 29,
+            child:
+                const Icon(
+              Icons.groups_rounded,
+              color:
+                  Colors.white,
+              size: 28,
             ),
           ),
-          const SizedBox(width: 16),
+
+          const SizedBox(
+            width: 16,
+          ),
+
           Expanded(
             child: Column(
               crossAxisAlignment:
-                  CrossAxisAlignment.start,
+                  CrossAxisAlignment
+                      .start,
               children: [
                 const Text(
-                  'Customer / Hotel Report',
+                  'Customer Report',
                   style: TextStyle(
-                    color: Colors.white,
+                    color:
+                        Colors.white,
                     fontSize: 24,
-                    fontWeight: FontWeight.w800,
+                    fontWeight:
+                        FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 5),
+
+                const SizedBox(
+                  height: 5,
+                ),
+
                 Text(
-                  'Analyse customer-wise sales, collections, outstanding amounts and profit.',
+                  'Customer sales, collections, outstanding balances and payments.',
                   style: TextStyle(
-                    color: Colors.white.withValues(
+                    color:
+                        Colors.white
+                            .withValues(
                       alpha: 0.82,
                     ),
                     fontSize: 13,
                     height: 1.4,
                   ),
                 ),
-                const SizedBox(height: 10),
+
+                const SizedBox(
+                  height: 10,
+                ),
+
                 Container(
                   padding:
-                      const EdgeInsets.symmetric(
+                      const EdgeInsets
+                          .symmetric(
                     horizontal: 11,
                     vertical: 6,
                   ),
-                  decoration: BoxDecoration(
-                    color:
-                        Colors.white.withValues(
+                  decoration:
+                      BoxDecoration(
+                    color: Colors.white
+                        .withValues(
                       alpha: 0.14,
                     ),
                     borderRadius:
-                        BorderRadius.circular(30),
+                        BorderRadius
+                            .circular(
+                      30,
+                    ),
                   ),
                   child: Text(
                     dateText,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style:
+                        const TextStyle(
+                      color:
+                          Colors.white,
                       fontSize: 12,
                       fontWeight:
                           FontWeight.w600,
@@ -615,12 +775,15 @@ class _CustomerReportScreenState
               ],
             ),
           ),
+
           if (isDesktop)
             IconButton(
-              tooltip: 'Refresh',
-              onPressed: _refreshing
-                  ? null
-                  : _refreshReport,
+              tooltip:
+                  'Refresh',
+              onPressed:
+                  _refreshing
+                      ? null
+                      : _refreshReport,
               icon: _refreshing
                   ? const SizedBox(
                       width: 20,
@@ -628,12 +791,14 @@ class _CustomerReportScreenState
                       child:
                           CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: Colors.white,
+                        color:
+                            Colors.white,
                       ),
                     )
                   : const Icon(
                       Icons.refresh_rounded,
-                      color: Colors.white,
+                      color:
+                          Colors.white,
                     ),
             ),
         ],
@@ -650,45 +815,60 @@ class _CustomerReportScreenState
   ) {
     final List<_SummaryItem> items = [
       _SummaryItem(
-        title: 'Customer Sales',
-        value: _currency(_totalSales),
+        title:
+            'Customer Sales',
+        value:
+            _currency(_totalSales),
         subtitle:
             'Sales in selected period',
         icon:
             Icons.point_of_sale_rounded,
-        color: AppColors.primary,
+        color:
+            AppColors.primary,
       ),
+
       _SummaryItem(
         title: 'Received',
         value:
             _currency(_totalReceived),
         subtitle:
-            'Amount collected',
+            'Sale payments + customer payments',
         icon:
             Icons.payments_rounded,
-        color: AppColors.success,
+        color:
+            AppColors.success,
       ),
+
       _SummaryItem(
-        title: 'Outstanding',
+        title:
+            'Outstanding',
         value:
-            _currency(_totalOutstanding),
+            _currency(
+          _totalOutstanding,
+        ),
         subtitle:
             'Amount pending',
         icon:
-            Icons.account_balance_wallet_rounded,
-        color: AppColors.warning,
+            Icons
+                .account_balance_wallet_rounded,
+        color:
+            AppColors.warning,
       ),
+
       _SummaryItem(
-        title: 'Customers',
+        title:
+            'Customers',
         value:
             _number(
-          _activeCustomerCount.toDouble(),
+          _activeCustomerCount
+              .toDouble(),
         ),
         subtitle:
             'Customers in report',
         icon:
             Icons.groups_rounded,
-        color: AppColors.secondary,
+        color:
+            AppColors.secondary,
       ),
     ];
 
@@ -696,7 +876,8 @@ class _CustomerReportScreenState
       shrinkWrap: true,
       physics:
           const NeverScrollableScrollPhysics(),
-      itemCount: items.length,
+      itemCount:
+          items.length,
       gridDelegate:
           SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount:
@@ -711,7 +892,8 @@ class _CustomerReportScreenState
         index,
       ) {
         return _SummaryCard(
-          item: items[index],
+          item:
+              items[index],
         );
       },
     );
@@ -725,92 +907,130 @@ class _CustomerReportScreenState
     return _ReportCard(
       child: Column(
         crossAxisAlignment:
-            CrossAxisAlignment.start,
+            CrossAxisAlignment
+                .start,
         children: [
           const _SectionHeader(
             icon:
                 Icons.insights_rounded,
-            title: 'Customer Business Health',
+            title:
+                'Customer Business Health',
             subtitle:
                 'Collection and profitability overview',
           ),
-          const SizedBox(height: 18),
+
+          const SizedBox(
+            height: 18,
+          ),
+
           LayoutBuilder(
             builder: (
               context,
               constraints,
             ) {
               final bool compact =
-                  constraints.maxWidth < 650;
+                  constraints.maxWidth <
+                      650;
 
               final List<Widget> cards = [
                 _HealthTile(
-                  title: 'Collection Rate',
+                  title:
+                      'Collection Rate',
                   value:
                       '${_collectionRate.toStringAsFixed(1)}%',
                   subtitle:
                       'Sales already received',
                   icon:
-                      Icons.check_circle_rounded,
+                      Icons
+                          .check_circle_rounded,
                   color:
                       AppColors.success,
                 ),
+
                 _HealthTile(
-                  title: 'Customer Profit',
+                  title:
+                      'Customer Profit',
                   value:
-                      _currency(_totalProfit),
+                      _currency(
+                    _totalProfit,
+                  ),
                   subtitle:
                       'Gross profit from sales',
                   icon:
-                      Icons.trending_up_rounded,
+                      Icons
+                          .trending_up_rounded,
                   color:
                       AppColors.primary,
                 ),
+
                 _HealthTile(
-                  title: 'Invoices',
+                  title:
+                      'Invoices',
                   value:
                       '${_filteredSales.length}',
                   subtitle:
                       'Sales invoices',
                   icon:
-                      Icons.receipt_long_rounded,
+                      Icons
+                          .receipt_long_rounded,
                   color:
                       AppColors.secondary,
+                ),
+
+                _HealthTile(
+                  title:
+                      'Payments',
+                  value:
+                      '${_filteredPayments.length}',
+                  subtitle:
+                      'Separate customer payments',
+                  icon:
+                      Icons
+                          .payments_rounded,
+                  color:
+                      AppColors.info,
                 ),
               ];
 
               if (compact) {
                 return Column(
-                  children: cards
-                      .map(
-                        (card) => Padding(
-                          padding:
-                              const EdgeInsets
-                                  .only(
-                            bottom: 10,
-                          ),
-                          child: card,
-                        ),
-                      )
-                      .toList(),
+                  children:
+                      cards
+                          .map(
+                    (card) =>
+                        Padding(
+                      padding:
+                          const EdgeInsets
+                              .only(
+                        bottom: 10,
+                      ),
+                      child:
+                          card,
+                    ),
+                  )
+                          .toList(),
                 );
               }
 
               return Row(
-                children: cards
-                    .map(
-                      (card) => Expanded(
-                        child: Padding(
-                          padding:
-                              const EdgeInsets
-                                  .only(
-                            right: 10,
-                          ),
-                          child: card,
-                        ),
+                children:
+                    cards
+                        .map(
+                  (card) =>
+                      Expanded(
+                    child:
+                        Padding(
+                      padding:
+                          const EdgeInsets
+                              .only(
+                        right: 10,
                       ),
-                    )
-                    .toList(),
+                      child:
+                          card,
+                    ),
+                  ),
+                )
+                        .toList(),
               );
             },
           ),
@@ -833,7 +1053,8 @@ class _CustomerReportScreenState
     return _ReportCard(
       child: Column(
         crossAxisAlignment:
-            CrossAxisAlignment.start,
+            CrossAxisAlignment
+                .start,
         children: [
           Text(
             'Search & Filters',
@@ -845,19 +1066,27 @@ class _CustomerReportScreenState
                   FontWeight.w800,
             ),
           ),
-          const SizedBox(height: 13),
+
+          const SizedBox(
+            height: 13,
+          ),
+
           TextField(
-            controller: _searchController,
+            controller:
+                _searchController,
             onChanged: (value) {
               setState(() {
                 _searchQuery =
-                    value.trim().toLowerCase();
+                    value.trim()
+                        .toLowerCase();
               });
             },
-            decoration: InputDecoration(
+            decoration:
+                InputDecoration(
               hintText:
                   'Search customer, hotel, mobile, email or GST...',
-              prefixIcon: const Icon(
+              prefixIcon:
+                  const Icon(
                 Icons.search_rounded,
               ),
               suffixIcon:
@@ -872,14 +1101,20 @@ class _CustomerReportScreenState
                                   '';
                             });
                           },
-                          icon: const Icon(
-                            Icons.clear_rounded,
+                          icon:
+                              const Icon(
+                            Icons
+                                .clear_rounded,
                           ),
                         )
                       : null,
             ),
           ),
-          const SizedBox(height: 14),
+
+          const SizedBox(
+            height: 14,
+          ),
+
           Wrap(
             spacing: 10,
             runSpacing: 10,
@@ -887,8 +1122,10 @@ class _CustomerReportScreenState
               OutlinedButton.icon(
                 onPressed:
                     _selectDateRange,
-                icon: const Icon(
-                  Icons.date_range_rounded,
+                icon:
+                    const Icon(
+                  Icons
+                      .date_range_rounded,
                 ),
                 label: Text(
                   hasDateFilter
@@ -896,15 +1133,19 @@ class _CustomerReportScreenState
                       : 'Select Date Range',
                 ),
               ),
+
               if (hasDateFilter)
                 TextButton.icon(
                   onPressed:
                       _clearDateFilter,
-                  icon: const Icon(
+                  icon:
+                      const Icon(
                     Icons.clear_rounded,
                   ),
                   label:
-                      const Text('Clear Date'),
+                      const Text(
+                    'Clear Date',
+                  ),
                 ),
             ],
           ),
@@ -924,7 +1165,8 @@ class _CustomerReportScreenState
     return _ReportCard(
       child: Column(
         crossAxisAlignment:
-            CrossAxisAlignment.start,
+            CrossAxisAlignment
+                .start,
         children: [
           _SectionHeader(
             icon:
@@ -934,11 +1176,16 @@ class _CustomerReportScreenState
             subtitle:
                 '${customers.length} customer${customers.length == 1 ? '' : 's'} found',
           ),
-          const SizedBox(height: 18),
+
+          const SizedBox(
+            height: 18,
+          ),
+
           if (customers.isEmpty)
             const _EmptyInline(
               icon:
-                  Icons.people_outline_rounded,
+                  Icons
+                      .people_outline_rounded,
               message:
                   'No customers match the selected filters.',
             )
@@ -946,9 +1193,12 @@ class _CustomerReportScreenState
             ...customers.map(
               (customer) {
                 return _CustomerTile(
-                  customer: customer,
+                  customer:
+                      customer,
                   sales:
-                      _customerSales(customer),
+                      _customerSales(
+                    customer,
+                  ),
                   totalSales:
                       _customerSalesAmount(
                     customer,
@@ -969,7 +1219,8 @@ class _CustomerReportScreenState
                       _customerInvoiceCount(
                     customer,
                   ),
-                  currency: _currency,
+                  currency:
+                      _currency,
                   onTap: () {
                     _showCustomerDetails(
                       customer,
@@ -990,15 +1241,21 @@ class _CustomerReportScreenState
   void _showCustomerDetails(
     CustomerModel customer,
   ) {
-
     final List<SaleModel> sales =
         _customerSales(customer);
 
+    final List<PaymentModel> payments =
+        _customerPayments(customer);
+
     final double salesAmount =
-        _customerSalesAmount(customer);
+        _customerSalesAmount(
+      customer,
+    );
 
     final double received =
-        _customerReceivedAmount(customer);
+        _customerReceivedAmount(
+      customer,
+    );
 
     final double outstanding =
         _customerOutstandingAmount(
@@ -1025,10 +1282,12 @@ class _CustomerReportScreenState
               20,
               24,
             ),
-            child: SingleChildScrollView(
+            child:
+                SingleChildScrollView(
               child: Column(
                 crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                    CrossAxisAlignment
+                        .start,
                 children: [
                   Row(
                     children: [
@@ -1037,26 +1296,32 @@ class _CustomerReportScreenState
                         height: 50,
                         decoration:
                             BoxDecoration(
-                          color: AppColors.primary
+                          color: AppColors
+                              .primary
                               .withValues(
                             alpha: 0.10,
                           ),
                           borderRadius:
-                              BorderRadius.circular(
+                              BorderRadius
+                                  .circular(
                             14,
                           ),
                         ),
-                        child: const Icon(
+                        child:
+                            const Icon(
                           Icons
                               .business_rounded,
                           color:
-                              AppColors.primary,
+                              AppColors
+                                  .primary,
                           size: 25,
                         ),
                       ),
+
                       const SizedBox(
                         width: 12,
                       ),
+
                       Expanded(
                         child: Column(
                           crossAxisAlignment:
@@ -1064,24 +1329,31 @@ class _CustomerReportScreenState
                                   .start,
                           children: [
                             Text(
-                              customer.name,
-                              style: sheetTheme
-                                  .textTheme
-                                  .headlineSmall
-                                  ?.copyWith(
+                              customer
+                                  .name,
+                              style:
+                                  sheetTheme
+                                      .textTheme
+                                      .headlineSmall
+                                      ?.copyWith(
                                 fontWeight:
-                                    FontWeight.w800,
+                                    FontWeight
+                                        .w800,
                               ),
                             ),
-                            if (customer.mobile
+
+                            if (customer
+                                .mobile
                                 .trim()
                                 .isNotEmpty)
                               Text(
-                                customer.mobile,
-                                style: sheetTheme
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(
+                                customer
+                                    .mobile,
+                                style:
+                                    sheetTheme
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(
                                   color: sheetTheme
                                       .colorScheme
                                       .onSurfaceVariant,
@@ -1092,58 +1364,85 @@ class _CustomerReportScreenState
                       ),
                     ],
                   ),
-                  const SizedBox(height: 20),
+
+                  const SizedBox(
+                    height: 20,
+                  ),
+
                   _CustomerDetailSummary(
                     sales:
-                        _currency(salesAmount),
+                        _currency(
+                      salesAmount,
+                    ),
                     received:
-                        _currency(received),
+                        _currency(
+                      received,
+                    ),
                     outstanding:
                         _currency(
                       outstanding,
                     ),
                     profit:
-                        _currency(profit),
+                        _currency(
+                      profit,
+                    ),
                   ),
-                  const SizedBox(height: 20),
+
+                  const SizedBox(
+                    height: 20,
+                  ),
+
                   _DetailRow(
-                    label: 'Owner / Contact',
+                    label:
+                        'Owner / Contact',
                     value:
                         customer.name,
                   ),
+
                   if (customer.mobile
                       .trim()
                       .isNotEmpty)
                     _DetailRow(
-                      label: 'Mobile',
+                      label:
+                          'Mobile',
                       value:
                           customer.mobile,
                     ),
+
                   if (customer.email
                       .trim()
                       .isNotEmpty)
                     _DetailRow(
-                      label: 'Email',
+                      label:
+                          'Email',
                       value:
                           customer.email,
                     ),
+
                   if (customer.address
                       .trim()
                       .isNotEmpty)
                     _DetailRow(
-                      label: 'Address',
+                      label:
+                          'Address',
                       value:
                           customer.address,
                     ),
+
                   if (customer.gstNumber
                       .trim()
                       .isNotEmpty)
                     _DetailRow(
-                      label: 'GST Number',
+                      label:
+                          'GST Number',
                       value:
                           customer.gstNumber,
                     ),
-                  const SizedBox(height: 12),
+
+                  const SizedBox(
+                    height: 12,
+                  ),
+
                   Text(
                     'Recent Sales',
                     style: sheetTheme
@@ -1154,11 +1453,16 @@ class _CustomerReportScreenState
                           FontWeight.w800,
                     ),
                   ),
-                  const SizedBox(height: 10),
+
+                  const SizedBox(
+                    height: 10,
+                  ),
+
                   if (sales.isEmpty)
                     const _EmptyInline(
                       icon:
-                          Icons.receipt_long_outlined,
+                          Icons
+                              .receipt_long_outlined,
                       message:
                           'No sales found for this customer in the selected period.',
                     )
@@ -1189,7 +1493,8 @@ class _CustomerReportScreenState
                               alpha: 0.35,
                             ),
                             borderRadius:
-                                BorderRadius.circular(
+                                BorderRadius
+                                    .circular(
                               12,
                             ),
                           ),
@@ -1213,12 +1518,15 @@ class _CustomerReportScreenState
                                           .bodyMedium
                                           ?.copyWith(
                                         fontWeight:
-                                            FontWeight.w800,
+                                            FontWeight
+                                                .w800,
                                       ),
                                     ),
+
                                     const SizedBox(
                                       height: 3,
                                     ),
+
                                     Text(
                                       _date(
                                         sale.date,
@@ -1235,6 +1543,7 @@ class _CustomerReportScreenState
                                   ],
                                 ),
                               ),
+
                               Column(
                                 crossAxisAlignment:
                                     CrossAxisAlignment
@@ -1249,19 +1558,23 @@ class _CustomerReportScreenState
                                         .bodyMedium
                                         ?.copyWith(
                                       fontWeight:
-                                          FontWeight.w800,
+                                          FontWeight
+                                              .w800,
                                     ),
                                   ),
+
                                   const SizedBox(
                                     height: 3,
                                   ),
+
                                   Text(
                                     due > 0
                                         ? 'Due ${_currency(due)}'
                                         : 'Paid',
                                     style:
                                         TextStyle(
-                                      color: due > 0
+                                      color: due >
+                                              0
                                           ? AppColors
                                               .warning
                                           : AppColors
@@ -1269,10 +1582,184 @@ class _CustomerReportScreenState
                                       fontSize:
                                           11,
                                       fontWeight:
-                                          FontWeight.w700,
+                                          FontWeight
+                                              .w700,
                                     ),
                                   ),
                                 ],
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+
+                  const SizedBox(
+                    height: 18,
+                  ),
+
+                  Text(
+                    'Recent Payments',
+                    style: sheetTheme
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(
+                      fontWeight:
+                          FontWeight.w800,
+                    ),
+                  ),
+
+                  const SizedBox(
+                    height: 10,
+                  ),
+
+                  if (payments.isEmpty)
+                    const _EmptyInline(
+                      icon:
+                          Icons
+                              .payments_outlined,
+                      message:
+                          'No separate customer payments found in the selected period.',
+                    )
+                  else
+                    ...payments.reversed
+                        .take(10)
+                        .map(
+                      (payment) {
+                        return Container(
+                          margin:
+                              const EdgeInsets
+                                  .only(
+                            bottom: 8,
+                          ),
+                          padding:
+                              const EdgeInsets
+                                  .all(13),
+                          decoration:
+                              BoxDecoration(
+                            color: sheetTheme
+                                .colorScheme
+                                .surfaceContainerHighest
+                                .withValues(
+                              alpha: 0.35,
+                            ),
+                            borderRadius:
+                                BorderRadius
+                                    .circular(
+                              12,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 38,
+                                height: 38,
+                                decoration:
+                                    BoxDecoration(
+                                  color: AppColors
+                                      .success
+                                      .withValues(
+                                    alpha:
+                                        0.10,
+                                  ),
+                                  borderRadius:
+                                      BorderRadius
+                                          .circular(
+                                    10,
+                                  ),
+                                ),
+                                child:
+                                    const Icon(
+                                  Icons
+                                      .payments_rounded,
+                                  color:
+                                      AppColors
+                                          .success,
+                                  size: 20,
+                                ),
+                              ),
+
+                              const SizedBox(
+                                width: 10,
+                              ),
+
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment
+                                          .start,
+                                  children: [
+                                    Text(
+                                      payment
+                                              .paymentMethod
+                                              .trim()
+                                              .isEmpty
+                                          ? 'Customer Payment'
+                                          : payment
+                                              .paymentMethod,
+                                      style:
+                                          sheetTheme
+                                              .textTheme
+                                              .bodyMedium
+                                              ?.copyWith(
+                                        fontWeight:
+                                            FontWeight
+                                                .w800,
+                                      ),
+                                    ),
+
+                                    const SizedBox(
+                                      height: 3,
+                                    ),
+
+                                    Text(
+                                      _date(
+                                        payment
+                                            .date,
+                                      ),
+                                      style:
+                                          sheetTheme
+                                              .textTheme
+                                              .bodySmall
+                                              ?.copyWith(
+                                        color: sheetTheme
+                                            .colorScheme
+                                            .onSurfaceVariant,
+                                      ),
+                                    ),
+
+                                    if (payment
+                                        .transactionReference
+                                        .trim()
+                                        .isNotEmpty)
+                                      Text(
+                                        payment
+                                            .transactionReference,
+                                        style:
+                                            sheetTheme
+                                                .textTheme
+                                                .bodySmall,
+                                      ),
+                                  ],
+                                ),
+                              ),
+
+                              Text(
+                                _currency(
+                                  payment
+                                      .amount,
+                                ),
+                                style: sheetTheme
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.copyWith(
+                                  color:
+                                      AppColors
+                                          .success,
+                                  fontWeight:
+                                      FontWeight
+                                          .w800,
+                                ),
                               ),
                             ],
                           ),
@@ -1314,21 +1801,28 @@ class _CustomerReportScreenState
                   height: 64,
                   decoration:
                       BoxDecoration(
-                    color: AppColors.danger
+                    color: AppColors
+                        .danger
                         .withValues(
                       alpha: 0.10,
                     ),
                     shape:
                         BoxShape.circle,
                   ),
-                  child: const Icon(
-                    Icons.error_outline_rounded,
+                  child:
+                      const Icon(
+                    Icons
+                        .error_outline_rounded,
                     color:
                         AppColors.danger,
                     size: 32,
                   ),
                 ),
-                const SizedBox(height: 16),
+
+                const SizedBox(
+                  height: 16,
+                ),
+
                 Text(
                   'Unable to load Customer Report',
                   textAlign:
@@ -1341,7 +1835,11 @@ class _CustomerReportScreenState
                         FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 8),
+
+                const SizedBox(
+                  height: 8,
+                ),
+
                 Text(
                   _errorMessage ??
                       'Something went wrong.',
@@ -1356,15 +1854,23 @@ class _CustomerReportScreenState
                         .onSurfaceVariant,
                   ),
                 ),
-                const SizedBox(height: 20),
+
+                const SizedBox(
+                  height: 20,
+                ),
+
                 FilledButton.icon(
                   onPressed:
                       () => _loadReport(),
-                  icon: const Icon(
-                    Icons.refresh_rounded,
+                  icon:
+                      const Icon(
+                    Icons
+                        .refresh_rounded,
                   ),
                   label:
-                      const Text('Try Again'),
+                      const Text(
+                    'Try Again',
+                  ),
                 ),
               ],
             ),
@@ -1408,20 +1914,24 @@ class _SummaryCard
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
     return Container(
       padding:
           const EdgeInsets.all(17),
-      decoration: BoxDecoration(
+      decoration:
+          BoxDecoration(
         color:
             theme.colorScheme.surface,
         borderRadius:
             BorderRadius.circular(17),
         border: Border.all(
-          color: item.color.withValues(
+          color:
+              item.color.withValues(
             alpha: 0.20,
           ),
         ),
@@ -1446,15 +1956,20 @@ class _SummaryCard
                     12,
                   ),
                 ),
-                child: Icon(
+                child:
+                    Icon(
                   item.icon,
-                  color: item.color,
+                  color:
+                      item.color,
                   size: 21,
                 ),
               ),
+
               const Spacer(),
+
               Icon(
-                Icons.arrow_outward_rounded,
+                Icons
+                    .arrow_outward_rounded,
                 color:
                     item.color.withValues(
                   alpha: 0.65,
@@ -1463,7 +1978,9 @@ class _SummaryCard
               ),
             ],
           ),
+
           const Spacer(),
+
           Text(
             item.title,
             maxLines: 1,
@@ -1480,7 +1997,11 @@ class _SummaryCard
                   FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 3),
+
+          const SizedBox(
+            height: 3,
+          ),
+
           Text(
             item.value,
             maxLines: 1,
@@ -1494,17 +2015,22 @@ class _SummaryCard
                   FontWeight.w800,
             ),
           ),
-          const SizedBox(height: 2),
+
+          const SizedBox(
+            height: 2,
+          ),
+
           Text(
             item.subtitle,
-            maxLines: 1,
+            maxLines: 2,
             overflow:
                 TextOverflow.ellipsis,
             style: theme
                 .textTheme
                 .bodySmall
                 ?.copyWith(
-              color: item.color,
+              color:
+                  item.color,
               fontWeight:
                   FontWeight.w600,
             ),
@@ -1536,22 +2062,27 @@ class _HealthTile
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
     return Container(
       width: double.infinity,
       padding:
-          const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: color.withValues(
+          const EdgeInsets.all(14),
+      decoration:
+          BoxDecoration(
+        color:
+            color.withValues(
           alpha: 0.06,
         ),
         borderRadius:
             BorderRadius.circular(14),
         border: Border.all(
-          color: color.withValues(
+          color:
+              color.withValues(
             alpha: 0.15,
           ),
         ),
@@ -1563,7 +2094,8 @@ class _HealthTile
             height: 42,
             decoration:
                 BoxDecoration(
-              color: color.withValues(
+              color:
+                  color.withValues(
                 alpha: 0.10,
               ),
               borderRadius:
@@ -1571,20 +2103,68 @@ class _HealthTile
                 12,
               ),
             ),
-            child: Icon(
+            child:
+                Icon(
               icon,
-              color: color,
-              size: 22,
+              color:
+                  color,
+              size: 21,
             ),
           ),
-          const SizedBox(width: 12),
+
+          const SizedBox(
+            width: 11,
+          ),
+
           Expanded(
             child: Column(
               crossAxisAlignment:
-                  CrossAxisAlignment.start,
+                  CrossAxisAlignment
+                      .start,
               children: [
                 Text(
                   title,
+                  maxLines: 1,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style: theme
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(
+                    fontWeight:
+                        FontWeight.w700,
+                  ),
+                ),
+
+                const SizedBox(
+                  height: 3,
+                ),
+
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style: theme
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(
+                    color:
+                        color,
+                    fontWeight:
+                        FontWeight.w800,
+                  ),
+                ),
+
+                const SizedBox(
+                  height: 2,
+                ),
+
+                Text(
+                  subtitle,
+                  maxLines: 2,
+                  overflow:
+                      TextOverflow.ellipsis,
                   style: theme
                       .textTheme
                       .bodySmall
@@ -1592,28 +2172,6 @@ class _HealthTile
                     color: theme
                         .colorScheme
                         .onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: theme
-                      .textTheme
-                      .titleMedium
-                      ?.copyWith(
-                    fontWeight:
-                        FontWeight.w800,
-                  ),
-                ),
-                Text(
-                  subtitle,
-                  style: theme
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(
-                    color: color,
-                    fontWeight:
-                        FontWeight.w600,
                   ),
                 ),
               ],
@@ -1638,7 +2196,8 @@ class _CustomerTile
   final double outstanding;
   final double profit;
   final int invoiceCount;
-  final String Function(double) currency;
+  final String Function(double)
+      currency;
   final VoidCallback onTap;
 
   const _CustomerTile({
@@ -1654,7 +2213,9 @@ class _CustomerTile
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
@@ -1669,7 +2230,8 @@ class _CustomerTile
         ),
         padding:
             const EdgeInsets.all(14),
-        decoration: BoxDecoration(
+        decoration:
+            BoxDecoration(
           color: theme
               .colorScheme
               .surfaceContainerHighest
@@ -1677,7 +2239,9 @@ class _CustomerTile
             alpha: 0.40,
           ),
           borderRadius:
-              BorderRadius.circular(14),
+              BorderRadius.circular(
+            14,
+          ),
         ),
         child: Column(
           children: [
@@ -1688,23 +2252,31 @@ class _CustomerTile
                   height: 44,
                   decoration:
                       BoxDecoration(
-                    color: AppColors.primary
+                    color: AppColors
+                        .primary
                         .withValues(
                       alpha: 0.10,
                     ),
                     borderRadius:
-                        BorderRadius.circular(
+                        BorderRadius
+                            .circular(
                       12,
                     ),
                   ),
-                  child: const Icon(
-                    Icons.business_rounded,
+                  child:
+                      const Icon(
+                    Icons
+                        .business_rounded,
                     color:
                         AppColors.primary,
                     size: 22,
                   ),
                 ),
-                const SizedBox(width: 12),
+
+                const SizedBox(
+                  width: 12,
+                ),
+
                 Expanded(
                   child: Column(
                     crossAxisAlignment:
@@ -1715,18 +2287,22 @@ class _CustomerTile
                         customer.name,
                         maxLines: 1,
                         overflow:
-                            TextOverflow.ellipsis,
+                            TextOverflow
+                                .ellipsis,
                         style: theme
                             .textTheme
                             .bodyLarge
                             ?.copyWith(
                           fontWeight:
-                              FontWeight.w800,
+                              FontWeight
+                                  .w800,
                         ),
                       ),
+
                       const SizedBox(
                         height: 3,
                       ),
+
                       Text(
                         customer.mobile
                                 .trim()
@@ -1735,7 +2311,8 @@ class _CustomerTile
                             : customer.mobile,
                         maxLines: 1,
                         overflow:
-                            TextOverflow.ellipsis,
+                            TextOverflow
+                                .ellipsis,
                         style: theme
                             .textTheme
                             .bodySmall
@@ -1748,14 +2325,23 @@ class _CustomerTile
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
+
+                const SizedBox(
+                  width: 8,
+                ),
+
                 const Icon(
-                  Icons.chevron_right_rounded,
+                  Icons
+                      .chevron_right_rounded,
                   size: 20,
                 ),
               ],
             ),
-            const SizedBox(height: 14),
+
+            const SizedBox(
+              height: 14,
+            ),
+
             LayoutBuilder(
               builder: (
                 context,
@@ -1765,36 +2351,54 @@ class _CustomerTile
                     constraints.maxWidth <
                         500;
 
-                final List<Widget> metrics = [
+                final List<Widget>
+                    metrics = [
                   _CustomerMetric(
-                    label: 'Sales',
+                    label:
+                        'Sales',
                     value:
-                        currency(totalSales),
+                        currency(
+                      totalSales,
+                    ),
                     color:
                         AppColors.primary,
                   ),
+
                   _CustomerMetric(
-                    label: 'Received',
+                    label:
+                        'Received',
                     value:
-                        currency(received),
+                        currency(
+                      received,
+                    ),
                     color:
                         AppColors.success,
                   ),
+
                   _CustomerMetric(
-                    label: 'Outstanding',
+                    label:
+                        'Outstanding',
                     value:
-                        currency(outstanding),
+                        currency(
+                      outstanding,
+                    ),
                     color:
                         AppColors.warning,
                   ),
+
                   _CustomerMetric(
-                    label: 'Profit',
+                    label:
+                        'Profit',
                     value:
-                        currency(profit),
+                        currency(
+                      profit,
+                    ),
                     color:
                         profit >= 0
-                            ? AppColors.success
-                            : AppColors.danger,
+                            ? AppColors
+                                .success
+                            : AppColors
+                                .danger,
                   ),
                 ];
 
@@ -1813,9 +2417,11 @@ class _CustomerTile
                           ),
                         ],
                       ),
+
                       const SizedBox(
                         height: 12,
                       ),
+
                       Row(
                         children: [
                           Expanded(
@@ -1833,15 +2439,16 @@ class _CustomerTile
                 }
 
                 return Row(
-                  children: metrics
-                      .map(
-                        (metric) =>
-                            Expanded(
-                          child:
-                              metric,
-                        ),
-                      )
-                      .toList(),
+                  children:
+                      metrics
+                          .map(
+                    (metric) =>
+                        Expanded(
+                      child:
+                          metric,
+                    ),
+                  )
+                          .toList(),
                 );
               },
             ),
@@ -1869,7 +2476,9 @@ class _CustomerMetric
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
@@ -1888,7 +2497,11 @@ class _CustomerMetric
                 .onSurfaceVariant,
           ),
         ),
-        const SizedBox(height: 3),
+
+        const SizedBox(
+          height: 3,
+        ),
+
         Text(
           value,
           maxLines: 1,
@@ -1898,7 +2511,8 @@ class _CustomerMetric
               .textTheme
               .bodyMedium
               ?.copyWith(
-            color: color,
+            color:
+                color,
             fontWeight:
                 FontWeight.w800,
           ),
@@ -1927,27 +2541,45 @@ class _CustomerDetailSummary
   });
 
   @override
-  Widget build(BuildContext context) {
-    final List<_DetailMetric> items = [
+  Widget build(
+    BuildContext context,
+  ) {
+    final List<_DetailMetric>
+        items = [
       _DetailMetric(
-        label: 'Sales',
-        value: sales,
-        color: AppColors.primary,
+        label:
+            'Sales',
+        value:
+            sales,
+        color:
+            AppColors.primary,
       ),
+
       _DetailMetric(
-        label: 'Received',
-        value: received,
-        color: AppColors.success,
+        label:
+            'Received',
+        value:
+            received,
+        color:
+            AppColors.success,
       ),
+
       _DetailMetric(
-        label: 'Outstanding',
-        value: outstanding,
-        color: AppColors.warning,
+        label:
+            'Outstanding',
+        value:
+            outstanding,
+        color:
+            AppColors.warning,
       ),
+
       _DetailMetric(
-        label: 'Profit',
-        value: profit,
-        color: AppColors.secondary,
+        label:
+            'Profit',
+        value:
+            profit,
+        color:
+            AppColors.secondary,
       ),
     ];
 
@@ -1955,7 +2587,8 @@ class _CustomerDetailSummary
       shrinkWrap: true,
       physics:
           const NeverScrollableScrollPhysics(),
-      itemCount: items.length,
+      itemCount:
+          items.length,
       gridDelegate:
           const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
@@ -1973,35 +2606,49 @@ class _CustomerDetailSummary
         return Container(
           padding:
               const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: item.color.withValues(
+          decoration:
+              BoxDecoration(
+            color:
+                item.color.withValues(
               alpha: 0.07,
             ),
             borderRadius:
-                BorderRadius.circular(12),
+                BorderRadius.circular(
+              12,
+            ),
           ),
           child: Column(
             crossAxisAlignment:
-                CrossAxisAlignment.start,
+                CrossAxisAlignment
+                    .start,
             mainAxisAlignment:
-                MainAxisAlignment.center,
+                MainAxisAlignment
+                    .center,
             children: [
               Text(
                 item.label,
-                style: TextStyle(
-                  color: item.color,
+                style:
+                    TextStyle(
+                  color:
+                      item.color,
                   fontSize: 11,
                   fontWeight:
                       FontWeight.w600,
                 ),
               ),
-              const SizedBox(height: 3),
+
+              const SizedBox(
+                height: 3,
+              ),
+
               Text(
                 item.value,
                 maxLines: 1,
                 overflow:
-                    TextOverflow.ellipsis,
-                style: const TextStyle(
+                    TextOverflow
+                        .ellipsis,
+                style:
+                    const TextStyle(
                   fontSize: 14,
                   fontWeight:
                       FontWeight.w800,
@@ -2014,6 +2661,10 @@ class _CustomerDetailSummary
     );
   }
 }
+
+// =============================================================================
+// DETAIL METRIC
+// =============================================================================
 
 class _DetailMetric {
   final String label;
@@ -2042,7 +2693,9 @@ class _DetailRow
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
@@ -2053,7 +2706,8 @@ class _DetailRow
       ),
       child: Row(
         crossAxisAlignment:
-            CrossAxisAlignment.start,
+            CrossAxisAlignment
+                .start,
         children: [
           Expanded(
             child: Text(
@@ -2068,7 +2722,11 @@ class _DetailRow
               ),
             ),
           ),
-          const SizedBox(width: 16),
+
+          const SizedBox(
+            width: 16,
+          ),
+
           Flexible(
             child: Text(
               value,
@@ -2106,7 +2764,9 @@ class _SectionHeader
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
@@ -2128,18 +2788,24 @@ class _SectionHeader
               12,
             ),
           ),
-          child: Icon(
+          child:
+              Icon(
             icon,
             color:
                 theme.colorScheme.primary,
             size: 22,
           ),
         ),
-        const SizedBox(width: 12),
+
+        const SizedBox(
+          width: 12,
+        ),
+
         Expanded(
           child: Column(
             crossAxisAlignment:
-                CrossAxisAlignment.start,
+                CrossAxisAlignment
+                    .start,
             children: [
               Text(
                 title,
@@ -2151,7 +2817,11 @@ class _SectionHeader
                       FontWeight.w800,
                 ),
               ),
-              const SizedBox(height: 2),
+
+              const SizedBox(
+                height: 2,
+              ),
+
               Text(
                 subtitle,
                 style: theme
@@ -2184,7 +2854,9 @@ class _ReportCard
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
@@ -2192,7 +2864,8 @@ class _ReportCard
       width: double.infinity,
       padding:
           const EdgeInsets.all(18),
-      decoration: BoxDecoration(
+      decoration:
+          BoxDecoration(
         color:
             theme.colorScheme.surface,
         borderRadius:
@@ -2241,7 +2914,9 @@ class _EmptyInline
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final ThemeData theme =
         Theme.of(context);
 
@@ -2249,7 +2924,8 @@ class _EmptyInline
       width: double.infinity,
       padding:
           const EdgeInsets.all(24),
-      decoration: BoxDecoration(
+      decoration:
+          BoxDecoration(
         color: theme
             .colorScheme
             .surfaceContainerHighest
@@ -2268,7 +2944,11 @@ class _EmptyInline
                 .colorScheme
                 .onSurfaceVariant,
           ),
-          const SizedBox(height: 10),
+
+          const SizedBox(
+            height: 10,
+          ),
+
           Text(
             message,
             textAlign:

@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:provider/provider.dart';
 
-import '../../core/services/invoice_pdf_service.dart';
 import '../../core/services/sale_stock_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/business_model.dart';
+import '../../models/ledger_transaction_model.dart';
 import '../../models/sale_model.dart';
-import '../../providers/business_provider.dart';
-import '../../providers/sale_provider.dart';
+import '../../repositories/business_repository.dart';
+import '../../repositories/sale_repository.dart';
+import '../../services/ledger/ledger_service.dart';
 import 'add_sale_screen.dart';
 
 class SalesScreen extends StatefulWidget {
@@ -21,317 +21,108 @@ class SalesScreen extends StatefulWidget {
 }
 
 class _SalesScreenState extends State<SalesScreen> {
-  final TextEditingController _searchController =
-      TextEditingController();
+  final BusinessRepository _businessRepository =
+      BusinessRepository();
+
+  final SaleRepository _saleRepository =
+      SaleRepository();
 
   final SaleStockService _saleStockService =
       SaleStockService();
 
+  final LedgerService _ledgerService =
+      LedgerService();
+
+  final TextEditingController _searchController =
+      TextEditingController();
+
+  BusinessModel? _business;
+
+  bool _loadingBusiness = true;
+  String? _businessError;
+
   String _searchQuery = '';
-
-  String _paymentFilter = 'All';
-
-  DateTime? _startDate;
-  DateTime? _endDate;
-
-  bool _initialized = false;
 
   @override
   void initState() {
     super.initState();
 
-    _searchController.addListener(
-      _onSearchChanged,
-    );
+    _loadBusiness();
 
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) {
-        _initialize();
-      },
-    );
+    _searchController.addListener(() {
+      if (!mounted) return;
+
+      setState(() {
+        _searchQuery =
+            _searchController.text.trim().toLowerCase();
+      });
+    });
   }
 
   @override
   void dispose() {
-    _searchController
-      ..removeListener(_onSearchChanged)
-      ..dispose();
-
+    _searchController.dispose();
     super.dispose();
   }
 
   // ===========================================================================
-  // INITIALIZE
+  // BUSINESS
   // ===========================================================================
 
-  Future<void> _initialize() async {
-    if (!mounted) return;
-
-    final BusinessProvider businessProvider =
-        context.read<BusinessProvider>();
-
-    final SaleProvider saleProvider =
-        context.read<SaleProvider>();
-
-    try {
-      await businessProvider.loadBusiness();
-
-      if (!mounted) return;
-
-      final String businessId =
-          businessProvider.business?.id.trim() ?? '';
-
-      if (businessId.isEmpty) {
-        setState(() {
-          _initialized = true;
-        });
-
-        saleProvider.setBusinessId('');
-
-        return;
-      }
-
-      saleProvider.setBusinessId(
-        businessId,
-      );
-
-      await saleProvider.loadAndWatchSales(
-        businessId: businessId,
-      );
-
-      if (!mounted) return;
-
-      setState(() {
-        _initialized = true;
-      });
-    } catch (_) {
-      if (!mounted) return;
-
-      setState(() {
-        _initialized = true;
-      });
-    }
-  }
-
-  // ===========================================================================
-  // REFRESH
-  // ===========================================================================
-
-  Future<void> _refresh() async {
-    final BusinessProvider businessProvider =
-        context.read<BusinessProvider>();
-
-    final SaleProvider saleProvider =
-        context.read<SaleProvider>();
-
-    try {
-      await businessProvider.refresh();
-
-      if (!mounted) return;
-
-      final String businessId =
-          businessProvider.business?.id.trim() ?? '';
-
-      if (businessId.isEmpty) {
-        saleProvider.setBusinessId('');
-        return;
-      }
-
-      saleProvider.setBusinessId(
-        businessId,
-      );
-
-      await saleProvider.refresh();
-    } catch (e) {
-      if (!mounted) return;
-
-      _showMessage(
-        'Unable to refresh sales.',
-        isError: true,
-      );
-    }
-  }
-
-  // ===========================================================================
-  // SEARCH
-  // ===========================================================================
-
-  void _onSearchChanged() {
+  Future<void> _loadBusiness() async {
     if (!mounted) return;
 
     setState(() {
-      _searchQuery =
-          _searchController.text.trim().toLowerCase();
+      _loadingBusiness = true;
+      _businessError = null;
     });
-  }
 
-  // ===========================================================================
-  // FILTER SALES
-  // ===========================================================================
-
-  List<SaleModel> _filteredSales(
-    List<SaleModel> sales,
-  ) {
-    return sales.where(
-      (sale) {
-        // ---------------------------------------------------------------------
-        // SEARCH
-        // ---------------------------------------------------------------------
-
-        if (_searchQuery.isNotEmpty) {
-          final String invoice =
-              sale.invoiceNumber
-                  .trim()
-                  .toLowerCase();
-
-          final String customer =
-              sale.customerName
-                  .trim()
-                  .toLowerCase();
-
-          final String notes =
-              sale.notes
-                  .trim()
-                  .toLowerCase();
-
-          final bool productMatch =
-              sale.items.any(
-            (item) {
-              return item.productName
-                  .trim()
-                  .toLowerCase()
-                  .contains(_searchQuery);
-            },
-          );
-
-          final bool searchMatch =
-              invoice.contains(_searchQuery) ||
-                  customer.contains(_searchQuery) ||
-                  notes.contains(_searchQuery) ||
-                  productMatch;
-
-          if (!searchMatch) {
-            return false;
-          }
-        }
-
-        // ---------------------------------------------------------------------
-        // PAYMENT STATUS
-        // ---------------------------------------------------------------------
-
-        if (_paymentFilter != 'All') {
-          final String status =
-              sale.paymentStatus
-                  .trim()
-                  .toLowerCase();
-
-          if (status !=
-              _paymentFilter.toLowerCase()) {
-            return false;
-          }
-        }
-
-        // ---------------------------------------------------------------------
-        // DATE RANGE
-        // ---------------------------------------------------------------------
-
-        final DateTime saleDate =
-            DateTime(
-          sale.date.year,
-          sale.date.month,
-          sale.date.day,
-        );
-
-        if (_startDate != null) {
-          final DateTime start =
-              DateTime(
-            _startDate!.year,
-            _startDate!.month,
-            _startDate!.day,
-          );
-
-          if (saleDate.isBefore(start)) {
-            return false;
-          }
-        }
-
-        if (_endDate != null) {
-          final DateTime end =
-              DateTime(
-            _endDate!.year,
-            _endDate!.month,
-            _endDate!.day,
-          );
-
-          if (saleDate.isAfter(end)) {
-            return false;
-          }
-        }
-
-        return true;
-      },
-    ).toList();
-  }
-
-  // ===========================================================================
-  // OPEN ADD SALE
-  // ===========================================================================
-
-  Future<void> _openAddSale() async {
-    final BusinessProvider businessProvider =
-        context.read<BusinessProvider>();
-
-    if (businessProvider.business == null) {
-      _showMessage(
-        'Business information is not available.',
-        isError: true,
-      );
-
-      return;
-    }
-
-    final dynamic result =
-        await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const AddSaleScreen(),
-      ),
-    );
-
-    if (!mounted) return;
-
-    if (result == true) {
-      await context.read<SaleProvider>().refresh();
+    try {
+      final BusinessModel? business =
+          await _businessRepository.getBusinessForCurrentUser();
 
       if (!mounted) return;
 
-      _showMessage(
-        'Sale created successfully.',
-      );
+      if (business == null) {
+        setState(() {
+          _business = null;
+          _loadingBusiness = false;
+          _businessError =
+              'Business profile not found. Please complete business setup.';
+        });
+        return;
+      }
+
+      setState(() {
+        _business = business;
+        _loadingBusiness = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _loadingBusiness = false;
+        _businessError = e.toString();
+      });
     }
   }
 
   // ===========================================================================
-  // OPEN EDIT SALE
+  // EDIT SALE
   // ===========================================================================
 
   Future<void> _openEditSale(
     SaleModel sale,
   ) async {
-    final BusinessProvider businessProvider =
-        context.read<BusinessProvider>();
-
-    if (businessProvider.business == null) {
+    if (_business == null) {
       _showMessage(
         'Business information is not available.',
         isError: true,
       );
-
       return;
     }
 
-    final dynamic result =
-        await Navigator.push(
+    final bool? updated = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => AddSaleScreen(
@@ -340,275 +131,36 @@ class _SalesScreenState extends State<SalesScreen> {
       ),
     );
 
-    if (!mounted) return;
-
-    if (result == true) {
-      await context.read<SaleProvider>().refresh();
-
-      if (!mounted) return;
-
-      _showMessage(
-        'Sale updated successfully.',
-      );
+    if (!mounted || updated != true) {
+      return;
     }
+
+    _showMessage('Sale updated successfully.');
   }
 
   // ===========================================================================
-  // DELETE SALE
+  // ADD SALE
   // ===========================================================================
 
-  Future<void> _deleteSale(
-    SaleModel sale,
-  ) async {
-    final BusinessProvider businessProvider =
-        context.read<BusinessProvider>();
-
-    final SaleProvider saleProvider =
-        context.read<SaleProvider>();
-
-    final String businessId =
-        businessProvider.business?.id.trim() ?? '';
-
-    if (businessId.isEmpty) {
+  Future<void> _openAddSale() async {
+    if (_business == null) {
       _showMessage(
         'Business information is not available.',
         isError: true,
       );
-
       return;
     }
 
-    final String saleName =
-        sale.invoiceNumber.trim().isEmpty
-            ? 'this sale'
-            : sale.invoiceNumber.trim();
-
-    final bool? confirmed =
-        await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text(
-            'Delete Sale?',
-          ),
-          content: Text(
-            'Are you sure you want to delete $saleName?\n\n'
-            'The stock deducted by this sale will be restored.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(
-                  dialogContext,
-                  false,
-                );
-              },
-              child: const Text(
-                'Cancel',
-              ),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.danger,
-              ),
-              onPressed: () {
-                Navigator.pop(
-                  dialogContext,
-                  true,
-                );
-              },
-              child: const Text(
-                'Delete',
-              ),
-            ),
-          ],
-        );
-      },
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const AddSaleScreen(),
+      ),
     );
-
-    if (confirmed != true) {
-      return;
-    }
-
-    try {
-      // -----------------------------------------------------------------------
-      // IMPORTANT:
-      // Sale stock was deducted during sale creation.
-      // Restore it before deleting the sale.
-      // -----------------------------------------------------------------------
-
-      await _saleStockService.reverseSaleStock(
-        sale: sale,
-      );
-
-      // -----------------------------------------------------------------------
-      // DELETE SALE
-      // -----------------------------------------------------------------------
-
-      await saleProvider.deleteSale(
-        saleId: sale.id,
-      );
-
-      if (!mounted) return;
-
-      _showMessage(
-        'Sale deleted and stock restored successfully.',
-      );
-    } catch (e) {
-      if (!mounted) return;
-
-      _showMessage(
-        'Unable to delete sale: ${_cleanError(e)}',
-        isError: true,
-      );
-    }
   }
 
   // ===========================================================================
-  // PAYMENT FILTER
-  // ===========================================================================
-
-  void _setPaymentFilter(
-    String value,
-  ) {
-    setState(() {
-      _paymentFilter = value;
-    });
-  }
-
-  // ===========================================================================
-  // DATE FILTER
-  // ===========================================================================
-
-  Future<void> _selectStartDate() async {
-    final DateTime initialDate =
-        _startDate ?? DateTime.now();
-
-    final DateTime? selected =
-        await showDatePicker(
-      context: context,
-      initialDate: initialDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-    );
-
-    if (selected == null) {
-      return;
-    }
-
-    setState(() {
-      _startDate = selected;
-
-      if (_endDate != null &&
-          _endDate!.isBefore(selected)) {
-        _endDate = selected;
-      }
-    });
-  }
-
-  Future<void> _selectEndDate() async {
-    final DateTime initialDate =
-        _endDate ??
-            _startDate ??
-            DateTime.now();
-
-    final DateTime? selected =
-        await showDatePicker(
-      context: context,
-      initialDate: initialDate,
-      firstDate: _startDate ?? DateTime(2020),
-      lastDate: DateTime.now(),
-    );
-
-    if (selected == null) {
-      return;
-    }
-
-    setState(() {
-      _endDate = selected;
-    });
-  }
-
-  void _clearFilters() {
-    _searchController.clear();
-
-    setState(() {
-      _paymentFilter = 'All';
-      _startDate = null;
-      _endDate = null;
-    });
-  }
-
-  // ===========================================================================
-  // PRINT INVOICE
-  // ===========================================================================
-
-  Future<void> _printInvoice(
-    SaleModel sale,
-  ) async {
-    final BusinessModel? business =
-        context.read<BusinessProvider>().business;
-
-    if (business == null) {
-      _showMessage(
-        'Business information is not available.',
-        isError: true,
-      );
-
-      return;
-    }
-
-    try {
-      await InvoicePdfService.printInvoice(
-        business: business,
-        sale: sale,
-      );
-    } catch (e) {
-      if (!mounted) return;
-
-      _showMessage(
-        'Unable to print invoice: ${_cleanError(e)}',
-        isError: true,
-      );
-    }
-  }
-
-  // ===========================================================================
-  // SHARE INVOICE
-  // ===========================================================================
-
-  Future<void> _shareInvoice(
-    SaleModel sale,
-  ) async {
-    final BusinessModel? business =
-        context.read<BusinessProvider>().business;
-
-    if (business == null) {
-      _showMessage(
-        'Business information is not available.',
-        isError: true,
-      );
-
-      return;
-    }
-
-    try {
-      await InvoicePdfService.shareInvoice(
-        business: business,
-        sale: sale,
-      );
-    } catch (e) {
-      if (!mounted) return;
-
-      _showMessage(
-        'Unable to share invoice: ${_cleanError(e)}',
-        isError: true,
-      );
-    }
-  }
-
-  // ===========================================================================
-  // SHOW DETAILS
+  // SALE DETAILS
   // ===========================================================================
 
   void _showSaleDetails(
@@ -620,80 +172,469 @@ class _SalesScreenState extends State<SalesScreen> {
       showDragHandle: true,
       backgroundColor:
           Theme.of(context).colorScheme.surface,
-      builder: (_) {
-        return _SaleDetailsSheet(
-          sale: sale,
-
-          // -------------------------------------------------------------------
-          // PRINT INVOICE
-          // -------------------------------------------------------------------
-
-          onPrintInvoice: () {
-            Navigator.pop(context);
-
-            Future<void>.delayed(
-              Duration.zero,
-              () {
-                if (mounted) {
-                  _printInvoice(sale);
-                }
-              },
-            );
-          },
-
-          // -------------------------------------------------------------------
-          // SHARE INVOICE
-          // -------------------------------------------------------------------
-
-          onShareInvoice: () {
-            Navigator.pop(context);
-
-            Future<void>.delayed(
-              Duration.zero,
-              () {
-                if (mounted) {
-                  _shareInvoice(sale);
-                }
-              },
-            );
-          },
-
-          // -------------------------------------------------------------------
-          // EDIT
-          // -------------------------------------------------------------------
-
-          onEdit: () {
-            Navigator.pop(context);
-
-            Future<void>.delayed(
-              Duration.zero,
-              () {
-                if (mounted) {
-                  _openEditSale(sale);
-                }
-              },
-            );
-          },
-
-          // -------------------------------------------------------------------
-          // DELETE
-          // -------------------------------------------------------------------
-
-          onDelete: () {
-            Navigator.pop(context);
-
-            Future<void>.delayed(
-              Duration.zero,
-              () {
-                if (mounted) {
-                  _deleteSale(sale);
-                }
-              },
-            );
-          },
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              20,
+              4,
+              20,
+              24,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 46,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          color: AppColors.success.withValues(
+                            alpha: 0.12,
+                          ),
+                          borderRadius:
+                              BorderRadius.circular(14),
+                        ),
+                        child: const Icon(
+                          Icons.receipt_long_rounded,
+                          color: AppColors.success,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              sale.invoiceNumber.isEmpty
+                                  ? 'Sale'
+                                  : sale.invoiceNumber,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleLarge
+                                  ?.copyWith(
+                                    fontWeight:
+                                        FontWeight.bold,
+                                  ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              DateFormat(
+                                'dd MMM yyyy, hh:mm a',
+                              ).format(sale.date),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      _StatusChip(
+                        status: sale.paymentStatus,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 22),
+                  _DetailSection(
+                    title: 'Customer',
+                    child: Row(
+                      children: [
+                        const CircleAvatar(
+                          radius: 20,
+                          child: Icon(
+                            Icons.person_outline_rounded,
+                            size: 21,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            sale.customerName.isEmpty
+                                ? 'Walk-in Customer'
+                                : sale.customerName,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  _DetailSection(
+                    title: 'Items',
+                    child: Column(
+                      children: sale.items.map(
+                        (item) {
+                          return Padding(
+                            padding:
+                                const EdgeInsets.only(
+                              bottom: 12,
+                            ),
+                            child: Row(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        item.productName,
+                                        style:
+                                            const TextStyle(
+                                          fontWeight:
+                                              FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 3),
+                                      Text(
+                                        '${_formatNumber(item.quantity)} ${item.unit} × ${_formatCurrency(item.sellingRate)}',
+                                        style:
+                                            Theme.of(context)
+                                                .textTheme
+                                                .bodySmall
+                                                ?.copyWith(
+                                                  color: Theme.of(
+                                                    context,
+                                                  )
+                                                      .colorScheme
+                                                      .onSurfaceVariant,
+                                                ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  _formatCurrency(item.total),
+                                  style: const TextStyle(
+                                    fontWeight:
+                                        FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ).toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  _SummaryCard(
+                    subtotal: sale.subtotal,
+                    discount: sale.discount,
+                    tax: sale.tax,
+                    total: sale.total,
+                    paid: sale.paidAmount,
+                  ),
+                  const SizedBox(height: 16),
+                  _InfoRow(
+                    icon: Icons.payments_outlined,
+                    label: 'Payment Method',
+                    value: sale.paymentMethod.isEmpty
+                        ? 'Not specified'
+                        : sale.paymentMethod,
+                  ),
+                  if (sale.notes.trim().isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    _InfoRow(
+                      icon: Icons.notes_rounded,
+                      label: 'Notes',
+                      value: sale.notes,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
         );
       },
     );
+  }
+
+  // ===========================================================================
+  // DELETE SALE
+  // ===========================================================================
+
+  Future<void> _deleteSale(
+    SaleModel sale,
+  ) async {
+    final BusinessModel? business = _business;
+
+    if (business == null) {
+      _showMessage(
+        'Business information is not available.',
+        isError: true,
+      );
+      return;
+    }
+
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text(
+            'Delete Sale?',
+          ),
+          content: Text(
+            'Are you sure you want to delete '
+            '${sale.invoiceNumber.isEmpty ? 'this sale' : sale.invoiceNumber}?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(
+                  dialogContext,
+                  false,
+                );
+              },
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.danger,
+              ),
+              onPressed: () {
+                Navigator.pop(
+                  dialogContext,
+                  true,
+                );
+              },
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    bool stockReversed = false;
+
+    final List<LedgerTransactionModel> createdReversals =
+        [];
+
+    try {
+      // -----------------------------------------------------------------------
+      // 1. RESTORE STOCK
+      // -----------------------------------------------------------------------
+      //
+      // The sale document is not deleted until the stock has been restored.
+      // If stock restoration fails, the sale remains untouched.
+      //
+
+      await _saleStockService.reverseSaleStock(
+        sale: sale,
+      );
+
+      stockReversed = true;
+
+      // -----------------------------------------------------------------------
+      // 2. REVERSE CUSTOMER LEDGER
+      // -----------------------------------------------------------------------
+      //
+      // Walk-in sales do not have a customerId and therefore do not require
+      // customer ledger correction.
+      //
+
+      if (sale.customerId.trim().isNotEmpty) {
+        final List<LedgerTransactionModel> transactions =
+            await _ledgerService.getCustomerTransactions(
+          businessId: business.id.trim(),
+          customerId: sale.customerId.trim(),
+        );
+
+        // A sale can have multiple historical SALE entries after edits.
+        //
+        // We only care about the latest SALE / SALE_REVERSAL event belonging
+        // to this sale. The ledger repository returns transactions ordered
+        // newest-first, so the first matching transaction is the latest state.
+        //
+        // This prevents:
+        //   1. reversing an already-reversed sale again;
+        //   2. reversing an old SALE entry from an earlier edit;
+        //   3. creating duplicate reversal entries.
+
+        final List<LedgerTransactionModel> saleHistory =
+            transactions.where((transaction) {
+          final String type =
+              transaction.transactionType.trim().toUpperCase();
+
+          return transaction.referenceId.trim() ==
+                  sale.id.trim() &&
+              (type == LedgerService.saleType ||
+                  type == LedgerService.saleReversalType);
+        }).toList();
+
+        if (saleHistory.isNotEmpty) {
+          final LedgerTransactionModel latest =
+              saleHistory.first;
+
+          final String latestType =
+              latest.transactionType.trim().toUpperCase();
+
+          if (latestType == LedgerService.saleType &&
+              latest.amount > 0) {
+            final double currentBalance =
+                await _ledgerService.getCustomerBalance(
+              businessId: business.id.trim(),
+              customerId: sale.customerId.trim(),
+            );
+
+            final double newBalance =
+                currentBalance - latest.amount;
+
+            final LedgerTransactionModel reversal =
+                await _ledgerService.createTransaction(
+              businessId: business.id.trim(),
+              customerId: sale.customerId.trim(),
+              customerName: sale.customerName.trim().isEmpty
+                  ? latest.customerName.trim()
+                  : sale.customerName.trim(),
+              transactionType:
+                  LedgerService.saleReversalType,
+              amount: latest.amount,
+              balanceBefore: currentBalance,
+              balanceAfter: newBalance,
+              referenceId: sale.id,
+              date: DateTime.now(),
+              notes: 'Reversal for deleted sale '
+                  '${sale.invoiceNumber.isEmpty ? sale.id : sale.invoiceNumber}',
+            );
+
+            createdReversals.add(reversal);
+          }
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // 3. DELETE SALE
+      // -----------------------------------------------------------------------
+
+      await _saleRepository.deleteSale(
+        businessId: business.id.trim(),
+        saleId: sale.id.trim(),
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      _showMessage(
+        createdReversals.isEmpty
+            ? 'Sale deleted and stock restored successfully.'
+            : 'Sale deleted, stock restored and customer ledger reversed successfully.',
+      );
+    } catch (e) {
+      // -----------------------------------------------------------------------
+      // ROLLBACK LEDGER REVERSALS
+      // -----------------------------------------------------------------------
+      //
+      // If the sale deletion fails after a ledger reversal was created,
+      // remove only the reversal entries created by this operation.
+      //
+
+      for (final LedgerTransactionModel reversal
+          in createdReversals.reversed) {
+        try {
+          await _ledgerService.deleteTransaction(
+            businessId: business.id.trim(),
+            transactionId: reversal.id,
+          );
+        } catch (_) {
+          // Preserve the original operation error.
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // ROLLBACK STOCK
+      // -----------------------------------------------------------------------
+      //
+      // The sale was temporarily reversed from stock. If deletion failed,
+      // put the stock back into the exact logical state represented by
+      // the existing sale.
+      //
+
+      if (stockReversed) {
+        try {
+          await _saleStockService.processSaleStock(
+            sale: sale,
+          );
+        } catch (_) {
+          // Preserve the original operation error.
+        }
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      _showMessage(
+        'Unable to delete sale: ${_cleanError(e)}',
+        isError: true,
+      );
+    }
+  }
+
+  String _cleanError(
+    Object error,
+  ) {
+    final String message = error.toString();
+
+    if (message.startsWith('Exception: ')) {
+      return message.substring('Exception: '.length);
+    }
+
+    return message;
+  }
+
+  // ===========================================================================
+  // SEARCH
+  // ===========================================================================
+
+  List<SaleModel> _filterSales(
+    List<SaleModel> sales,
+  ) {
+    if (_searchQuery.isEmpty) {
+      return sales;
+    }
+
+    return sales.where(
+      (sale) {
+        final String invoice =
+            sale.invoiceNumber.toLowerCase();
+
+        final String customer =
+            sale.customerName.toLowerCase();
+
+        final String notes =
+            sale.notes.toLowerCase();
+
+        final bool productMatch = sale.items.any(
+          (item) => item.productName
+              .toLowerCase()
+              .contains(_searchQuery),
+        );
+
+        return invoice.contains(_searchQuery) ||
+            customer.contains(_searchQuery) ||
+            notes.contains(_searchQuery) ||
+            productMatch;
+      },
+    ).toList();
   }
 
   // ===========================================================================
@@ -710,38 +651,13 @@ class _SalesScreenState extends State<SalesScreen> {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(
-            message,
-          ),
-          backgroundColor:
-              isError
-                  ? AppColors.danger
-                  : AppColors.success,
-          behavior:
-              SnackBarBehavior.floating,
+          content: Text(message),
+          backgroundColor: isError
+              ? AppColors.danger
+              : AppColors.success,
+          behavior: SnackBarBehavior.floating,
         ),
       );
-  }
-
-  // ===========================================================================
-  // ERROR CLEANER
-  // ===========================================================================
-
-  String _cleanError(
-    Object error,
-  ) {
-    final String message =
-        error.toString();
-
-    if (message.startsWith(
-      'Exception: ',
-    )) {
-      return message.substring(
-        'Exception: '.length,
-      );
-    }
-
-    return message;
   }
 
   // ===========================================================================
@@ -752,103 +668,100 @@ class _SalesScreenState extends State<SalesScreen> {
   Widget build(
     BuildContext context,
   ) {
-    final BusinessProvider businessProvider =
-        context.watch<BusinessProvider>();
-
-    final SaleProvider saleProvider =
-        context.watch<SaleProvider>();
-
-    if (!_initialized ||
-        businessProvider.isLoading) {
+    if (_loadingBusiness) {
       return const Center(
         child: CircularProgressIndicator(),
       );
     }
 
-    if (businessProvider.errorMessage != null) {
-      return _buildErrorState(
-        businessProvider.errorMessage!,
-      );
+    if (_businessError != null) {
+      return _buildErrorState();
     }
 
-    if (businessProvider.business == null) {
+    final BusinessModel? business = _business;
+
+    if (business == null) {
       return _buildNoBusinessState();
     }
 
-    if (saleProvider.isLoading &&
-        saleProvider.sales.isEmpty) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
-    }
-
-    if (saleProvider.errorMessage != null &&
-        saleProvider.sales.isEmpty) {
-      return _buildErrorState(
-        saleProvider.errorMessage!,
-      );
-    }
-
-    final List<SaleModel> filteredSales =
-        _filteredSales(
-      saleProvider.sales,
-    );
-
-    return RefreshIndicator(
-      onRefresh: _refresh,
-      child: LayoutBuilder(
-        builder: (
-          context,
-          constraints,
-        ) {
-          final bool isDesktop =
-              constraints.maxWidth >= 1000;
-
-          return SingleChildScrollView(
-            physics:
-                const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.symmetric(
-              horizontal:
-                  isDesktop ? 28 : 16,
-              vertical: 20,
-            ),
-            child: Center(
-              child: ConstrainedBox(
-                constraints:
-                    const BoxConstraints(
-                  maxWidth: 1250,
-                ),
-                child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-                    _buildHeader(
-                      isDesktop,
-                    ),
-                    const SizedBox(
-                      height: 20,
-                    ),
-                    _buildSummary(
-                      saleProvider,
-                      isDesktop,
-                    ),
-                    const SizedBox(
-                      height: 20,
-                    ),
-                    _buildFilterSection(),
-                    const SizedBox(
-                      height: 20,
-                    ),
-                    _buildSalesSection(
-                      filteredSales,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
+    return StreamBuilder<List<SaleModel>>(
+      stream: _saleRepository.watchSales(
+        businessId: business.id,
       ),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState ==
+                ConnectionState.waiting &&
+            !snapshot.hasData) {
+          return const Center(
+            child: CircularProgressIndicator(),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return _buildStreamErrorState(
+            snapshot.error.toString(),
+          );
+        }
+
+        final List<SaleModel> sales =
+            _filterSales(
+          snapshot.data ?? <SaleModel>[],
+        );
+
+        return RefreshIndicator(
+          onRefresh: () async {
+            await _loadBusiness();
+          },
+          child: LayoutBuilder(
+            builder: (
+              context,
+              constraints,
+            ) {
+              final bool isDesktop =
+                  constraints.maxWidth >= 900;
+
+              return SingleChildScrollView(
+                physics:
+                    const AlwaysScrollableScrollPhysics(),
+                padding: EdgeInsets.symmetric(
+                  horizontal:
+                      isDesktop ? 28 : 16,
+                  vertical: 20,
+                ),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints:
+                        const BoxConstraints(
+                      maxWidth: 1200,
+                    ),
+                    child: Column(
+                      crossAxisAlignment:
+                          CrossAxisAlignment.start,
+                      children: [
+                        _buildHeader(
+                          isDesktop,
+                        ),
+                        const SizedBox(height: 20),
+                        _buildSummary(
+                          snapshot.data ??
+                              <SaleModel>[],
+                          isDesktop,
+                        ),
+                        const SizedBox(height: 20),
+                        _buildSearchCard(),
+                        const SizedBox(height: 20),
+                        _buildSalesSection(
+                          sales,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 
@@ -859,13 +772,27 @@ class _SalesScreenState extends State<SalesScreen> {
   Widget _buildHeader(
     bool isDesktop,
   ) {
-    final ThemeData theme =
-        Theme.of(context);
-
     return Row(
       crossAxisAlignment:
           CrossAxisAlignment.center,
       children: [
+        Container(
+          width: 52,
+          height: 52,
+          decoration: BoxDecoration(
+            color: AppColors.success.withValues(
+              alpha: 0.12,
+            ),
+            borderRadius:
+                BorderRadius.circular(16),
+          ),
+          child: const Icon(
+            Icons.point_of_sale_rounded,
+            color: AppColors.success,
+            size: 27,
+          ),
+        ),
+        const SizedBox(width: 14),
         Expanded(
           child: Column(
             crossAxisAlignment:
@@ -873,45 +800,39 @@ class _SalesScreenState extends State<SalesScreen> {
             children: [
               Text(
                 'Sales',
-                style: theme
+                style: Theme.of(context)
                     .textTheme
                     .headlineSmall
                     ?.copyWith(
-                  fontWeight:
-                      FontWeight.w800,
-                ),
+                      fontWeight:
+                          FontWeight.bold,
+                    ),
               ),
-              const SizedBox(
-                height: 5,
-              ),
+              const SizedBox(height: 3),
               Text(
-                'Manage sales, invoices and customer transactions.',
-                style: theme
+                'Manage sales, invoices and payments.',
+                style: Theme.of(context)
                     .textTheme
                     .bodyMedium
                     ?.copyWith(
-                  color: theme
-                      .colorScheme
-                      .onSurfaceVariant,
-                ),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurfaceVariant,
+                    ),
               ),
             ],
           ),
         ),
-        const SizedBox(
-          width: 12,
-        ),
-        FilledButton.icon(
-          onPressed: _openAddSale,
-          icon: const Icon(
-            Icons.add_rounded,
+        if (isDesktop)
+          FilledButton.icon(
+            onPressed: _openAddSale,
+            icon: const Icon(
+              Icons.add_rounded,
+            ),
+            label: const Text(
+              'New Sale',
+            ),
           ),
-          label: Text(
-            isDesktop
-                ? 'Add Sale'
-                : 'Sale',
-          ),
-        ),
       ],
     );
   }
@@ -921,738 +842,387 @@ class _SalesScreenState extends State<SalesScreen> {
   // ===========================================================================
 
   Widget _buildSummary(
-    SaleProvider saleProvider,
+    List<SaleModel> sales,
     bool isDesktop,
   ) {
-    final List<SaleModel> sales =
-        _filteredSales(
-      saleProvider.sales,
-    );
-
-    double totalSales = 0;
-    double totalReceived = 0;
-    double totalPending = 0;
+    double total = 0;
+    double paid = 0;
+    double outstanding = 0;
 
     for (final SaleModel sale in sales) {
-      totalSales += sale.total;
-      totalReceived += sale.paidAmount;
+      total += sale.total;
+      paid += sale.paidAmount;
 
-      final double pending =
+      final double balance =
           sale.total - sale.paidAmount;
 
-      if (pending > 0) {
-        totalPending += pending;
+      if (balance > 0) {
+        outstanding += balance;
       }
     }
 
-    return LayoutBuilder(
-      builder: (
-        context,
-        constraints,
-      ) {
-        final double width =
-            constraints.maxWidth;
+    final int count = sales.length;
 
-        int columns;
+    final List<Widget> cards = [
+      _SummaryMetricCard(
+        icon: Icons.receipt_long_rounded,
+        title: 'Total Sales',
+        value: _formatCurrency(total),
+        subtitle:
+            '$count invoice${count == 1 ? '' : 's'}',
+        color: AppColors.primary,
+      ),
+      _SummaryMetricCard(
+        icon: Icons.payments_rounded,
+        title: 'Collected',
+        value: _formatCurrency(paid),
+        subtitle: 'Amount received',
+        color: AppColors.success,
+      ),
+      _SummaryMetricCard(
+        icon:
+            Icons.account_balance_wallet_outlined,
+        title: 'Outstanding',
+        value: _formatCurrency(outstanding),
+        subtitle: 'Amount pending',
+        color: AppColors.warning,
+      ),
+    ];
 
-        if (width >= 1000) {
-          columns = 4;
-        } else if (width >= 650) {
-          columns = 2;
-        } else {
-          columns = 1;
-        }
+    if (isDesktop) {
+      return Row(
+        children: cards
+            .map(
+              (card) => Expanded(
+                child: Padding(
+                  padding:
+                      const EdgeInsets.only(
+                    right: 12,
+                  ),
+                  child: card,
+                ),
+              ),
+            )
+            .toList(),
+      );
+    }
 
-        final double spacing =
-            columns == 1 ? 0 : 12;
-
-        final double cardWidth =
-            columns == 1
-                ? width
-                : (width -
-                        spacing *
-                            (columns - 1)) /
-                    columns;
-
-        return Wrap(
-          spacing: 12,
-          runSpacing: 12,
+    return Column(
+      children: [
+        cards[0],
+        const SizedBox(height: 12),
+        Row(
           children: [
-            SizedBox(
-              width: cardWidth,
-              child: _SummaryCard(
-                icon:
-                    Icons.receipt_long_rounded,
-                title: 'Total Sales',
-                value:
-                    _formatCurrency(
-                  totalSales,
-                ),
-                color:
-                    AppColors.success,
-                subtitle:
-                    '${sales.length} sale${sales.length == 1 ? '' : 's'}',
-              ),
+            Expanded(
+              child: cards[1],
             ),
-            SizedBox(
-              width: cardWidth,
-              child: _SummaryCard(
-                icon:
-                    Icons.account_balance_wallet_outlined,
-                title: 'Received',
-                value:
-                    _formatCurrency(
-                  totalReceived,
-                ),
-                color:
-                    AppColors.info,
-                subtitle:
-                    'Paid amount',
-              ),
-            ),
-            SizedBox(
-              width: cardWidth,
-              child: _SummaryCard(
-                icon:
-                    Icons.pending_actions_rounded,
-                title: 'Pending',
-                value:
-                    _formatCurrency(
-                  totalPending,
-                ),
-                color:
-                    AppColors.warning,
-                subtitle:
-                    'Outstanding',
-              ),
-            ),
-            SizedBox(
-              width: cardWidth,
-              child: _SummaryCard(
-                icon:
-                    Icons.trending_up_rounded,
-                title: 'Collection Rate',
-                value:
-                    totalSales <= 0
-                        ? '0%'
-                        : '${((totalReceived / totalSales) * 100).clamp(0, 100).toStringAsFixed(1)}%',
-                color:
-                    AppColors.purple,
-                subtitle:
-                    'Received / sales',
-              ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: cards[2],
             ),
           ],
-        );
-      },
-    );
-  }
-
-  // ===========================================================================
-  // FILTER SECTION
-  // ===========================================================================
-
-  Widget _buildFilterSection() {
-    final ThemeData theme =
-        Theme.of(context);
-
-    final bool hasFilters =
-        _searchQuery.isNotEmpty ||
-            _paymentFilter != 'All' ||
-            _startDate != null ||
-            _endDate != null;
-
-    return Container(
-      width: double.infinity,
-      padding:
-          const EdgeInsets.all(16),
-      decoration:
-          BoxDecoration(
-        color: theme
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(
-          alpha: 0.35,
-        ),
-        borderRadius:
-            BorderRadius.circular(
-          18,
-        ),
-        border:
-            Border.all(
-          color: theme
-              .colorScheme
-              .outline
-              .withValues(
-            alpha: 0.12,
-          ),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons
-                    .filter_alt_outlined,
-                size: 19,
-                color: theme
-                    .colorScheme
-                    .primary,
-              ),
-              const SizedBox(
-                width: 8,
-              ),
-              Text(
-                'Search & Filters',
-                style: theme
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(
-                  fontWeight:
-                      FontWeight.w800,
-                ),
-              ),
-              const Spacer(),
-              if (hasFilters)
-                TextButton(
-                  onPressed:
-                      _clearFilters,
-                  child: const Text(
-                    'Clear',
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(
-            height: 14,
-          ),
-          LayoutBuilder(
-            builder: (
-              context,
-              constraints,
-            ) {
-              final bool compact =
-                  constraints.maxWidth < 700;
-
-              if (compact) {
-                return Column(
-                  children: [
-                    _buildSearchField(),
-                    const SizedBox(
-                      height: 12,
-                    ),
-                    _buildPaymentDropdown(),
-                    const SizedBox(
-                      height: 12,
-                    ),
-                    _buildDateButtons(),
-                  ],
-                );
-              }
-
-              return Row(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    flex: 2,
-                    child:
-                        _buildSearchField(),
-                  ),
-                  const SizedBox(
-                    width: 12,
-                  ),
-                  Expanded(
-                    child:
-                        _buildPaymentDropdown(),
-                  ),
-                  const SizedBox(
-                    width: 12,
-                  ),
-                  Expanded(
-                    child:
-                        _buildDateButtons(),
-                  ),
-                ],
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSearchField() {
-    return TextField(
-      controller: _searchController,
-      textInputAction:
-          TextInputAction.search,
-      decoration:
-          InputDecoration(
-        hintText:
-            'Search invoice, customer or product',
-        prefixIcon:
-            const Icon(
-          Icons.search_rounded,
-        ),
-        suffixIcon:
-            _searchQuery.isNotEmpty
-                ? IconButton(
-                    onPressed: () {
-                      _searchController
-                          .clear();
-                    },
-                    icon:
-                        const Icon(
-                      Icons
-                          .clear_rounded,
-                    ),
-                  )
-                : null,
-        border:
-            OutlineInputBorder(
-          borderRadius:
-              BorderRadius.circular(
-            14,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPaymentDropdown() {
-    return DropdownButtonFormField<String>(
-      initialValue: _paymentFilter,
-      decoration:
-          InputDecoration(
-        labelText:
-            'Payment Status',
-        prefixIcon:
-            const Icon(
-          Icons
-              .payments_outlined,
-        ),
-        border:
-            OutlineInputBorder(
-          borderRadius:
-              BorderRadius.circular(
-            14,
-          ),
-        ),
-      ),
-      items: const [
-        DropdownMenuItem(
-          value: 'All',
-          child: Text(
-            'All',
-          ),
-        ),
-        DropdownMenuItem(
-          value: 'Paid',
-          child: Text(
-            'Paid',
-          ),
-        ),
-        DropdownMenuItem(
-          value: 'Partial',
-          child: Text(
-            'Partial',
-          ),
-        ),
-        DropdownMenuItem(
-          value: 'Unpaid',
-          child: Text(
-            'Unpaid',
-          ),
-        ),
-      ],
-      onChanged:
-          (value) {
-        if (value == null) return;
-        _setPaymentFilter(
-          value,
-        );
-      },
-    );
-  }
-
-  Widget _buildDateButtons() {
-    return Row(
-      children: [
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed:
-                _selectStartDate,
-            icon: const Icon(
-              Icons
-                  .calendar_today_outlined,
-              size: 17,
-            ),
-            label: Text(
-              _startDate == null
-                  ? 'From'
-                  : DateFormat(
-                      'dd MMM',
-                    ).format(
-                      _startDate!,
-                    ),
-              overflow:
-                  TextOverflow.ellipsis,
-            ),
-          ),
-        ),
-        const SizedBox(
-          width: 8,
-        ),
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed:
-                _selectEndDate,
-            icon: const Icon(
-              Icons
-                  .event_outlined,
-              size: 17,
-            ),
-            label: Text(
-              _endDate == null
-                  ? 'To'
-                  : DateFormat(
-                      'dd MMM',
-                    ).format(
-                      _endDate!,
-                    ),
-              overflow:
-                  TextOverflow.ellipsis,
-            ),
-          ),
         ),
       ],
     );
   }
 
   // ===========================================================================
-  // SALES SECTION
+  // SEARCH
+  // ===========================================================================
+
+  Widget _buildSearchCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: TextField(
+          controller: _searchController,
+          textInputAction:
+              TextInputAction.search,
+          decoration: InputDecoration(
+            hintText:
+                'Search invoice, customer or product...',
+            prefixIcon: const Icon(
+              Icons.search_rounded,
+            ),
+            suffixIcon:
+                _searchController.text.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Clear search',
+                        onPressed: () {
+                          _searchController.clear();
+                        },
+                        icon: const Icon(
+                          Icons.close_rounded,
+                        ),
+                      ),
+            border: InputBorder.none,
+            filled: false,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // SALES LIST
   // ===========================================================================
 
   Widget _buildSalesSection(
     List<SaleModel> sales,
   ) {
-    final ThemeData theme =
-        Theme.of(context);
-
-    if (sales.isEmpty) {
-      return _buildEmptySalesState();
-    }
-
-    return Container(
-      width: double.infinity,
-      decoration:
-          BoxDecoration(
-        color: theme
-            .colorScheme
-            .surface,
-        borderRadius:
-            BorderRadius.circular(
-          20,
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          16,
+          18,
+          16,
+          16,
         ),
-        border:
-            Border.all(
-          color: theme
-              .colorScheme
-              .outline
-              .withValues(
-            alpha: 0.12,
-          ),
-        ),
-      ),
-      child: Column(
-        children: [
-          Padding(
-            padding:
-                const EdgeInsets.fromLTRB(
-              18,
-              18,
-              18,
-              12,
-            ),
-            child: Row(
+        child: Column(
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                Text(
-                  'Sales History',
-                  style: theme
-                      .textTheme
-                      .titleMedium
-                      ?.copyWith(
-                    fontWeight:
-                        FontWeight.w800,
+                Expanded(
+                  child: Text(
+                    _searchQuery.isEmpty
+                        ? 'Recent Sales'
+                        : 'Search Results',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleLarge
+                        ?.copyWith(
+                          fontWeight:
+                              FontWeight.bold,
+                        ),
                   ),
                 ),
-                const Spacer(),
                 Text(
-                  '${sales.length} record${sales.length == 1 ? '' : 's'}',
-                  style: theme
+                  '${sales.length}',
+                  style: Theme.of(context)
                       .textTheme
-                      .bodySmall
+                      .bodyMedium
                       ?.copyWith(
-                    color: theme
-                        .colorScheme
-                        .onSurfaceVariant,
-                  ),
+                        fontWeight:
+                            FontWeight.w600,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .primary,
+                      ),
                 ),
               ],
             ),
-          ),
-          const Divider(
-            height: 1,
-          ),
-          ListView.separated(
-            shrinkWrap: true,
-            physics:
-                const NeverScrollableScrollPhysics(),
-            padding:
-                const EdgeInsets.all(
-              12,
-            ),
-            itemCount:
-                sales.length,
-            separatorBuilder:
-                (_, _) =>
-                    const SizedBox(
-              height: 8,
-            ),
-            itemBuilder:
-                (context, index) {
-              return _SaleListTile(
-                sale:
-                    sales[index],
-                onTap:
-                    () {
-                  _showSaleDetails(
-                    sales[index],
-                  );
-                },
-                onEdit:
-                    () {
-                  _openEditSale(
-                    sales[index],
-                  );
-                },
-                onDelete:
-                    () {
-                  _deleteSale(
-                    sales[index],
-                  );
-                },
-                onPrintInvoice:
-                    () {
-                  _printInvoice(
-                    sales[index],
-                  );
-                },
-                onShareInvoice:
-                    () {
-                  _shareInvoice(
-                    sales[index],
-                  );
-                },
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmptySalesState() {
-    final ThemeData theme =
-        Theme.of(context);
-
-    final bool hasFilters =
-        _searchQuery.isNotEmpty ||
-            _paymentFilter != 'All' ||
-            _startDate != null ||
-            _endDate != null;
-
-    return Container(
-      width: double.infinity,
-      padding:
-          const EdgeInsets.symmetric(
-        horizontal: 24,
-        vertical: 48,
-      ),
-      decoration:
-          BoxDecoration(
-        color: theme
-            .colorScheme
-            .surface,
-        borderRadius:
-            BorderRadius.circular(
-          20,
-        ),
-        border:
-            Border.all(
-          color: theme
-              .colorScheme
-              .outline
-              .withValues(
-            alpha: 0.12,
-          ),
-        ),
-      ),
-      child: Column(
-        children: [
-          Container(
-            width: 72,
-            height: 72,
-            decoration:
-                BoxDecoration(
-              color: theme
-                  .colorScheme
-                  .primary
-                  .withValues(
-                alpha: 0.10,
+            const SizedBox(height: 16),
+            if (sales.isEmpty)
+              _buildEmptyState()
+            else
+              ...sales.map(
+                (sale) => _SaleListTile(
+                  sale: sale,
+                  onTap: () {
+                    _showSaleDetails(
+                      sale,
+                    );
+                  },
+                  onEdit: () {
+                    _openEditSale(
+                      sale,
+                    );
+                  },
+                  onDelete: () {
+                    _deleteSale(
+                      sale,
+                    );
+                  },
+                ),
               ),
-              shape:
-                  BoxShape.circle,
-            ),
-            child: Icon(
-              hasFilters
-                  ? Icons
-                      .search_off_rounded
-                  : Icons
-                      .receipt_long_outlined,
-              size: 34,
-              color: theme
-                  .colorScheme
-                  .primary,
-            ),
-          ),
-          const SizedBox(
-            height: 16,
-          ),
-          Text(
-            hasFilters
-                ? 'No matching sales'
-                : 'No sales yet',
-            style: theme
-                .textTheme
-                .titleMedium
-                ?.copyWith(
-              fontWeight:
-                  FontWeight.w800,
-            ),
-          ),
-          const SizedBox(
-            height: 6,
-          ),
-          Text(
-            hasFilters
-                ? 'Try changing the search or filters.'
-                : 'Create your first sale to start tracking invoices and payments.',
-            textAlign:
-                TextAlign.center,
-            style: theme
-                .textTheme
-                .bodyMedium
-                ?.copyWith(
-              color: theme
-                  .colorScheme
-                  .onSurfaceVariant,
-            ),
-          ),
-          if (!hasFilters) ...[
-            const SizedBox(
-              height: 18,
-            ),
-            FilledButton.icon(
-              onPressed:
-                  _openAddSale,
-              icon:
-                  const Icon(
-                Icons.add_rounded,
-              ),
-              label:
-                  const Text(
-                'Add Sale',
-              ),
-            ),
           ],
-        ],
+        ),
       ),
     );
   }
 
   // ===========================================================================
-  // ERROR STATE
+  // EMPTY STATE
   // ===========================================================================
 
-  Widget _buildErrorState(
-    String message,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget _buildEmptyState() {
+    final bool searching =
+        _searchQuery.isNotEmpty;
 
-    return Center(
-      child: Padding(
-        padding:
-            const EdgeInsets.all(
-          24,
-        ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        vertical: 46,
+      ),
+      child: Center(
         child: Column(
-          mainAxisAlignment:
-              MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons
-                  .error_outline_rounded,
-              size: 52,
-              color:
-                  AppColors.danger,
-            ),
-            const SizedBox(
-              height: 14,
-            ),
-            Text(
-              'Something went wrong',
-              style: theme
-                  .textTheme
-                  .titleLarge
-                  ?.copyWith(
-                fontWeight:
-                    FontWeight.w800,
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(
+                  alpha: 0.10,
+                ),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                searching
+                    ? Icons.search_off_rounded
+                    : Icons.receipt_long_outlined,
+                size: 34,
+                color: AppColors.primary,
               ),
             ),
-            const SizedBox(
-              height: 8,
-            ),
+            const SizedBox(height: 16),
             Text(
-              message,
-              textAlign:
-                  TextAlign.center,
-              style: theme
+              searching
+                  ? 'No sales found'
+                  : 'No sales yet',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(
+                    fontWeight:
+                        FontWeight.bold,
+                  ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              searching
+                  ? 'Try a different invoice, customer or product.'
+                  : 'Create your first sale to see it here.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context)
                   .textTheme
                   .bodyMedium
                   ?.copyWith(
-                color: theme
-                    .colorScheme
-                    .onSurfaceVariant,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurfaceVariant,
+                  ),
+            ),
+            if (!searching) ...[
+              const SizedBox(height: 18),
+              FilledButton.icon(
+                onPressed: _openAddSale,
+                icon: const Icon(
+                  Icons.add_rounded,
+                ),
+                label: const Text(
+                  'Create Sale',
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // ERROR STATES
+  // ===========================================================================
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.error_outline_rounded,
+              size: 52,
+              color: AppColors.danger,
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'Unable to load business',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(
-              height: 18,
+            const SizedBox(height: 8),
+            Text(
+              _businessError ??
+                  'Something went wrong.',
+              textAlign: TextAlign.center,
             ),
+            const SizedBox(height: 18),
             FilledButton.icon(
-              onPressed:
-                  _initialize,
-              icon:
-                  const Icon(
+              onPressed: _loadBusiness,
+              icon: const Icon(
                 Icons.refresh_rounded,
               ),
-              label:
-                  const Text(
+              label: const Text(
+                'Try Again',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoBusinessState() {
+    return const Center(
+      child: Padding(
+        padding: EdgeInsets.all(24),
+        child: Text(
+          'Business profile not found.\n'
+          'Please complete business setup.',
+          textAlign: TextAlign.center,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStreamErrorState(
+    String error,
+  ) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.cloud_off_rounded,
+              size: 52,
+              color: AppColors.danger,
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Unable to load sales',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(
+                    fontWeight:
+                        FontWeight.bold,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              error,
+              textAlign: TextAlign.center,
+              maxLines: 4,
+              overflow:
+                  TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 18),
+            OutlinedButton.icon(
+              onPressed: () {
+                setState(() {});
+              },
+              icon: const Icon(
+                Icons.refresh_rounded,
+              ),
+              label: const Text(
                 'Retry',
               ),
             ),
@@ -1663,68 +1233,7 @@ class _SalesScreenState extends State<SalesScreen> {
   }
 
   // ===========================================================================
-  // NO BUSINESS STATE
-  // ===========================================================================
-
-  Widget _buildNoBusinessState() {
-    final ThemeData theme =
-        Theme.of(context);
-
-    return Center(
-      child: Padding(
-        padding:
-            const EdgeInsets.all(
-          24,
-        ),
-        child: Column(
-          mainAxisAlignment:
-              MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons
-                  .business_outlined,
-              size: 54,
-              color: theme
-                  .colorScheme
-                  .primary,
-            ),
-            const SizedBox(
-              height: 14,
-            ),
-            Text(
-              'Business setup required',
-              style: theme
-                  .textTheme
-                  .titleLarge
-                  ?.copyWith(
-                fontWeight:
-                    FontWeight.w800,
-              ),
-            ),
-            const SizedBox(
-              height: 8,
-            ),
-            Text(
-              'Please complete your business setup before managing sales.',
-              textAlign:
-                  TextAlign.center,
-              style: theme
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(
-                color: theme
-                    .colorScheme
-                    .onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ===========================================================================
-  // HELPERS
+  // FORMATTERS
   // ===========================================================================
 
   String _formatCurrency(
@@ -1733,141 +1242,116 @@ class _SalesScreenState extends State<SalesScreen> {
     return NumberFormat.currency(
       locale: 'en_IN',
       symbol: '₹',
-      decimalDigits: 2,
+      decimalDigits:
+          value.truncateToDouble() == value
+              ? 0
+              : 2,
     ).format(value);
+  }
+
+  String _formatNumber(
+    double value,
+  ) {
+    return value.truncateToDouble() == value
+        ? value.toInt().toString()
+        : value.toStringAsFixed(2);
   }
 }
 
 // =============================================================================
-// SUMMARY CARD
+// SUMMARY METRIC CARD
 // =============================================================================
 
-class _SummaryCard
-    extends StatelessWidget {
+class _SummaryMetricCard extends StatelessWidget {
   final IconData icon;
   final String title;
   final String value;
-  final Color color;
   final String subtitle;
+  final Color color;
 
-  const _SummaryCard({
+  const _SummaryMetricCard({
     required this.icon,
     required this.title,
     required this.value,
-    required this.color,
     required this.subtitle,
+    required this.color,
   });
 
   @override
   Widget build(
     BuildContext context,
   ) {
-    final ThemeData theme =
-        Theme.of(context);
-
-    return Container(
-      padding:
-          const EdgeInsets.all(
-        16,
-      ),
-      decoration:
-          BoxDecoration(
-        color: theme
-            .colorScheme
-            .surface,
-        borderRadius:
-            BorderRadius.circular(
-          18,
-        ),
-        border:
-            Border.all(
-          color: theme
-              .colorScheme
-              .outline
-              .withValues(
-            alpha: 0.12,
-          ),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration:
-                BoxDecoration(
-              color: color.withValues(
-                alpha: 0.12,
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: color.withValues(
+                  alpha: 0.12,
+                ),
+                borderRadius:
+                    BorderRadius.circular(14),
               ),
-              borderRadius:
-                  BorderRadius.circular(
-                14,
+              child: Icon(
+                icon,
+                color: color,
               ),
             ),
-            child: Icon(
-              icon,
-              color: color,
-              size: 22,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurfaceVariant,
+                        ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    value,
+                    maxLines: 1,
+                    overflow:
+                        TextOverflow.ellipsis,
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(
+                          fontWeight:
+                              FontWeight.bold,
+                        ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow:
+                        TextOverflow.ellipsis,
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurfaceVariant,
+                        ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(
-            width: 12,
-          ),
-          Expanded(
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: theme
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(
-                    color: theme
-                        .colorScheme
-                        .onSurfaceVariant,
-                    fontWeight:
-                        FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(
-                  height: 3,
-                ),
-                Text(
-                  value,
-                  maxLines: 1,
-                  overflow:
-                      TextOverflow.ellipsis,
-                  style: theme
-                      .textTheme
-                      .titleMedium
-                      ?.copyWith(
-                    fontWeight:
-                        FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(
-                  height: 2,
-                ),
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow:
-                      TextOverflow.ellipsis,
-                  style: theme
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(
-                    color: theme
-                        .colorScheme
-                        .onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1877,53 +1361,18 @@ class _SummaryCard
 // SALE LIST TILE
 // =============================================================================
 
-class _SaleListTile
-    extends StatelessWidget {
+class _SaleListTile extends StatelessWidget {
   final SaleModel sale;
   final VoidCallback onTap;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
-  final VoidCallback onPrintInvoice;
-  final VoidCallback onShareInvoice;
 
   const _SaleListTile({
     required this.sale,
     required this.onTap,
     required this.onEdit,
     required this.onDelete,
-    required this.onPrintInvoice,
-    required this.onShareInvoice,
   });
-
-  Color _statusColor() {
-    switch (sale.paymentStatus
-        .trim()
-        .toLowerCase()) {
-      case 'paid':
-        return AppColors.success;
-
-      case 'partial':
-        return AppColors.warning;
-
-      case 'unpaid':
-        return AppColors.danger;
-
-      default:
-        return AppColors.info;
-    }
-  }
-
-  String _statusText() {
-    final String value =
-        sale.paymentStatus.trim();
-
-    if (value.isEmpty) {
-      return 'Unknown';
-    }
-
-    return value[0].toUpperCase() +
-        value.substring(1).toLowerCase();
-  }
 
   String _formatCurrency(
     double value,
@@ -1931,7 +1380,10 @@ class _SaleListTile
     return NumberFormat.currency(
       locale: 'en_IN',
       symbol: '₹',
-      decimalDigits: 2,
+      decimalDigits:
+          value.truncateToDouble() == value
+              ? 0
+              : 2,
     ).format(value);
   }
 
@@ -1939,322 +1391,166 @@ class _SaleListTile
   Widget build(
     BuildContext context,
   ) {
-    final ThemeData theme =
-        Theme.of(context);
+    final double outstanding =
+        sale.total - sale.paidAmount;
 
-    final Color statusColor =
-        _statusColor();
-
-    final double pending =
-        (sale.total -
-                sale.paidAmount)
-            .clamp(
-      0,
-      double.infinity,
-    );
-
-    return Material(
-      color: theme
-          .colorScheme
-          .surfaceContainerHighest
-          .withValues(
-        alpha: 0.22,
-      ),
+    return InkWell(
+      onTap: onTap,
       borderRadius:
-          BorderRadius.circular(
-        16,
-      ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius:
-            BorderRadius.circular(
-          16,
+          BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          vertical: 12,
         ),
-        child: Padding(
-          padding:
-              const EdgeInsets.all(
-            14,
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 46,
-                height: 46,
-                decoration:
-                    BoxDecoration(
-                  color: AppColors
-                      .success
-                      .withValues(
-                    alpha: 0.10,
-                  ),
-                  borderRadius:
-                      BorderRadius.circular(
-                    14,
-                  ),
+        child: Row(
+          children: [
+            Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: AppColors.success.withValues(
+                  alpha: 0.10,
                 ),
-                child: const Icon(
-                  Icons
-                      .receipt_long_rounded,
-                  color:
-                      AppColors.success,
-                  size: 22,
-                ),
+                borderRadius:
+                    BorderRadius.circular(13),
               ),
-              const SizedBox(
-                width: 12,
+              child: const Icon(
+                Icons.receipt_long_rounded,
+                color: AppColors.success,
               ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment
-                          .start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            sale.invoiceNumber
-                                    .trim()
-                                    .isEmpty
-                                ? 'Sale'
-                                : sale
-                                    .invoiceNumber,
-                            maxLines: 1,
-                            overflow:
-                                TextOverflow
-                                    .ellipsis,
-                            style: theme
-                                .textTheme
-                                .titleSmall
-                                ?.copyWith(
-                              fontWeight:
-                                  FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(
-                          width: 8,
-                        ),
-                        Container(
-                          padding:
-                              const EdgeInsets
-                                  .symmetric(
-                            horizontal: 8,
-                            vertical: 5,
-                          ),
-                          decoration:
-                              BoxDecoration(
-                            color:
-                                statusColor
-                                    .withValues(
-                              alpha: 0.10,
-                            ),
-                            borderRadius:
-                                BorderRadius
-                                    .circular(
-                              20,
-                            ),
-                          ),
-                          child: Text(
-                            _statusText(),
-                            style:
-                                TextStyle(
-                              color:
-                                  statusColor,
-                              fontSize: 10,
-                              fontWeight:
-                                  FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(
-                      height: 5,
-                    ),
-                    Text(
-                      sale.customerName
-                              .trim()
-                              .isEmpty
-                          ? 'Walk-in Customer'
-                          : sale
-                              .customerName,
-                      maxLines: 1,
-                      overflow:
-                          TextOverflow.ellipsis,
-                      style: theme
-                          .textTheme
-                          .bodyMedium
-                          ?.copyWith(
-                        fontWeight:
-                            FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(
-                      height: 3,
-                    ),
-                    Text(
-                      '${DateFormat('dd MMM yyyy').format(sale.date)} • ${sale.items.length} item${sale.items.length == 1 ? '' : 's'}',
-                      maxLines: 1,
-                      overflow:
-                          TextOverflow.ellipsis,
-                      style: theme
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(
-                        color: theme
-                            .colorScheme
-                            .onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(
-                width: 12,
-              ),
-              Column(
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
                 crossAxisAlignment:
-                    CrossAxisAlignment.end,
+                    CrossAxisAlignment.start,
                 children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          sale.invoiceNumber.isEmpty
+                              ? 'Sale'
+                              : sale.invoiceNumber,
+                          maxLines: 1,
+                          overflow:
+                              TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight:
+                                FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      _StatusChip(
+                        status:
+                            sale.paymentStatus,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
                   Text(
-                    _formatCurrency(
-                      sale.total,
-                    ),
-                    style: theme
+                    sale.customerName.isEmpty
+                        ? 'Walk-in Customer'
+                        : sale.customerName,
+                    maxLines: 1,
+                    overflow:
+                        TextOverflow.ellipsis,
+                    style: Theme.of(context)
                         .textTheme
-                        .titleSmall
+                        .bodyMedium
                         ?.copyWith(
-                      fontWeight:
-                          FontWeight.w800,
-                    ),
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurfaceVariant,
+                        ),
                   ),
-                  const SizedBox(
-                    height: 4,
-                  ),
+                  const SizedBox(height: 3),
                   Text(
-                    pending > 0
-                        ? 'Due ${_formatCurrency(pending)}'
-                        : 'Paid',
-                    style: TextStyle(
-                      color: pending > 0
-                          ? AppColors.warning
-                          : AppColors.success,
-                      fontSize: 11,
-                      fontWeight:
-                          FontWeight.w700,
-                    ),
+                    '${DateFormat('dd MMM yyyy').format(sale.date)} • ${sale.items.length} item${sale.items.length == 1 ? '' : 's'}',
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurfaceVariant,
+                        ),
                   ),
                 ],
               ),
-              const SizedBox(
-                width: 4,
-              ),
-              PopupMenuButton<String>(
-                tooltip:
-                    'Sale actions',
-                onSelected:
-                    (value) {
-                  switch (value) {
-                    case 'view':
-                      onTap();
-                      break;
-
-                    case 'print':
-                      onPrintInvoice();
-                      break;
-
-                    case 'share':
-                      onShareInvoice();
-                      break;
-
-                    case 'edit':
-                      onEdit();
-                      break;
-
-                    case 'delete':
-                      onDelete();
-                      break;
-                  }
-                },
-                itemBuilder:
-                    (context) {
-                  return const [
-                    PopupMenuItem(
-                      value: 'view',
-                      child: ListTile(
-                        leading: Icon(
-                          Icons
-                              .visibility_outlined,
+            ),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.end,
+              children: [
+                Text(
+                  _formatCurrency(
+                    sale.total,
+                  ),
+                  style: const TextStyle(
+                    fontWeight:
+                        FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  outstanding > 0
+                      ? 'Due ${_formatCurrency(outstanding)}'
+                      : 'Paid',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight:
+                        FontWeight.w600,
+                    color: outstanding > 0
+                        ? AppColors.warning
+                        : AppColors.success,
+                  ),
+                ),
+              ],
+            ),
+            PopupMenuButton<String>(
+              tooltip: 'More options',
+              onSelected: (value) {
+                if (value == 'edit') {
+                  onEdit();
+                } else if (value == 'delete') {
+                  onDelete();
+                }
+              },
+              itemBuilder: (context) {
+                return const [
+                  PopupMenuItem<String>(
+                    value: 'edit',
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.edit_outlined,
                         ),
-                        title: Text(
-                          'View Details',
-                        ),
-                        contentPadding:
-                            EdgeInsets.zero,
-                      ),
+                        SizedBox(width: 10),
+                        Text('Edit'),
+                      ],
                     ),
-                    PopupMenuItem(
-                      value: 'print',
-                      child: ListTile(
-                        leading: Icon(
-                          Icons
-                              .print_outlined,
+                  ),
+                  PopupMenuItem<String>(
+                    value: 'delete',
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.delete_outline_rounded,
+                          color:
+                              AppColors.danger,
                         ),
-                        title: Text(
-                          'Print Invoice',
-                        ),
-                        contentPadding:
-                            EdgeInsets.zero,
-                      ),
+                        SizedBox(width: 10),
+                        Text('Delete'),
+                      ],
                     ),
-                    PopupMenuItem(
-                      value: 'share',
-                      child: ListTile(
-                        leading: Icon(
-                          Icons
-                              .share_outlined,
-                        ),
-                        title: Text(
-                          'Share Invoice',
-                        ),
-                        contentPadding:
-                            EdgeInsets.zero,
-                      ),
-                    ),
-                    PopupMenuItem(
-                      value: 'edit',
-                      child: ListTile(
-                        leading: Icon(
-                          Icons
-                              .edit_outlined,
-                        ),
-                        title: Text(
-                          'Edit Sale',
-                        ),
-                        contentPadding:
-                            EdgeInsets.zero,
-                      ),
-                    ),
-                    PopupMenuItem(
-                      value: 'delete',
-                      child: ListTile(
-                        leading: Icon(
-                          Icons
-                              .delete_outline_rounded,
-                        ),
-                        title: Text(
-                          'Delete Sale',
-                        ),
-                        contentPadding:
-                            EdgeInsets.zero,
-                      ),
-                    ),
-                  ];
-                },
-              ),
-            ],
-          ),
+                  ),
+                ];
+              },
+            ),
+          ],
         ),
       ),
     );
@@ -2262,545 +1558,73 @@ class _SaleListTile
 }
 
 // =============================================================================
-// SALE DETAILS SHEET
+// STATUS CHIP
 // =============================================================================
 
-class _SaleDetailsSheet
-    extends StatelessWidget {
-  final SaleModel sale;
-  final VoidCallback onPrintInvoice;
-  final VoidCallback onShareInvoice;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
+class _StatusChip extends StatelessWidget {
+  final String status;
 
-  const _SaleDetailsSheet({
-    required this.sale,
-    required this.onPrintInvoice,
-    required this.onShareInvoice,
-    required this.onEdit,
-    required this.onDelete,
+  const _StatusChip({
+    required this.status,
   });
 
-  String _formatCurrency(
-    double value,
-  ) {
-    return NumberFormat.currency(
-      locale: 'en_IN',
-      symbol: '₹',
-      decimalDigits: 2,
-    ).format(value);
-  }
-
-  String _formatNumber(
-    double value,
-  ) {
-    if (value == value.roundToDouble()) {
-      return value.toInt().toString();
-    }
-
-    return value.toStringAsFixed(2);
-  }
-
-  Color _statusColor() {
-    switch (sale.paymentStatus
-        .trim()
-        .toLowerCase()) {
+  Color _color() {
+    switch (status.toLowerCase()) {
       case 'paid':
         return AppColors.success;
-
       case 'partial':
         return AppColors.warning;
-
       case 'unpaid':
         return AppColors.danger;
-
       default:
         return AppColors.info;
     }
   }
 
-  String _statusText() {
-    final String value =
-        sale.paymentStatus.trim();
+  String _label() {
+    switch (status.toLowerCase()) {
+      case 'paid':
+        return 'Paid';
+      case 'partial':
+        return 'Partial';
+      case 'unpaid':
+        return 'Unpaid';
+      default:
+        if (status.trim().isEmpty) {
+          return 'Unknown';
+        }
 
-    if (value.isEmpty) {
-      return 'Unknown';
+        return status[0].toUpperCase() +
+            status.substring(1);
     }
-
-    return value[0].toUpperCase() +
-        value.substring(1).toLowerCase();
   }
 
   @override
   Widget build(
     BuildContext context,
   ) {
-    final ThemeData theme =
-        Theme.of(context);
+    final Color color = _color();
 
-    final Color statusColor =
-        _statusColor();
-
-    final double outstanding =
-        (sale.total -
-                sale.paidAmount)
-            .clamp(
-      0,
-      double.infinity,
-    );
-
-    return SafeArea(
-      child: SingleChildScrollView(
-        padding:
-            const EdgeInsets.fromLTRB(
-          20,
-          4,
-          20,
-          28,
+    return Container(
+      padding:
+          const EdgeInsets.symmetric(
+        horizontal: 8,
+        vertical: 4,
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(
+          alpha: 0.10,
         ),
-        child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
-          children: [
-            // -------------------------------------------------------------------
-            // HEADER
-            // -------------------------------------------------------------------
-
-            Row(
-              children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration:
-                      BoxDecoration(
-                    color: AppColors
-                        .success
-                        .withValues(
-                      alpha: 0.12,
-                    ),
-                    borderRadius:
-                        BorderRadius.circular(
-                      14,
-                    ),
-                  ),
-                  child: const Icon(
-                    Icons
-                        .receipt_long_rounded,
-                    color:
-                        AppColors.success,
-                  ),
-                ),
-                const SizedBox(
-                  width: 12,
-                ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment
-                            .start,
-                    children: [
-                      Text(
-                        sale.invoiceNumber
-                                .trim()
-                                .isEmpty
-                            ? 'Sale Details'
-                            : sale
-                                .invoiceNumber,
-                        style: theme
-                            .textTheme
-                            .titleLarge
-                            ?.copyWith(
-                          fontWeight:
-                              FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(
-                        height: 4,
-                      ),
-                      Text(
-                        DateFormat(
-                          'dd MMM yyyy, hh:mm a',
-                        ).format(
-                          sale.date,
-                        ),
-                        style: theme
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(
-                          color: theme
-                              .colorScheme
-                              .onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding:
-                      const EdgeInsets
-                          .symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration:
-                      BoxDecoration(
-                    color: statusColor
-                        .withValues(
-                      alpha: 0.10,
-                    ),
-                    borderRadius:
-                        BorderRadius.circular(
-                      20,
-                    ),
-                  ),
-                  child: Text(
-                    _statusText(),
-                    style: TextStyle(
-                      color:
-                          statusColor,
-                      fontWeight:
-                          FontWeight.w800,
-                      fontSize: 11,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(
-              height: 22,
-            ),
-
-            // -------------------------------------------------------------------
-            // CUSTOMER
-            // -------------------------------------------------------------------
-
-            _DetailSection(
-              title: 'Customer',
-              child: Row(
-                children: [
-                  const CircleAvatar(
-                    radius: 21,
-                    child: Icon(
-                      Icons
-                          .person_outline_rounded,
-                    ),
-                  ),
-                  const SizedBox(
-                    width: 11,
-                  ),
-                  Expanded(
-                    child: Text(
-                      sale.customerName
-                              .trim()
-                              .isEmpty
-                          ? 'Walk-in Customer'
-                          : sale
-                              .customerName,
-                      style:
-                          const TextStyle(
-                        fontWeight:
-                            FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(
-              height: 18,
-            ),
-
-            // -------------------------------------------------------------------
-            // ITEMS
-            // -------------------------------------------------------------------
-
-            _DetailSection(
-              title: 'Items',
-              child: Column(
-                children:
-                    sale.items.map(
-                  (item) {
-                    return Padding(
-                      padding:
-                          const EdgeInsets
-                              .only(
-                        bottom: 13,
-                      ),
-                      child: Row(
-                        crossAxisAlignment:
-                            CrossAxisAlignment
-                                .start,
-                        children: [
-                          Expanded(
-                            child:
-                                Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment
-                                      .start,
-                              children: [
-                                Text(
-                                  item.productName,
-                                  style:
-                                      const TextStyle(
-                                    fontWeight:
-                                        FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(
-                                  height: 4,
-                                ),
-                                Text(
-                                  '${_formatNumber(item.quantity)} ${item.unit} × ${_formatCurrency(item.sellingRate)}',
-                                  style:
-                                      theme
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(
-                                    color: theme
-                                        .colorScheme
-                                        .onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(
-                            width: 12,
-                          ),
-                          Text(
-                            _formatCurrency(
-                              item.total,
-                            ),
-                            style:
-                                const TextStyle(
-                              fontWeight:
-                                  FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ).toList(),
-              ),
-            ),
-
-            const SizedBox(
-              height: 14,
-            ),
-
-            // -------------------------------------------------------------------
-            // AMOUNT SUMMARY
-            // -------------------------------------------------------------------
-
-            Container(
-              width: double.infinity,
-              padding:
-                  const EdgeInsets.all(
-                16,
-              ),
-              decoration:
-                  BoxDecoration(
-                color: theme
-                    .colorScheme
-                    .surfaceContainerHighest
-                    .withValues(
-                  alpha: 0.45,
-                ),
-                borderRadius:
-                    BorderRadius.circular(
-                  14,
-                ),
-              ),
-              child: Column(
-                children: [
-                  _AmountRow(
-                    label: 'Subtotal',
-                    value:
-                        _formatCurrency(
-                      sale.subtotal,
-                    ),
-                  ),
-                  const SizedBox(
-                    height: 8,
-                  ),
-                  _AmountRow(
-                    label: 'Discount',
-                    value:
-                        '- ${_formatCurrency(sale.discount)}',
-                  ),
-                  const SizedBox(
-                    height: 8,
-                  ),
-                  _AmountRow(
-                    label: 'Tax',
-                    value:
-                        _formatCurrency(
-                      sale.tax,
-                    ),
-                  ),
-                  const Divider(
-                    height: 20,
-                  ),
-                  _AmountRow(
-                    label: 'Total',
-                    value:
-                        _formatCurrency(
-                      sale.total,
-                    ),
-                    bold: true,
-                  ),
-                  const SizedBox(
-                    height: 8,
-                  ),
-                  _AmountRow(
-                    label: 'Paid',
-                    value:
-                        _formatCurrency(
-                      sale.paidAmount,
-                    ),
-                    valueColor:
-                        AppColors.success,
-                  ),
-                  if (outstanding > 0) ...[
-                    const SizedBox(
-                      height: 8,
-                    ),
-                    _AmountRow(
-                      label:
-                          'Outstanding',
-                      value:
-                          _formatCurrency(
-                        outstanding,
-                      ),
-                      valueColor:
-                          AppColors.warning,
-                      bold: true,
-                    ),
-                  ],
-                ],
-              ),
-            ),
-
-            const SizedBox(
-              height: 16,
-            ),
-
-            // -------------------------------------------------------------------
-            // PAYMENT METHOD
-            // -------------------------------------------------------------------
-
-            _InfoRow(
-              icon:
-                  Icons.payments_outlined,
-              label: 'Payment Method',
-              value:
-                  sale.paymentMethod
-                          .trim()
-                          .isEmpty
-                      ? 'Not specified'
-                      : sale.paymentMethod,
-            ),
-
-            if (sale.notes
-                .trim()
-                .isNotEmpty) ...[
-              const SizedBox(
-                height: 12,
-              ),
-              _InfoRow(
-                icon:
-                    Icons.notes_rounded,
-                label: 'Notes',
-                value: sale.notes,
-              ),
-            ],
-
-            const SizedBox(
-              height: 22,
-            ),
-
-            // -------------------------------------------------------------------
-            // INVOICE ACTIONS
-            // -------------------------------------------------------------------
-
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed:
-                        onPrintInvoice,
-                    icon: const Icon(
-                      Icons.print_outlined,
-                    ),
-                    label: const Text(
-                      'Print Invoice',
-                    ),
-                  ),
-                ),
-                const SizedBox(
-                  width: 12,
-                ),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed:
-                        onShareInvoice,
-                    icon: const Icon(
-                      Icons.share_outlined,
-                    ),
-                    label: const Text(
-                      'Share Invoice',
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(
-              height: 12,
-            ),
-
-            // -------------------------------------------------------------------
-            // EDIT / DELETE
-            // -------------------------------------------------------------------
-
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: onEdit,
-                    icon: const Icon(
-                      Icons.edit_outlined,
-                    ),
-                    label: const Text(
-                      'Edit Sale',
-                    ),
-                  ),
-                ),
-                const SizedBox(
-                  width: 12,
-                ),
-                Expanded(
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      backgroundColor:
-                          AppColors.danger,
-                    ),
-                    onPressed: onDelete,
-                    icon: const Icon(
-                      Icons
-                          .delete_outline_rounded,
-                    ),
-                    label: const Text(
-                      'Delete',
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
+        borderRadius:
+            BorderRadius.circular(20),
+      ),
+      child: Text(
+        _label(),
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight:
+              FontWeight.w700,
+          color: color,
         ),
       ),
     );
@@ -2811,8 +1635,7 @@ class _SaleDetailsSheet
 // DETAIL SECTION
 // =============================================================================
 
-class _DetailSection
-    extends StatelessWidget {
+class _DetailSection extends StatelessWidget {
   final String title;
   final Widget child;
 
@@ -2825,26 +1648,21 @@ class _DetailSection
   Widget build(
     BuildContext context,
   ) {
-    final ThemeData theme =
-        Theme.of(context);
-
     return Column(
       crossAxisAlignment:
           CrossAxisAlignment.start,
       children: [
         Text(
           title,
-          style: theme
+          style: Theme.of(context)
               .textTheme
               .titleSmall
               ?.copyWith(
-            fontWeight:
-                FontWeight.w800,
-          ),
+                fontWeight:
+                    FontWeight.bold,
+              ),
         ),
-        const SizedBox(
-          height: 10,
-        ),
+        const SizedBox(height: 10),
         child,
       ],
     );
@@ -2852,58 +1670,138 @@ class _DetailSection
 }
 
 // =============================================================================
-// AMOUNT ROW
+// SUMMARY CARD
 // =============================================================================
 
-class _AmountRow
-    extends StatelessWidget {
-  final String label;
-  final String value;
-  final bool bold;
-  final Color? valueColor;
+class _SummaryCard extends StatelessWidget {
+  final double subtotal;
+  final double discount;
+  final double tax;
+  final double total;
+  final double paid;
 
-  const _AmountRow({
-    required this.label,
-    required this.value,
-    this.bold = false,
-    this.valueColor,
+  const _SummaryCard({
+    required this.subtotal,
+    required this.discount,
+    required this.tax,
+    required this.total,
+    required this.paid,
   });
+
+  String _currency(
+    double value,
+  ) {
+    return NumberFormat.currency(
+      locale: 'en_IN',
+      symbol: '₹',
+      decimalDigits:
+          value.truncateToDouble() == value
+              ? 0
+              : 2,
+    ).format(value);
+  }
 
   @override
   Widget build(
     BuildContext context,
   ) {
-    final ThemeData theme =
-        Theme.of(context);
+    final double outstanding =
+        total - paid;
 
+    return Container(
+      padding:
+          const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context)
+            .colorScheme
+            .surfaceContainerHighest
+            .withValues(
+              alpha: 0.45,
+            ),
+        borderRadius:
+            BorderRadius.circular(14),
+      ),
+      child: Column(
+        children: [
+          _row(
+            context,
+            'Subtotal',
+            _currency(subtotal),
+          ),
+          if (discount > 0)
+            _row(
+              context,
+              'Discount',
+              '- ${_currency(discount)}',
+            ),
+          if (tax > 0)
+            _row(
+              context,
+              'Tax',
+              _currency(tax),
+            ),
+          const Divider(
+            height: 20,
+          ),
+          _row(
+            context,
+            'Total',
+            _currency(total),
+            bold: true,
+          ),
+          const SizedBox(height: 8),
+          _row(
+            context,
+            'Paid',
+            _currency(paid),
+            valueColor:
+                AppColors.success,
+          ),
+          const SizedBox(height: 8),
+          _row(
+            context,
+            'Outstanding',
+            _currency(
+              outstanding > 0
+                  ? outstanding
+                  : 0,
+            ),
+            valueColor:
+                outstanding > 0
+                    ? AppColors.warning
+                    : AppColors.success,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _row(
+    BuildContext context,
+    String label,
+    String value, {
+    bool bold = false,
+    Color? valueColor,
+  }) {
     return Row(
       children: [
         Expanded(
           child: Text(
             label,
-            style: theme
-                .textTheme
-                .bodyMedium
-                ?.copyWith(
-              fontWeight:
-                  bold
-                      ? FontWeight.w800
-                      : FontWeight.w500,
+            style: TextStyle(
+              fontWeight: bold
+                  ? FontWeight.bold
+                  : FontWeight.normal,
             ),
           ),
         ),
         Text(
           value,
-          style: theme
-              .textTheme
-              .bodyMedium
-              ?.copyWith(
-            fontWeight:
-                bold
-                    ? FontWeight.w800
-                    : FontWeight.w600,
-            color:
-                valueColor,
+          style: TextStyle(
+            fontWeight: bold
+                ? FontWeight.bold
+                : FontWeight.w600,
+            color: valueColor,
           ),
         ),
       ],
@@ -2915,8 +1813,7 @@ class _AmountRow
 // INFO ROW
 // =============================================================================
 
-class _InfoRow
-    extends StatelessWidget {
+class _InfoRow extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
@@ -2931,79 +1828,31 @@ class _InfoRow
   Widget build(
     BuildContext context,
   ) {
-    final ThemeData theme =
-        Theme.of(context);
-
-    return Container(
-      width: double.infinity,
-      padding:
-          const EdgeInsets.symmetric(
-        horizontal: 14,
-        vertical: 12,
-      ),
-      decoration:
-          BoxDecoration(
-        color: theme
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(
-          alpha: 0.28,
+    return Row(
+      crossAxisAlignment:
+          CrossAxisAlignment.start,
+      children: [
+        Icon(
+          icon,
+          size: 20,
+          color: Theme.of(context)
+              .colorScheme
+              .primary,
         ),
-        borderRadius:
-            BorderRadius.circular(
-          12,
+        const SizedBox(width: 10),
+        Text(
+          '$label: ',
+          style: const TextStyle(
+            fontWeight:
+                FontWeight.w600,
+          ),
         ),
-      ),
-      child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          Icon(
-            icon,
-            size: 20,
-            color: theme
-                .colorScheme
-                .primary,
+        Expanded(
+          child: Text(
+            value,
           ),
-          const SizedBox(
-            width: 11,
-          ),
-          Expanded(
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: theme
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(
-                    color: theme
-                        .colorScheme
-                        .onSurfaceVariant,
-                    fontWeight:
-                        FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(
-                  height: 3,
-                ),
-                Text(
-                  value,
-                  style: theme
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(
-                    fontWeight:
-                        FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
