@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../models/business_model.dart';
+import '../../models/ledger_transaction_model.dart';
 import '../../models/supplier_model.dart';
 import '../../models/supplier_payment_model.dart';
 import '../../repositories/business_repository.dart';
@@ -385,8 +386,6 @@ class _AddSupplierPaymentScreenState
     return message;
   }
 
-  
-
   void _showMessage(
     String message, {
     bool isError = false,
@@ -644,17 +643,11 @@ class _AddSupplierPaymentScreenState
 
       try {
         /*
-         * IMPORTANT:
+         * The payment document and its ledger transaction are linked
+         * through the payment document ID.
          *
-         * SupplierLedgerService expects:
-         *   businessId
-         *   paymentAmount
-         *   supplierId
-         *   supplierName
-         *
-         * It does NOT accept:
-         *   payment
-         *   balanceBefore
+         * This reference is required so payment deletion/editing can
+         * safely locate the exact ledger history for this payment.
          */
         await _supplierLedgerService
             .createSupplierPaymentLedgerEntry(
@@ -662,6 +655,11 @@ class _AddSupplierPaymentScreenState
           paymentAmount: amount,
           supplierId: supplier.id.trim(),
           supplierName: supplier.name.trim(),
+          referenceId: createdPayment.id,
+          date: _paymentDate,
+          notes: _notesController.text.trim().isEmpty
+              ? 'Supplier payment made.'
+              : _notesController.text.trim(),
         );
       } catch (ledgerError) {
         /*
@@ -684,6 +682,36 @@ class _AddSupplierPaymentScreenState
     } catch (_) {
       rethrow;
     }
+  }
+
+  // ===========================================================================
+  // EXISTING LEDGER CHECK
+  // ===========================================================================
+
+  Future<bool> _hasActiveSupplierPaymentLedgerEntry({
+    required String businessId,
+    required String supplierId,
+    required String paymentId,
+  }) async {
+    final List<LedgerTransactionModel> transactions =
+        await _supplierLedgerService.getSupplierTransactions(
+      businessId: businessId,
+      supplierId: supplierId,
+    );
+
+    for (final LedgerTransactionModel transaction
+        in transactions) {
+      final String type =
+          transaction.transactionType.trim().toUpperCase();
+
+      if (transaction.referenceId.trim() == paymentId &&
+          type ==
+              SupplierLedgerService.supplierPaymentType) {
+        return transaction.amount > 0.000001;
+      }
+    }
+
+    return false;
   }
 
   // ===========================================================================
@@ -733,6 +761,28 @@ class _AddSupplierPaymentScreenState
 
     try {
       /*
+       * Verify that the original payment has a linked active ledger
+       * transaction before reversing it.
+       *
+       * We intentionally do not guess an unreferenced ledger transaction
+       * by amount/date because multiple supplier payments can legitimately
+       * have identical values. Guessing could corrupt the supplier balance.
+       */
+      final bool oldLedgerExists =
+          await _hasActiveSupplierPaymentLedgerEntry(
+        businessId: businessId,
+        supplierId: oldSupplierId,
+        paymentId: oldPaymentId,
+      );
+
+      if (!oldLedgerExists) {
+        throw StateError(
+          'This supplier payment does not have a linked supplier ledger entry. '
+          'It cannot be edited safely. Please use a payment created with the current ledger system.',
+        );
+      }
+
+      /*
        * If the supplier itself is changed during edit, the old supplier
        * ledger must be reversed first. The new payment then gets posted
        * to the newly selected supplier.
@@ -745,6 +795,9 @@ class _AddSupplierPaymentScreenState
         supplierName: oldSupplierName.isEmpty
             ? supplier.name.trim()
             : oldSupplierName,
+        referenceId: oldPaymentId,
+        notes:
+            'Reversal for supplier payment $oldPaymentId.',
       );
 
       oldLedgerReversed = true;
@@ -794,16 +847,17 @@ class _AddSupplierPaymentScreenState
       paymentUpdated = true;
 
       try {
-        /*
-         * Same actual SupplierLedgerService API:
-         * businessId + paymentAmount + supplierId + supplierName
-         */
         await _supplierLedgerService
             .createSupplierPaymentLedgerEntry(
           businessId: businessId,
           paymentAmount: amount,
           supplierId: supplier.id.trim(),
           supplierName: supplier.name.trim(),
+          referenceId: oldPaymentId,
+          date: _paymentDate,
+          notes: _notesController.text.trim().isEmpty
+              ? 'Supplier payment made.'
+              : _notesController.text.trim(),
         );
 
         newLedgerCreated = true;
@@ -836,6 +890,9 @@ class _AddSupplierPaymentScreenState
             paymentAmount: amount,
             supplierId: supplier.id.trim(),
             supplierName: supplier.name.trim(),
+            referenceId: oldPaymentId,
+            notes:
+                'Rollback reversal for supplier payment $oldPaymentId.',
           );
         } catch (_) {
           // Preserve original error.
@@ -857,8 +914,8 @@ class _AddSupplierPaymentScreenState
       }
 
       /*
-       * Restore the original supplier ledger entry if the old ledger
-       * was already reversed.
+       * Restore the original supplier ledger entry only when the
+       * original active ledger entry was actually reversed.
        */
       if (oldLedgerReversed) {
         try {
@@ -870,6 +927,11 @@ class _AddSupplierPaymentScreenState
             supplierName: oldSupplierName.isEmpty
                 ? supplier.name.trim()
                 : oldSupplierName,
+            referenceId: oldPaymentId,
+            date: oldPayment.date,
+            notes: oldPayment.notes.trim().isEmpty
+                ? 'Supplier payment made.'
+                : oldPayment.notes.trim(),
           );
         } catch (_) {
           // Preserve original error.

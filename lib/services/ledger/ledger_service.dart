@@ -35,8 +35,7 @@ import '../../repositories/ledger_repository.dart';
 class LedgerService {
   LedgerService({
     LedgerRepository? repository,
-  }) : _repository =
-            repository ?? LedgerRepository();
+  }) : _repository = repository ?? LedgerRepository();
 
   final LedgerRepository _repository;
 
@@ -65,8 +64,7 @@ class LedgerService {
   static const String paymentType = 'PAYMENT';
 
   /// Increases customer outstanding because a separate payment is reversed.
-  static const String paymentReversalType =
-      'PAYMENT_REVERSAL';
+  static const String paymentReversalType = 'PAYMENT_REVERSAL';
 
   // ===========================================================================
   // GENERIC CREATE TRANSACTION
@@ -84,23 +82,17 @@ class LedgerService {
     DateTime? date,
     String notes = '',
   }) async {
-    final String normalizedBusinessId =
-        businessId.trim();
+    final String normalizedBusinessId = businessId.trim();
 
-    final String normalizedCustomerId =
-        customerId.trim();
+    final String normalizedCustomerId = customerId.trim();
 
-    final String normalizedCustomerName =
-        customerName.trim();
+    final String normalizedCustomerName = customerName.trim();
 
-    final String normalizedTransactionType =
-        transactionType.trim();
+    final String normalizedTransactionType = transactionType.trim();
 
-    final String normalizedReferenceId =
-        referenceId.trim();
+    final String normalizedReferenceId = referenceId.trim();
 
-    final String normalizedNotes =
-        notes.trim();
+    final String normalizedNotes = notes.trim();
 
     // -------------------------------------------------------------------------
     // VALIDATION
@@ -136,44 +128,41 @@ class LedgerService {
       );
     }
 
-    if (!balanceBefore.isFinite) {
+    if (!balanceBefore.isFinite || balanceBefore < 0) {
       throw ArgumentError(
-        'Balance before must be a valid number.',
+        'Balance before must be a finite non-negative number.',
       );
     }
 
-    if (!balanceAfter.isFinite) {
+    if (!balanceAfter.isFinite || balanceAfter < 0) {
       throw ArgumentError(
-        'Balance after must be a valid number.',
+        'Balance after must be a finite non-negative number.',
       );
     }
 
-    final DateTime now =
-        DateTime.now();
+    _validateBalanceTransition(
+      transactionType: normalizedTransactionType,
+      amount: amount,
+      balanceBefore: balanceBefore,
+      balanceAfter: balanceAfter,
+    );
+
+    final DateTime now = DateTime.now();
 
     final LedgerTransactionModel transaction =
         LedgerTransactionModel(
       id: '',
-      businessId:
-          normalizedBusinessId,
-      customerId:
-          normalizedCustomerId,
-      customerName:
-          normalizedCustomerName,
-      transactionType:
-          normalizedTransactionType,
+      businessId: normalizedBusinessId,
+      customerId: normalizedCustomerId,
+      customerName: normalizedCustomerName,
+      transactionType: normalizedTransactionType,
       amount: amount,
-      balanceBefore:
-          balanceBefore,
-      balanceAfter:
-          balanceAfter,
-      referenceId:
-          normalizedReferenceId,
+      balanceBefore: balanceBefore,
+      balanceAfter: balanceAfter,
+      referenceId: normalizedReferenceId,
       date: date ?? now,
-      notes:
-          normalizedNotes,
-      createdAt:
-          now,
+      notes: normalizedNotes,
+      createdAt: now,
     );
 
     return _repository.createTransaction(
@@ -212,32 +201,19 @@ class LedgerService {
       balanceBefore: balanceBefore,
     );
 
-    final double balanceAfter =
-        balanceBefore + saleAmount;
+    final double balanceAfter = balanceBefore + saleAmount;
 
     return createTransaction(
-      businessId:
-          businessId,
-      customerId:
-          customerId,
-      customerName:
-          customerName,
-      transactionType:
-          saleType,
-      amount:
-          saleAmount,
-      balanceBefore:
-          balanceBefore,
-      balanceAfter:
-          balanceAfter,
-      referenceId:
-          referenceId,
-      date:
-          date,
-      notes:
-          notes.isEmpty
-              ? 'Sale recorded.'
-              : notes,
+      businessId: businessId,
+      customerId: customerId,
+      customerName: customerName,
+      transactionType: saleType,
+      amount: saleAmount,
+      balanceBefore: balanceBefore,
+      balanceAfter: balanceAfter,
+      referenceId: referenceId,
+      date: date,
+      notes: notes.isEmpty ? 'Sale recorded.' : notes,
     );
   }
 
@@ -273,32 +249,27 @@ class LedgerService {
       balanceBefore: balanceBefore,
     );
 
-    final double balanceAfter =
+    final double calculatedBalanceAfter =
         balanceBefore - paymentAmount;
 
+    final double balanceAfter =
+        calculatedBalanceAfter.abs() <= 0.000001
+            ? 0
+            : calculatedBalanceAfter;
+
     return createTransaction(
-      businessId:
-          businessId,
-      customerId:
-          customerId,
-      customerName:
-          customerName,
-      transactionType:
-          salePaymentType,
-      amount:
-          paymentAmount,
-      balanceBefore:
-          balanceBefore,
-      balanceAfter:
-          balanceAfter,
-      referenceId:
-          referenceId,
-      date:
-          date,
-      notes:
-          notes.isEmpty
-              ? 'Payment received with sale.'
-              : notes,
+      businessId: businessId,
+      customerId: customerId,
+      customerName: customerName,
+      transactionType: salePaymentType,
+      amount: paymentAmount,
+      balanceBefore: balanceBefore,
+      balanceAfter: balanceAfter,
+      referenceId: referenceId,
+      date: date,
+      notes: notes.isEmpty
+          ? 'Payment received with sale.'
+          : notes,
     );
   }
 
@@ -334,32 +305,25 @@ class LedgerService {
       balanceBefore: balanceBefore,
     );
 
-    final double balanceAfter =
+    final double calculatedBalanceAfter =
         balanceBefore - saleAmount;
 
+    final double balanceAfter =
+        calculatedBalanceAfter.abs() <= 0.000001
+            ? 0
+            : calculatedBalanceAfter;
+
     return createTransaction(
-      businessId:
-          businessId,
-      customerId:
-          customerId,
-      customerName:
-          customerName,
-      transactionType:
-          saleReversalType,
-      amount:
-          saleAmount,
-      balanceBefore:
-          balanceBefore,
-      balanceAfter:
-          balanceAfter,
-      referenceId:
-          referenceId,
-      date:
-          date,
-      notes:
-          notes.isEmpty
-              ? 'Sale reversed.'
-              : notes,
+      businessId: businessId,
+      customerId: customerId,
+      customerName: customerName,
+      transactionType: saleReversalType,
+      amount: saleAmount,
+      balanceBefore: balanceBefore,
+      balanceAfter: balanceAfter,
+      referenceId: referenceId,
+      date: date,
+      notes: notes.isEmpty ? 'Sale reversed.' : notes,
     );
   }
 
@@ -374,8 +338,7 @@ class LedgerService {
   /// Current balance = 3,000
   /// Included payment reversed = 2,000
   /// New balance = 5,000
-  Future<LedgerTransactionModel>
-      createSalePaymentReversal({
+  Future<LedgerTransactionModel> createSalePaymentReversal({
     required String businessId,
     required String customerId,
     required String customerName,
@@ -397,28 +360,18 @@ class LedgerService {
         balanceBefore + paymentAmount;
 
     return createTransaction(
-      businessId:
-          businessId,
-      customerId:
-          customerId,
-      customerName:
-          customerName,
-      transactionType:
-          salePaymentReversalType,
-      amount:
-          paymentAmount,
-      balanceBefore:
-          balanceBefore,
-      balanceAfter:
-          balanceAfter,
-      referenceId:
-          referenceId,
-      date:
-          date,
-      notes:
-          notes.isEmpty
-              ? 'Sale payment reversed.'
-              : notes,
+      businessId: businessId,
+      customerId: customerId,
+      customerName: customerName,
+      transactionType: salePaymentReversalType,
+      amount: paymentAmount,
+      balanceBefore: balanceBefore,
+      balanceAfter: balanceAfter,
+      referenceId: referenceId,
+      date: date,
+      notes: notes.isEmpty
+          ? 'Sale payment reversed.'
+          : notes,
     );
   }
 
@@ -448,32 +401,27 @@ class LedgerService {
       balanceBefore: balanceBefore,
     );
 
-    final double balanceAfter =
+    final double calculatedBalanceAfter =
         balanceBefore - paymentAmount;
 
+    final double balanceAfter =
+        calculatedBalanceAfter.abs() <= 0.000001
+            ? 0
+            : calculatedBalanceAfter;
+
     return createTransaction(
-      businessId:
-          businessId,
-      customerId:
-          customerId,
-      customerName:
-          customerName,
-      transactionType:
-          paymentType,
-      amount:
-          paymentAmount,
-      balanceBefore:
-          balanceBefore,
-      balanceAfter:
-          balanceAfter,
-      referenceId:
-          referenceId,
-      date:
-          date,
-      notes:
-          notes.isEmpty
-              ? 'Customer payment received.'
-              : notes,
+      businessId: businessId,
+      customerId: customerId,
+      customerName: customerName,
+      transactionType: paymentType,
+      amount: paymentAmount,
+      balanceBefore: balanceBefore,
+      balanceAfter: balanceAfter,
+      referenceId: referenceId,
+      date: date,
+      notes: notes.isEmpty
+          ? 'Customer payment received.'
+          : notes,
     );
   }
 
@@ -485,8 +433,7 @@ class LedgerService {
   ///
   /// This is different from SALE_PAYMENT_REVERSAL because this payment was
   /// created independently from the sale.
-  Future<LedgerTransactionModel>
-      createPaymentReversal({
+  Future<LedgerTransactionModel> createPaymentReversal({
     required String businessId,
     required String customerId,
     required String customerName,
@@ -508,28 +455,18 @@ class LedgerService {
         balanceBefore + paymentAmount;
 
     return createTransaction(
-      businessId:
-          businessId,
-      customerId:
-          customerId,
-      customerName:
-          customerName,
-      transactionType:
-          paymentReversalType,
-      amount:
-          paymentAmount,
-      balanceBefore:
-          balanceBefore,
-      balanceAfter:
-          balanceAfter,
-      referenceId:
-          referenceId,
-      date:
-          date,
-      notes:
-          notes.isEmpty
-              ? 'Customer payment reversed.'
-              : notes,
+      businessId: businessId,
+      customerId: customerId,
+      customerName: customerName,
+      transactionType: paymentReversalType,
+      amount: paymentAmount,
+      balanceBefore: balanceBefore,
+      balanceAfter: balanceAfter,
+      referenceId: referenceId,
+      date: date,
+      notes: notes.isEmpty
+          ? 'Customer payment reversed.'
+          : notes,
     );
   }
 
@@ -548,14 +485,11 @@ class LedgerService {
     required String customerId,
     required String referenceId,
   }) async {
-    final String normalizedBusinessId =
-        businessId.trim();
+    final String normalizedBusinessId = businessId.trim();
 
-    final String normalizedCustomerId =
-        customerId.trim();
+    final String normalizedCustomerId = customerId.trim();
 
-    final String normalizedReferenceId =
-        referenceId.trim();
+    final String normalizedReferenceId = referenceId.trim();
 
     if (normalizedBusinessId.isEmpty) {
       throw ArgumentError(
@@ -575,13 +509,10 @@ class LedgerService {
       );
     }
 
-    final List<LedgerTransactionModel>
-        transactions =
+    final List<LedgerTransactionModel> transactions =
         await _repository.getCustomerTransactions(
-      businessId:
-          normalizedBusinessId,
-      customerId:
-          normalizedCustomerId,
+      businessId: normalizedBusinessId,
+      customerId: normalizedCustomerId,
     );
 
     return transactions
@@ -602,69 +533,54 @@ class LedgerService {
     required String transactionId,
   }) {
     return _repository.getTransaction(
-      businessId:
-          businessId,
-      transactionId:
-          transactionId,
+      businessId: businessId,
+      transactionId: transactionId,
     );
   }
 
-  Future<List<LedgerTransactionModel>>
-      getTransactions({
+  Future<List<LedgerTransactionModel>> getTransactions({
     required String businessId,
   }) {
     return _repository.getTransactions(
-      businessId:
-          businessId,
+      businessId: businessId,
     );
   }
 
-  Stream<List<LedgerTransactionModel>>
-      watchTransactions({
+  Stream<List<LedgerTransactionModel>> watchTransactions({
     required String businessId,
   }) {
     return _repository.watchTransactions(
-      businessId:
-          businessId,
+      businessId: businessId,
     );
   }
 
-  Future<List<LedgerTransactionModel>>
-      getCustomerTransactions({
+  Future<List<LedgerTransactionModel>> getCustomerTransactions({
     required String businessId,
     required String customerId,
   }) {
     return _repository.getCustomerTransactions(
-      businessId:
-          businessId,
-      customerId:
-          customerId,
+      businessId: businessId,
+      customerId: customerId,
     );
   }
 
-  Stream<List<LedgerTransactionModel>>
-      watchCustomerTransactions({
+  Stream<List<LedgerTransactionModel>> watchCustomerTransactions({
     required String businessId,
     required String customerId,
   }) {
     return _repository.watchCustomerTransactions(
-      businessId:
-          businessId,
-      customerId:
-          customerId,
+      businessId: businessId,
+      customerId: customerId,
     );
   }
 
-  Future<List<LedgerTransactionModel>>
-      getTransactionsByType({
+  Future<List<LedgerTransactionModel>> getTransactionsByType({
     required String businessId,
     required String transactionType,
   }) {
     return _repository.getTransactionsByType(
-      businessId:
-          businessId,
-      transactionType:
-          transactionType,
+      businessId: businessId,
+      transactionType: transactionType,
     );
   }
 
@@ -681,10 +597,8 @@ class LedgerService {
     required String transactionId,
   }) {
     return _repository.deleteTransaction(
-      businessId:
-          businessId,
-      transactionId:
-          transactionId,
+      businessId: businessId,
+      transactionId: transactionId,
     );
   }
 
@@ -697,10 +611,8 @@ class LedgerService {
     required String customerId,
   }) {
     return _repository.getCustomerBalance(
-      businessId:
-          businessId,
-      customerId:
-          customerId,
+      businessId: businessId,
+      customerId: customerId,
     );
   }
 
@@ -708,8 +620,7 @@ class LedgerService {
     required String businessId,
   }) {
     return _repository.getTotalReceivable(
-      businessId:
-          businessId,
+      businessId: businessId,
     );
   }
 
@@ -717,16 +628,13 @@ class LedgerService {
   // SEARCH
   // ===========================================================================
 
-  Future<List<LedgerTransactionModel>>
-      searchTransactions({
+  Future<List<LedgerTransactionModel>> searchTransactions({
     required String businessId,
     required String query,
   }) {
     return _repository.searchTransactions(
-      businessId:
-          businessId,
-      query:
-          query,
+      businessId: businessId,
+      query: query,
     );
   }
 
@@ -741,14 +649,11 @@ class LedgerService {
     required double amount,
     required double balanceBefore,
   }) {
-    final String normalizedBusinessId =
-        businessId.trim();
+    final String normalizedBusinessId = businessId.trim();
 
-    final String normalizedCustomerId =
-        customerId.trim();
+    final String normalizedCustomerId = customerId.trim();
 
-    final String normalizedCustomerName =
-        customerName.trim();
+    final String normalizedCustomerName = customerName.trim();
 
     if (normalizedBusinessId.isEmpty) {
       throw ArgumentError(
@@ -774,10 +679,111 @@ class LedgerService {
       );
     }
 
-    if (!balanceBefore.isFinite) {
+    if (!balanceBefore.isFinite || balanceBefore < 0) {
       throw ArgumentError(
-        'Previous balance must be a valid number.',
+        'Previous balance must be a finite non-negative number.',
       );
     }
+  }
+
+  // ===========================================================================
+  // BALANCE TRANSITION VALIDATION
+  // ===========================================================================
+
+  void _validateBalanceTransition({
+    required String transactionType,
+    required double amount,
+    required double balanceBefore,
+    required double balanceAfter,
+  }) {
+    final String type =
+        transactionType.trim().toUpperCase();
+
+    if (!amount.isFinite || amount <= 0) {
+      throw ArgumentError(
+        'Amount must be greater than zero.',
+      );
+    }
+
+    if (!balanceBefore.isFinite || balanceBefore < 0) {
+      throw ArgumentError(
+        'Balance before must be a finite non-negative number.',
+      );
+    }
+
+    if (!balanceAfter.isFinite || balanceAfter < 0) {
+      throw ArgumentError(
+        'Balance after must be a finite non-negative number.',
+      );
+    }
+
+    final bool decreasesBalance =
+        type == salePaymentType ||
+        type == saleReversalType ||
+        type == paymentType;
+
+    final bool increasesBalance =
+        type == saleType ||
+        type == salePaymentReversalType ||
+        type == paymentReversalType;
+
+    const double tolerance = 0.000001;
+
+    // -------------------------------------------------------------------------
+    // CREDIT TRANSACTIONS
+    // -------------------------------------------------------------------------
+    //
+    // These transactions decrease customer outstanding.
+    //
+    // A credit can never be larger than the current outstanding balance.
+    //
+    if (decreasesBalance) {
+      if (amount > balanceBefore + tolerance) {
+        throw ArgumentError(
+          'Transaction amount cannot be greater than the current '
+          'customer outstanding balance.',
+        );
+      }
+
+      final double expectedBalanceAfter =
+          balanceBefore - amount;
+
+      if ((balanceAfter - expectedBalanceAfter).abs() >
+          tolerance) {
+        throw ArgumentError(
+          'Invalid ledger balance transition for $type.',
+        );
+      }
+
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // DEBIT TRANSACTIONS
+    // -------------------------------------------------------------------------
+    //
+    // These transactions increase customer outstanding.
+    //
+    if (increasesBalance) {
+      final double expectedBalanceAfter =
+          balanceBefore + amount;
+
+      if ((balanceAfter - expectedBalanceAfter).abs() >
+          tolerance) {
+        throw ArgumentError(
+          'Invalid ledger balance transition for $type.',
+        );
+      }
+
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // UNKNOWN / LEGACY TRANSACTION TYPES
+    // -------------------------------------------------------------------------
+    //
+    // Unknown legacy transaction types are intentionally not forced into the
+    // debit/credit rules above. Their existing behavior remains compatible
+    // with the repository and older data.
   }
 }

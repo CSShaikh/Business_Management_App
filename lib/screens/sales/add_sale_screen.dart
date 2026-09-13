@@ -168,8 +168,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
 
       setState(() {
         _loading = false;
-        _errorMessage =
-            'Unable to load products and business information.';
+        _errorMessage = _cleanError(e);
       });
     }
   }
@@ -191,12 +190,26 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
 
     CustomerModel? customer;
 
-    if (sale.customerId.trim().isNotEmpty) {
-      customer =
-          await _customerRepository.getCustomer(
+    final String existingCustomerId =
+        sale.customerId.trim();
+
+    if (existingCustomerId.isNotEmpty) {
+      customer = await _customerRepository.getCustomer(
         businessId: business.id,
-        customerId: sale.customerId.trim(),
+        customerId: existingCustomerId,
       );
+
+      // IMPORTANT:
+      // An existing sale that already belongs to a customer must never
+      // silently become a walk-in sale just because that customer document
+      // is missing. Doing so can break the relationship between the sale
+      // and its historical customer ledger.
+      if (customer == null) {
+        throw Exception(
+          'Customer for this sale could not be found. '
+          'Please restore the customer or cancel editing.',
+        );
+      }
     }
 
     final List<_SaleDraftItem> draftItems =
@@ -223,8 +236,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
         }
       }
 
-      product ??=
-          await _productRepository.getProduct(
+      product ??= await _productRepository.getProduct(
         business.id,
         productId,
       );
@@ -235,12 +247,34 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
         );
       }
 
+      if (!saleItem.quantity.isFinite ||
+          saleItem.quantity <= 0) {
+        throw Exception(
+          'Sale contains an invalid quantity for '
+          '"${saleItem.productName}".',
+        );
+      }
+
+      if (!saleItem.sellingRate.isFinite ||
+          saleItem.sellingRate < 0) {
+        throw Exception(
+          'Sale contains an invalid selling rate for '
+          '"${saleItem.productName}".',
+        );
+      }
+
       draftItems.add(
         _SaleDraftItem(
           product: product,
           quantity: saleItem.quantity,
           sellingRate: saleItem.sellingRate,
         ),
+      );
+    }
+
+    if (draftItems.isEmpty) {
+      throw Exception(
+        'The existing sale does not contain any valid products.',
       );
     }
 
@@ -438,9 +472,10 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                                 return Card(
                                   child: ListTile(
                                     leading:
-                                        CircleAvatar(
-                                      child: const Icon(
-                                        Icons.inventory_2_outlined,
+                                        const CircleAvatar(
+                                      child: Icon(
+                                        Icons
+                                            .inventory_2_outlined,
                                       ),
                                     ),
                                     title: Text(
@@ -614,9 +649,27 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       return;
     }
 
+    if (business.id.trim().isEmpty) {
+      _showMessage(
+        'Business ID is missing.',
+        isError: true,
+      );
+      return;
+    }
+
     if (_items.isEmpty) {
       _showMessage(
         'Please add at least one product.',
+        isError: true,
+      );
+      return;
+    }
+
+    if (!_discount.isFinite ||
+        !_tax.isFinite ||
+        !_paidAmount.isFinite) {
+      _showMessage(
+        'Discount, tax and paid amount must be valid numbers.',
         isError: true,
       );
       return;
@@ -635,6 +688,15 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     if (_discount > _subtotal) {
       _showMessage(
         'Discount cannot be greater than subtotal.',
+        isError: true,
+      );
+      return;
+    }
+
+    if (!_total.isFinite ||
+        _total < 0) {
+      _showMessage(
+        'Sale total is invalid.',
         isError: true,
       );
       return;
@@ -670,7 +732,8 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
 
     for (final _SaleDraftItem item
         in _items) {
-      if (item.quantity <= 0) {
+      if (!item.quantity.isFinite ||
+          item.quantity <= 0) {
         _showMessage(
           'Quantity must be greater than zero.',
           isError: true,
@@ -678,7 +741,8 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
         return;
       }
 
-      if (item.sellingRate < 0) {
+      if (!item.sellingRate.isFinite ||
+          item.sellingRate < 0) {
         _showMessage(
           'Selling rate cannot be negative.',
           isError: true,
@@ -691,6 +755,15 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
               (oldQuantities[
                       item.product.id] ??
                   0);
+
+      if (!availableStock.isFinite ||
+          availableStock < 0) {
+        _showMessage(
+          'Invalid stock value for ${item.product.name}.',
+          isError: true,
+        );
+        return;
+      }
 
       if (item.quantity >
           availableStock) {
@@ -713,11 +786,18 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
           DateTime.now();
 
       final String invoiceNumber =
-          oldSale?.invoiceNumber ??
-              await _saleRepository
+          oldSale?.invoiceNumber.trim().isNotEmpty == true
+              ? oldSale!.invoiceNumber
+              : await _saleRepository
                   .generateInvoiceNumber(
         businessId: business.id,
       );
+
+      if (invoiceNumber.trim().isEmpty) {
+        throw Exception(
+          'Unable to generate invoice number.',
+        );
+      }
 
       final List<SaleItemModel> saleItems =
           _items.map(
@@ -795,25 +875,19 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
           // ---------------------------------------------------------------
           // 2. CREATE CUSTOMER LEDGER
           // ---------------------------------------------------------------
-          //
-          // Only the outstanding amount is added to customer receivable.
-          //
-          // Example:
-          // Total      = 10,000
-          // Paid       = 4,000
-          // Outstanding= 6,000
-          //
-          // Ledger receives:
-          // SALE = 6,000
-          //
-          // Walk-in sales have no customerId, therefore they do not create
-          // a customer ledger transaction.
           final String customerId =
               savedSale.customerId.trim();
 
           final double outstanding =
               savedSale.total -
                   savedSale.paidAmount;
+
+          if (!outstanding.isFinite ||
+              outstanding < 0) {
+            throw Exception(
+              'Sale outstanding amount is invalid.',
+            );
+          }
 
           if (customerId.isNotEmpty &&
               outstanding > 0) {
@@ -857,15 +931,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
           // ---------------------------------------------------------------
           // ROLLBACK NEW SALE
           // ---------------------------------------------------------------
-          //
-          // If stock or ledger processing fails, do not leave a half-created
-          // sale behind.
-          //
-          // Order:
-          // 1. Remove ledger entries created by this operation.
-          // 2. Restore stock if stock was successfully processed.
-          // 3. Delete the sale document.
-          //
+
           for (final LedgerTransactionModel
               transaction
               in createdLedgerTransactions
@@ -914,15 +980,18 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       // EDIT EXISTING SALE
       // -----------------------------------------------------------------------
       else {
-        // Reverse the old sale first, apply the new sale stock, and only then
-        // update the sale document. If the new stock operation fails, restore
-        // the old stock so the existing sale remains valid.
+        // The old sale's customer is validated during load. At save time,
+        // selecting another customer or removing the customer is an explicit
+        // user action and is therefore allowed.
+
+        // Reverse old stock first.
         await _saleStockService
             .reverseSaleStock(
           sale: oldSale,
         );
 
         try {
+          // Apply new sale stock.
           await _saleStockService
               .processSaleStock(
             sale: sale,
@@ -961,17 +1030,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
           rethrow;
         }
 
-        // Keep the customer ledger synchronized with the edited sale.
-        //
-        // Ledger is append-only:
-        //
-        // Old SALE
-        //    ↓
-        // SALE_REVERSAL
-        //    ↓
-        // New SALE
-        //
-        // This also correctly handles changing the customer.
+        // Keep customer ledger synchronized with edited sale.
         final List<
                 LedgerTransactionModel>
             createdLedgerTransactions =
@@ -986,8 +1045,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                 createdLedgerTransactions,
           );
         } catch (ledgerError) {
-          // The sale was already updated, so restore the previous sale and
-          // stock before surfacing the ledger error.
+          // Restore the previous sale state.
 
           for (final LedgerTransactionModel
               transaction
@@ -1117,9 +1175,6 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       );
     }
 
-    // -------------------------------------------------------------------------
-    // REVERSE OLD ACTIVE SALE LEDGER
-    // -------------------------------------------------------------------------
     final String oldCustomerId =
         oldSale.customerId.trim();
 
@@ -1156,15 +1211,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
 
       // LedgerService returns customer transactions newest-first.
       //
-      // Therefore:
-      //
-      // SALE
-      //   = active sale
-      //
-      // SALE_REVERSAL
-      //   = already reversed
-      //
-      // For an edited sale, only the newest active SALE entry is reversed.
+      // Only the newest active SALE entry is reversed.
       if (saleHistory.isNotEmpty &&
           saleHistory.first.transactionType
                   .trim()
@@ -1173,6 +1220,13 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
         final LedgerTransactionModel
             activeSaleTransaction =
             saleHistory.first;
+
+        if (!activeSaleTransaction.amount.isFinite ||
+            activeSaleTransaction.amount <= 0) {
+          throw Exception(
+            'Existing sale ledger transaction has an invalid amount.',
+          );
+        }
 
         final double currentBalance =
             await _ledgerService
@@ -1224,6 +1278,13 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     final double newOutstanding =
         updatedSale.total -
             updatedSale.paidAmount;
+
+    if (!newOutstanding.isFinite ||
+        newOutstanding < 0) {
+      throw Exception(
+        'Updated sale outstanding amount is invalid.',
+      );
+    }
 
     if (newCustomerId.isNotEmpty &&
         newOutstanding > 0) {
@@ -1321,6 +1382,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                 );
 
                 if (parsed == null ||
+                    !parsed.isFinite ||
                     parsed <= 0) {
                   return;
                 }
@@ -1409,6 +1471,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                 );
 
                 if (parsed == null ||
+                    !parsed.isFinite ||
                     parsed < 0) {
                   return;
                 }
@@ -1931,8 +1994,8 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
         children: [
           Row(
             children: [
-              CircleAvatar(
-                child: const Icon(
+              const CircleAvatar(
+                child: Icon(
                   Icons.inventory_2_outlined,
                 ),
               ),

@@ -16,7 +16,7 @@ class SaleProvider extends ChangeNotifier {
   // STATE
   // ---------------------------------------------------------------------------
 
-  List<SaleModel> _sales = [];
+  List<SaleModel> _sales = <SaleModel>[];
 
   bool _isLoading = false;
   bool _isSaving = false;
@@ -33,7 +33,7 @@ class SaleProvider extends ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   List<SaleModel> get sales =>
-      List.unmodifiable(_sales);
+      List<SaleModel>.unmodifiable(_sales);
 
   bool get isLoading => _isLoading;
 
@@ -57,7 +57,10 @@ class SaleProvider extends ChangeNotifier {
   double get totalSalesAmount {
     return _sales.fold<double>(
       0,
-      (double total, SaleModel sale) =>
+      (
+        double total,
+        SaleModel sale,
+      ) =>
           total + sale.total,
     );
   }
@@ -65,7 +68,10 @@ class SaleProvider extends ChangeNotifier {
   double get totalReceivedAmount {
     return _sales.fold<double>(
       0,
-      (double total, SaleModel sale) =>
+      (
+        double total,
+        SaleModel sale,
+      ) =>
           total + sale.paidAmount,
     );
   }
@@ -73,7 +79,10 @@ class SaleProvider extends ChangeNotifier {
   double get totalPendingAmount {
     return _sales.fold<double>(
       0,
-      (double total, SaleModel sale) {
+      (
+        double total,
+        SaleModel sale,
+      ) {
         final double pending =
             sale.total - sale.paidAmount;
 
@@ -86,7 +95,10 @@ class SaleProvider extends ChangeNotifier {
   double get totalDiscount {
     return _sales.fold<double>(
       0,
-      (double total, SaleModel sale) =>
+      (
+        double total,
+        SaleModel sale,
+      ) =>
           total + sale.discount,
     );
   }
@@ -94,7 +106,10 @@ class SaleProvider extends ChangeNotifier {
   double get totalTax {
     return _sales.fold<double>(
       0,
-      (double total, SaleModel sale) =>
+      (
+        double total,
+        SaleModel sale,
+      ) =>
           total + sale.tax,
     );
   }
@@ -163,7 +178,10 @@ class SaleProvider extends ChangeNotifier {
   double get todaySalesAmount {
     return todaySales.fold<double>(
       0,
-      (double total, SaleModel sale) =>
+      (
+        double total,
+        SaleModel sale,
+      ) =>
           total + sale.total,
     );
   }
@@ -171,7 +189,10 @@ class SaleProvider extends ChangeNotifier {
   double get todayReceivedAmount {
     return todaySales.fold<double>(
       0,
-      (double total, SaleModel sale) =>
+      (
+        double total,
+        SaleModel sale,
+      ) =>
           total + sale.paidAmount,
     );
   }
@@ -179,7 +200,10 @@ class SaleProvider extends ChangeNotifier {
   double get todayPendingAmount {
     return todaySales.fold<double>(
       0,
-      (double total, SaleModel sale) {
+      (
+        double total,
+        SaleModel sale,
+      ) {
         final double pending =
             sale.total - sale.paidAmount;
 
@@ -205,9 +229,17 @@ class SaleProvider extends ChangeNotifier {
 
     _businessId = id;
 
+    // A business change must never keep the previous business's listener
+    // or cached sales alive.
+    _cancelSaleSubscription();
+
+    _sales = <SaleModel>[];
+
     if (id.isEmpty) {
-      clearSales();
+      _clearErrorWithoutNotification();
     }
+
+    notifyListeners();
   }
 
   // ---------------------------------------------------------------------------
@@ -224,10 +256,21 @@ class SaleProvider extends ChangeNotifier {
       _setError(
         'Business ID is required to load sales.',
       );
-      return [];
+      return <SaleModel>[];
     }
 
+    final bool businessChanged =
+        _businessId != id;
+
     _businessId = id;
+
+    // If another business was being watched, stop it before loading this one.
+    // Also stop the current watcher so an older stream cannot overwrite the
+    // freshly loaded state.
+    if (businessChanged ||
+        _saleSubscription != null) {
+      _cancelSaleSubscription();
+    }
 
     _setLoading(true);
     _clearError();
@@ -238,24 +281,34 @@ class SaleProvider extends ChangeNotifier {
         businessId: id,
       );
 
+      // Protect against an asynchronous load finishing after the provider has
+      // already switched to another business.
+      if (_businessId != id) {
+        return <SaleModel>[];
+      }
+
       _sales =
           List<SaleModel>.from(
         sales,
       );
 
+      notifyListeners();
+
       return List<SaleModel>.from(
         _sales,
       );
     } catch (e) {
-      _setError(
-        _formatError(
-          e,
-          fallback:
-              'Unable to load sales.',
-        ),
-      );
+      if (_businessId == id) {
+        _setError(
+          _formatError(
+            e,
+            fallback:
+                'Unable to load sales.',
+          ),
+        );
+      }
 
-      return [];
+      return <SaleModel>[];
     } finally {
       _setLoading(false);
     }
@@ -280,7 +333,7 @@ class SaleProvider extends ChangeNotifier {
 
     _businessId = id;
 
-    _saleSubscription?.cancel();
+    _cancelSaleSubscription();
 
     _clearError();
 
@@ -293,6 +346,12 @@ class SaleProvider extends ChangeNotifier {
       (
         List<SaleModel> sales,
       ) {
+        // Ignore late events from a stream if the provider has already moved
+        // to another business.
+        if (_businessId != id) {
+          return;
+        }
+
         _sales =
             List<SaleModel>.from(
           sales,
@@ -301,6 +360,10 @@ class SaleProvider extends ChangeNotifier {
         notifyListeners();
       },
       onError: (Object error) {
+        if (_businessId != id) {
+          return;
+        }
+
         _setError(
           _formatError(
             error,
@@ -332,6 +395,11 @@ class SaleProvider extends ChangeNotifier {
     await loadSales(
       businessId: id,
     );
+
+    // Do not attach a watcher if the business changed while loading.
+    if (_businessId != id) {
+      return;
+    }
 
     watchSales(
       businessId: id,
@@ -410,21 +478,26 @@ class SaleProvider extends ChangeNotifier {
       return null;
     }
 
-    if (sale.total < 0) {
+    if (!_isValidNonNegative(
+      sale.total,
+    )) {
       _setError(
-        'Sale total cannot be negative.',
+        'Sale total must be a valid non-negative number.',
       );
       return null;
     }
 
-    if (sale.paidAmount < 0) {
+    if (!_isValidNonNegative(
+      sale.paidAmount,
+    )) {
       _setError(
-        'Paid amount cannot be negative.',
+        'Paid amount must be a valid non-negative number.',
       );
       return null;
     }
 
-    if (sale.paidAmount > sale.total) {
+    if (sale.paidAmount >
+        sale.total) {
       _setError(
         'Paid amount cannot be greater than sale total.',
       );
@@ -442,9 +515,11 @@ class SaleProvider extends ChangeNotifier {
         sale,
       );
 
-      _upsertLocalSale(
-        savedSale,
-      );
+      if (_businessId == id) {
+        _upsertLocalSale(
+          savedSale,
+        );
+      }
 
       return savedSale;
     } catch (e) {
@@ -472,6 +547,9 @@ class SaleProvider extends ChangeNotifier {
     final String id =
         sale.businessId.trim();
 
+    final String saleId =
+        sale.id.trim();
+
     if (id.isEmpty) {
       _setError(
         'Business ID is required.',
@@ -479,7 +557,7 @@ class SaleProvider extends ChangeNotifier {
       return false;
     }
 
-    if (sale.id.trim().isEmpty) {
+    if (saleId.isEmpty) {
       _setError(
         'Sale ID is required.',
       );
@@ -493,21 +571,26 @@ class SaleProvider extends ChangeNotifier {
       return false;
     }
 
-    if (sale.total < 0) {
+    if (!_isValidNonNegative(
+      sale.total,
+    )) {
       _setError(
-        'Sale total cannot be negative.',
+        'Sale total must be a valid non-negative number.',
       );
       return false;
     }
 
-    if (sale.paidAmount < 0) {
+    if (!_isValidNonNegative(
+      sale.paidAmount,
+    )) {
       _setError(
-        'Paid amount cannot be negative.',
+        'Paid amount must be a valid non-negative number.',
       );
       return false;
     }
 
-    if (sale.paidAmount > sale.total) {
+    if (sale.paidAmount >
+        sale.total) {
       _setError(
         'Paid amount cannot be greater than sale total.',
       );
@@ -524,9 +607,11 @@ class SaleProvider extends ChangeNotifier {
         sale,
       );
 
-      _upsertLocalSale(
-        sale,
-      );
+      if (_businessId == id) {
+        _upsertLocalSale(
+          sale,
+        );
+      }
 
       return true;
     } catch (e) {
@@ -583,13 +668,15 @@ class SaleProvider extends ChangeNotifier {
         saleId: saleDocumentId,
       );
 
-      _sales.removeWhere(
-        (SaleModel sale) =>
-            sale.id.trim() ==
-            saleDocumentId,
-      );
+      if (_businessId == id) {
+        _sales.removeWhere(
+          (SaleModel sale) =>
+              sale.id.trim() ==
+              saleDocumentId,
+        );
 
-      notifyListeners();
+        notifyListeners();
+      }
 
       return true;
     } catch (e) {
@@ -636,9 +723,11 @@ class SaleProvider extends ChangeNotifier {
       return false;
     }
 
-    if (paidAmount < 0) {
+    if (!_isValidNonNegative(
+      paidAmount,
+    )) {
       _setError(
-        'Paid amount cannot be negative.',
+        'Paid amount must be a valid non-negative number.',
       );
       return false;
     }
@@ -667,6 +756,10 @@ class SaleProvider extends ChangeNotifier {
         saleId: saleDocumentId,
         paidAmount: paidAmount,
       );
+
+      if (_businessId != id) {
+        return true;
+      }
 
       final int index =
           _sales.indexWhere(
@@ -699,16 +792,20 @@ class SaleProvider extends ChangeNotifier {
               oldSale.subtotal,
           discount:
               oldSale.discount,
-          tax: oldSale.tax,
-          total: oldSale.total,
+          tax:
+              oldSale.tax,
+          total:
+              oldSale.total,
           paidAmount:
               paidAmount,
           paymentStatus:
               newStatus,
           paymentMethod:
               oldSale.paymentMethod,
-          date: oldSale.date,
-          notes: oldSale.notes,
+          date:
+              oldSale.date,
+          notes:
+              oldSale.notes,
           invoiceNumber:
               oldSale.invoiceNumber,
           createdAt:
@@ -756,14 +853,14 @@ class SaleProvider extends ChangeNotifier {
       _setError(
         'Business ID is required.',
       );
-      return [];
+      return <SaleModel>[];
     }
 
     if (customerDocumentId.isEmpty) {
       _setError(
         'Customer ID is required.',
       );
-      return [];
+      return <SaleModel>[];
     }
 
     _clearError();
@@ -784,7 +881,7 @@ class SaleProvider extends ChangeNotifier {
         ),
       );
 
-      return [];
+      return <SaleModel>[];
     }
   }
 
@@ -803,7 +900,7 @@ class SaleProvider extends ChangeNotifier {
       _setError(
         'Business ID is required.',
       );
-      return [];
+      return <SaleModel>[];
     }
 
     _clearError();
@@ -822,9 +919,13 @@ class SaleProvider extends ChangeNotifier {
         ),
       );
 
-      return [];
+      return <SaleModel>[];
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // LOCAL SEARCH FILTER
+  // ---------------------------------------------------------------------------
 
   List<SaleModel> filterSales(
     String query,
@@ -1018,7 +1119,9 @@ class SaleProvider extends ChangeNotifier {
     String invoiceNumber,
   ) {
     final String invoice =
-        invoiceNumber.trim().toLowerCase();
+        invoiceNumber
+            .trim()
+            .toLowerCase();
 
     if (invoice.isEmpty) {
       return null;
@@ -1042,11 +1145,9 @@ class SaleProvider extends ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   void clearSales() {
-    _saleSubscription?.cancel();
+    _cancelSaleSubscription();
 
-    _saleSubscription = null;
-
-    _sales = [];
+    _sales = <SaleModel>[];
 
     notifyListeners();
   }
@@ -1056,12 +1157,15 @@ class SaleProvider extends ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   Future<void> refresh() async {
-    if (_businessId.trim().isEmpty) {
+    final String id =
+        _businessId.trim();
+
+    if (id.isEmpty) {
       return;
     }
 
     await loadSales(
-      businessId: _businessId,
+      businessId: id,
     );
   }
 
@@ -1133,6 +1237,36 @@ class SaleProvider extends ChangeNotifier {
   }
 
   // ---------------------------------------------------------------------------
+  // NUMBER VALIDATION
+  // ---------------------------------------------------------------------------
+
+  bool _isValidNonNegative(
+    double value,
+  ) {
+    return value.isFinite &&
+        value >= 0;
+  }
+
+  // ---------------------------------------------------------------------------
+  // STREAM MANAGEMENT
+  // ---------------------------------------------------------------------------
+
+  void _cancelSaleSubscription() {
+    final StreamSubscription<
+            List<SaleModel>>?
+        subscription =
+        _saleSubscription;
+
+    _saleSubscription = null;
+
+    if (subscription != null) {
+      unawaited(
+        subscription.cancel(),
+      );
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // LOADING
   // ---------------------------------------------------------------------------
 
@@ -1176,6 +1310,10 @@ class SaleProvider extends ChangeNotifier {
     _errorMessage = null;
 
     notifyListeners();
+  }
+
+  void _clearErrorWithoutNotification() {
+    _errorMessage = null;
   }
 
   void clearError() {
@@ -1232,9 +1370,7 @@ class SaleProvider extends ChangeNotifier {
 
   @override
   void dispose() {
-    _saleSubscription?.cancel();
-
-    _saleSubscription = null;
+    _cancelSaleSubscription();
 
     super.dispose();
   }

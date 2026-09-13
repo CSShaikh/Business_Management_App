@@ -38,31 +38,55 @@ class _SalesScreenState extends State<SalesScreen> {
 
   BusinessModel? _business;
 
+  Stream<List<SaleModel>>? _salesStream;
+
   bool _loadingBusiness = true;
   String? _businessError;
 
   String _searchQuery = '';
 
+  /// Prevents duplicate edit/delete operations for the same sale.
+  final Set<String> _busySaleIds = <String>{};
+
   @override
   void initState() {
     super.initState();
 
+    _searchController.addListener(
+      _handleSearchChanged,
+    );
+
     _loadBusiness();
-
-    _searchController.addListener(() {
-      if (!mounted) return;
-
-      setState(() {
-        _searchQuery =
-            _searchController.text.trim().toLowerCase();
-      });
-    });
   }
 
   @override
   void dispose() {
+    _searchController.removeListener(
+      _handleSearchChanged,
+    );
     _searchController.dispose();
     super.dispose();
+  }
+
+  // ===========================================================================
+  // SEARCH LISTENER
+  // ===========================================================================
+
+  void _handleSearchChanged() {
+    if (!mounted) {
+      return;
+    }
+
+    final String newQuery =
+        _searchController.text.trim().toLowerCase();
+
+    if (newQuery == _searchQuery) {
+      return;
+    }
+
+    setState(() {
+      _searchQuery = newQuery;
+    });
   }
 
   // ===========================================================================
@@ -70,7 +94,9 @@ class _SalesScreenState extends State<SalesScreen> {
   // ===========================================================================
 
   Future<void> _loadBusiness() async {
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
     setState(() {
       _loadingBusiness = true;
@@ -81,11 +107,14 @@ class _SalesScreenState extends State<SalesScreen> {
       final BusinessModel? business =
           await _businessRepository.getBusinessForCurrentUser();
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       if (business == null) {
         setState(() {
           _business = null;
+          _salesStream = null;
           _loadingBusiness = false;
           _businessError =
               'Business profile not found. Please complete business setup.';
@@ -93,16 +122,43 @@ class _SalesScreenState extends State<SalesScreen> {
         return;
       }
 
+      final String businessId =
+          business.id.trim();
+
+      if (businessId.isEmpty) {
+        setState(() {
+          _business = null;
+          _salesStream = null;
+          _loadingBusiness = false;
+          _businessError =
+              'Business information is invalid. Please complete business setup again.';
+        });
+        return;
+      }
+
       setState(() {
         _business = business;
+
+        // Keep one stable stream instance instead of creating a new Firestore
+        // stream on every build/search keystroke.
+        _salesStream =
+            _saleRepository.watchSales(
+          businessId: businessId,
+        );
+
         _loadingBusiness = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       setState(() {
+        _business = null;
+        _salesStream = null;
         _loadingBusiness = false;
-        _businessError = e.toString();
+        _businessError =
+            _cleanError(e);
       });
     }
   }
@@ -114,7 +170,10 @@ class _SalesScreenState extends State<SalesScreen> {
   Future<void> _openEditSale(
     SaleModel sale,
   ) async {
-    if (_business == null) {
+    final BusinessModel? business =
+        _business;
+
+    if (business == null) {
       _showMessage(
         'Business information is not available.',
         isError: true,
@@ -122,20 +181,52 @@ class _SalesScreenState extends State<SalesScreen> {
       return;
     }
 
-    final bool? updated = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => AddSaleScreen(
-          sale: sale,
-        ),
-      ),
-    );
+    final String saleId =
+        sale.id.trim();
 
-    if (!mounted || updated != true) {
+    if (saleId.isEmpty) {
+      _showMessage(
+        'This sale has an invalid ID.',
+        isError: true,
+      );
       return;
     }
 
-    _showMessage('Sale updated successfully.');
+    if (_busySaleIds.contains(saleId)) {
+      return;
+    }
+
+    setState(() {
+      _busySaleIds.add(saleId);
+    });
+
+    try {
+      final bool? updated =
+          await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => AddSaleScreen(
+            sale: sale,
+          ),
+        ),
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      if (updated == true) {
+        _showMessage(
+          'Sale updated successfully.',
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busySaleIds.remove(saleId);
+        });
+      }
+    }
   }
 
   // ===========================================================================
@@ -151,7 +242,7 @@ class _SalesScreenState extends State<SalesScreen> {
       return;
     }
 
-    await Navigator.push(
+    await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => const AddSaleScreen(),
@@ -192,7 +283,8 @@ class _SalesScreenState extends State<SalesScreen> {
                         width: 46,
                         height: 46,
                         decoration: BoxDecoration(
-                          color: AppColors.success.withValues(
+                          color:
+                              AppColors.success.withValues(
                             alpha: 0.12,
                           ),
                           borderRadius:
@@ -200,7 +292,8 @@ class _SalesScreenState extends State<SalesScreen> {
                         ),
                         child: const Icon(
                           Icons.receipt_long_rounded,
-                          color: AppColors.success,
+                          color:
+                              AppColors.success,
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -230,20 +323,27 @@ class _SalesScreenState extends State<SalesScreen> {
                                   .textTheme
                                   .bodySmall
                                   ?.copyWith(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
+                                    color:
+                                        Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant,
                                   ),
                             ),
                           ],
                         ),
                       ),
                       _StatusChip(
-                        status: sale.paymentStatus,
+                        status:
+                            sale.paymentStatus,
                       ),
                     ],
                   ),
                   const SizedBox(height: 22),
+
+                  // ----------------------------------------------------------------
+                  // CUSTOMER
+                  // ----------------------------------------------------------------
+
                   _DetailSection(
                     title: 'Customer',
                     child: Row(
@@ -261,19 +361,28 @@ class _SalesScreenState extends State<SalesScreen> {
                             sale.customerName.isEmpty
                                 ? 'Walk-in Customer'
                                 : sale.customerName,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
+                            style:
+                                const TextStyle(
+                              fontWeight:
+                                  FontWeight.w600,
                             ),
                           ),
                         ),
                       ],
                     ),
                   ),
+
                   const SizedBox(height: 18),
+
+                  // ----------------------------------------------------------------
+                  // ITEMS
+                  // ----------------------------------------------------------------
+
                   _DetailSection(
                     title: 'Items',
                     child: Column(
-                      children: sale.items.map(
+                      children:
+                          sale.items.map(
                         (item) {
                           return Padding(
                             padding:
@@ -300,25 +409,29 @@ class _SalesScreenState extends State<SalesScreen> {
                                       const SizedBox(height: 3),
                                       Text(
                                         '${_formatNumber(item.quantity)} ${item.unit} × ${_formatCurrency(item.sellingRate)}',
-                                        style:
-                                            Theme.of(context)
-                                                .textTheme
-                                                .bodySmall
-                                                ?.copyWith(
-                                                  color: Theme.of(
-                                                    context,
-                                                  )
-                                                      .colorScheme
-                                                      .onSurfaceVariant,
-                                                ),
+                                        style: Theme.of(
+                                          context,
+                                        )
+                                            .textTheme
+                                            .bodySmall
+                                            ?.copyWith(
+                                              color: Theme.of(
+                                                context,
+                                              )
+                                                  .colorScheme
+                                                  .onSurfaceVariant,
+                                            ),
                                       ),
                                     ],
                                   ),
                                 ),
                                 const SizedBox(width: 12),
                                 Text(
-                                  _formatCurrency(item.total),
-                                  style: const TextStyle(
+                                  _formatCurrency(
+                                    item.total,
+                                  ),
+                                  style:
+                                      const TextStyle(
                                     fontWeight:
                                         FontWeight.w600,
                                   ),
@@ -330,28 +443,44 @@ class _SalesScreenState extends State<SalesScreen> {
                       ).toList(),
                     ),
                   ),
+
                   const SizedBox(height: 6),
+
                   _SummaryCard(
-                    subtotal: sale.subtotal,
-                    discount: sale.discount,
-                    tax: sale.tax,
-                    total: sale.total,
-                    paid: sale.paidAmount,
+                    subtotal:
+                        sale.subtotal,
+                    discount:
+                        sale.discount,
+                    tax:
+                        sale.tax,
+                    total:
+                        sale.total,
+                    paid:
+                        sale.paidAmount,
                   ),
+
                   const SizedBox(height: 16),
+
                   _InfoRow(
-                    icon: Icons.payments_outlined,
-                    label: 'Payment Method',
-                    value: sale.paymentMethod.isEmpty
-                        ? 'Not specified'
-                        : sale.paymentMethod,
+                    icon:
+                        Icons.payments_outlined,
+                    label:
+                        'Payment Method',
+                    value:
+                        sale.paymentMethod.isEmpty
+                            ? 'Not specified'
+                            : sale.paymentMethod,
                   ),
+
                   if (sale.notes.trim().isNotEmpty) ...[
                     const SizedBox(height: 12),
                     _InfoRow(
-                      icon: Icons.notes_rounded,
-                      label: 'Notes',
-                      value: sale.notes,
+                      icon:
+                          Icons.notes_rounded,
+                      label:
+                          'Notes',
+                      value:
+                          sale.notes,
                     ),
                   ],
                 ],
@@ -370,7 +499,8 @@ class _SalesScreenState extends State<SalesScreen> {
   Future<void> _deleteSale(
     SaleModel sale,
   ) async {
-    final BusinessModel? business = _business;
+    final BusinessModel? business =
+        _business;
 
     if (business == null) {
       _showMessage(
@@ -380,7 +510,34 @@ class _SalesScreenState extends State<SalesScreen> {
       return;
     }
 
-    final bool? confirmed = await showDialog<bool>(
+    final String businessId =
+        business.id.trim();
+
+    final String saleId =
+        sale.id.trim();
+
+    if (businessId.isEmpty) {
+      _showMessage(
+        'Business ID is invalid.',
+        isError: true,
+      );
+      return;
+    }
+
+    if (saleId.isEmpty) {
+      _showMessage(
+        'This sale has an invalid ID.',
+        isError: true,
+      );
+      return;
+    }
+
+    if (_busySaleIds.contains(saleId)) {
+      return;
+    }
+
+    final bool? confirmed =
+        await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
@@ -389,7 +546,9 @@ class _SalesScreenState extends State<SalesScreen> {
           ),
           content: Text(
             'Are you sure you want to delete '
-            '${sale.invoiceNumber.isEmpty ? 'this sale' : sale.invoiceNumber}?',
+            '${sale.invoiceNumber.isEmpty ? 'this sale' : sale.invoiceNumber}?\n\n'
+            'The sold stock will be restored and any active customer ledger '
+            'entry for this sale will be reversed.',
           ),
           actions: [
             TextButton(
@@ -399,11 +558,14 @@ class _SalesScreenState extends State<SalesScreen> {
                   false,
                 );
               },
-              child: const Text('Cancel'),
+              child: const Text(
+                'Cancel',
+              ),
             ),
             FilledButton(
               style: FilledButton.styleFrom(
-                backgroundColor: AppColors.danger,
+                backgroundColor:
+                    AppColors.danger,
               ),
               onPressed: () {
                 Navigator.pop(
@@ -411,7 +573,9 @@ class _SalesScreenState extends State<SalesScreen> {
                   true,
                 );
               },
-              child: const Text('Delete'),
+              child: const Text(
+                'Delete',
+              ),
             ),
           ],
         );
@@ -422,111 +586,196 @@ class _SalesScreenState extends State<SalesScreen> {
       return;
     }
 
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _busySaleIds.add(saleId);
+    });
+
     bool stockReversed = false;
 
-    final List<LedgerTransactionModel> createdReversals =
-        [];
+    final List<LedgerTransactionModel>
+        createdReversals =
+        <LedgerTransactionModel>[];
 
     try {
-      // -----------------------------------------------------------------------
-      // 1. RESTORE STOCK
-      // -----------------------------------------------------------------------
+      // =======================================================================
+      // 1. PREPARE CUSTOMER LEDGER REVERSAL
+      // =======================================================================
       //
-      // The sale document is not deleted until the stock has been restored.
-      // If stock restoration fails, the sale remains untouched.
+      // Do this BEFORE changing stock.
+      //
+      // This allows us to detect an invalid accounting state early. In
+      // particular, LedgerService does not permit negative customer balances.
       //
 
-      await _saleStockService.reverseSaleStock(
+      LedgerTransactionModel?
+          activeSaleLedger;
+
+      double? ledgerBalanceBefore;
+
+      if (sale.customerId.trim().isNotEmpty) {
+        final String customerId =
+            sale.customerId.trim();
+
+        final List<LedgerTransactionModel>
+            transactions =
+            await _ledgerService
+                .getCustomerTransactions(
+          businessId: businessId,
+          customerId: customerId,
+        );
+
+        final List<LedgerTransactionModel>
+            saleHistory =
+            transactions.where(
+          (transaction) {
+            final String type =
+                transaction.transactionType
+                    .trim()
+                    .toUpperCase();
+
+            return transaction.referenceId
+                        .trim() ==
+                    saleId &&
+                (type ==
+                        LedgerService.saleType ||
+                    type ==
+                        LedgerService.saleReversalType);
+          },
+        ).toList();
+
+        if (saleHistory.isNotEmpty) {
+          final LedgerTransactionModel
+              latest =
+              saleHistory.first;
+
+          final String latestType =
+              latest.transactionType
+                  .trim()
+                  .toUpperCase();
+
+          if (latestType ==
+                  LedgerService.saleType &&
+              latest.amount > 0) {
+            final double currentBalance =
+                await _ledgerService
+                    .getCustomerBalance(
+              businessId:
+                  businessId,
+              customerId:
+                  customerId,
+            );
+
+            if (!currentBalance.isFinite ||
+                currentBalance < 0) {
+              throw Exception(
+                'Customer ledger balance is invalid. '
+                'The sale cannot be deleted safely.',
+              );
+            }
+
+            final double newBalance =
+                currentBalance -
+                    latest.amount;
+
+            if (!newBalance.isFinite) {
+              throw Exception(
+                'Customer ledger balance calculation is invalid. '
+                'The sale cannot be deleted safely.',
+              );
+            }
+
+            if (newBalance < -0.000001) {
+              throw Exception(
+                'This sale cannot be deleted because reversing its ledger entry '
+                'would make the customer balance negative. '
+                'Please correct the customer ledger/payment history first.',
+              );
+            }
+
+            activeSaleLedger =
+                latest;
+
+            ledgerBalanceBefore =
+                currentBalance;
+          }
+        }
+      }
+
+      // =======================================================================
+      // 2. RESTORE STOCK
+      // =======================================================================
+      //
+      // SaleStockService now performs all-or-nothing compensation internally
+      // if a multi-item stock reversal fails.
+      //
+
+      await _saleStockService
+          .reverseSaleStock(
         sale: sale,
       );
 
       stockReversed = true;
 
-      // -----------------------------------------------------------------------
-      // 2. REVERSE CUSTOMER LEDGER
-      // -----------------------------------------------------------------------
-      //
-      // Walk-in sales do not have a customerId and therefore do not require
-      // customer ledger correction.
+      // =======================================================================
+      // 3. CREATE CUSTOMER LEDGER REVERSAL
+      // =======================================================================
       //
 
-      if (sale.customerId.trim().isNotEmpty) {
-        final List<LedgerTransactionModel> transactions =
-            await _ledgerService.getCustomerTransactions(
-          businessId: business.id.trim(),
-          customerId: sale.customerId.trim(),
+      if (activeSaleLedger != null &&
+          ledgerBalanceBefore != null) {
+        final String customerId =
+            sale.customerId.trim();
+
+        final String customerName =
+            sale.customerName.trim().isEmpty
+                ? activeSaleLedger
+                    .customerName
+                    .trim()
+                : sale.customerName
+                    .trim();
+
+        final LedgerTransactionModel
+            reversal =
+            await _ledgerService
+                .createSaleReversal(
+          businessId:
+              businessId,
+          customerId:
+              customerId,
+          customerName:
+              customerName,
+          saleAmount:
+              activeSaleLedger.amount,
+          balanceBefore:
+              ledgerBalanceBefore,
+          referenceId:
+              saleId,
+          date:
+              DateTime.now(),
+          notes:
+              'Reversal for deleted sale '
+              '${sale.invoiceNumber.isEmpty ? saleId : sale.invoiceNumber}',
         );
 
-        // A sale can have multiple historical SALE entries after edits.
-        //
-        // We only care about the latest SALE / SALE_REVERSAL event belonging
-        // to this sale. The ledger repository returns transactions ordered
-        // newest-first, so the first matching transaction is the latest state.
-        //
-        // This prevents:
-        //   1. reversing an already-reversed sale again;
-        //   2. reversing an old SALE entry from an earlier edit;
-        //   3. creating duplicate reversal entries.
-
-        final List<LedgerTransactionModel> saleHistory =
-            transactions.where((transaction) {
-          final String type =
-              transaction.transactionType.trim().toUpperCase();
-
-          return transaction.referenceId.trim() ==
-                  sale.id.trim() &&
-              (type == LedgerService.saleType ||
-                  type == LedgerService.saleReversalType);
-        }).toList();
-
-        if (saleHistory.isNotEmpty) {
-          final LedgerTransactionModel latest =
-              saleHistory.first;
-
-          final String latestType =
-              latest.transactionType.trim().toUpperCase();
-
-          if (latestType == LedgerService.saleType &&
-              latest.amount > 0) {
-            final double currentBalance =
-                await _ledgerService.getCustomerBalance(
-              businessId: business.id.trim(),
-              customerId: sale.customerId.trim(),
-            );
-
-            final double newBalance =
-                currentBalance - latest.amount;
-
-            final LedgerTransactionModel reversal =
-                await _ledgerService.createTransaction(
-              businessId: business.id.trim(),
-              customerId: sale.customerId.trim(),
-              customerName: sale.customerName.trim().isEmpty
-                  ? latest.customerName.trim()
-                  : sale.customerName.trim(),
-              transactionType:
-                  LedgerService.saleReversalType,
-              amount: latest.amount,
-              balanceBefore: currentBalance,
-              balanceAfter: newBalance,
-              referenceId: sale.id,
-              date: DateTime.now(),
-              notes: 'Reversal for deleted sale '
-                  '${sale.invoiceNumber.isEmpty ? sale.id : sale.invoiceNumber}',
-            );
-
-            createdReversals.add(reversal);
-          }
-        }
+        createdReversals.add(
+          reversal,
+        );
       }
 
-      // -----------------------------------------------------------------------
-      // 3. DELETE SALE
-      // -----------------------------------------------------------------------
+      // =======================================================================
+      // 4. DELETE SALE DOCUMENT
+      // =======================================================================
+      //
 
       await _saleRepository.deleteSale(
-        businessId: business.id.trim(),
-        saleId: sale.id.trim(),
+        businessId:
+            businessId,
+        saleId:
+            saleId,
       );
 
       if (!mounted) {
@@ -539,42 +788,47 @@ class _SalesScreenState extends State<SalesScreen> {
             : 'Sale deleted, stock restored and customer ledger reversed successfully.',
       );
     } catch (e) {
-      // -----------------------------------------------------------------------
+      // =======================================================================
       // ROLLBACK LEDGER REVERSALS
-      // -----------------------------------------------------------------------
+      // =======================================================================
       //
-      // If the sale deletion fails after a ledger reversal was created,
-      // remove only the reversal entries created by this operation.
+      // If the sale document could not be deleted after creating one or more
+      // reversal entries, remove only the entries created during this
+      // operation.
       //
 
-      for (final LedgerTransactionModel reversal
+      for (final LedgerTransactionModel
+          reversal
           in createdReversals.reversed) {
         try {
-          await _ledgerService.deleteTransaction(
-            businessId: business.id.trim(),
-            transactionId: reversal.id,
+          await _ledgerService
+              .deleteTransaction(
+            businessId:
+                businessId,
+            transactionId:
+                reversal.id,
           );
         } catch (_) {
-          // Preserve the original operation error.
+          // Keep the original error.
         }
       }
 
-      // -----------------------------------------------------------------------
+      // =======================================================================
       // ROLLBACK STOCK
-      // -----------------------------------------------------------------------
+      // =======================================================================
       //
-      // The sale was temporarily reversed from stock. If deletion failed,
-      // put the stock back into the exact logical state represented by
-      // the existing sale.
+      // If stock was restored but the overall delete failed, process the
+      // original sale again so inventory returns to its previous state.
       //
 
       if (stockReversed) {
         try {
-          await _saleStockService.processSaleStock(
+          await _saleStockService
+              .processSaleStock(
             sale: sale,
           );
         } catch (_) {
-          // Preserve the original operation error.
+          // Keep the original error.
         }
       }
 
@@ -586,23 +840,19 @@ class _SalesScreenState extends State<SalesScreen> {
         'Unable to delete sale: ${_cleanError(e)}',
         isError: true,
       );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busySaleIds.remove(
+            saleId,
+          );
+        });
+      }
     }
-  }
-
-  String _cleanError(
-    Object error,
-  ) {
-    final String message = error.toString();
-
-    if (message.startsWith('Exception: ')) {
-      return message.substring('Exception: '.length);
-    }
-
-    return message;
   }
 
   // ===========================================================================
-  // SEARCH
+  // SEARCH / FILTER
   // ===========================================================================
 
   List<SaleModel> _filterSales(
@@ -615,23 +865,41 @@ class _SalesScreenState extends State<SalesScreen> {
     return sales.where(
       (sale) {
         final String invoice =
-            sale.invoiceNumber.toLowerCase();
+            sale.invoiceNumber
+                .trim()
+                .toLowerCase();
 
         final String customer =
-            sale.customerName.toLowerCase();
+            sale.customerName
+                .trim()
+                .toLowerCase();
 
         final String notes =
-            sale.notes.toLowerCase();
+            sale.notes
+                .trim()
+                .toLowerCase();
 
-        final bool productMatch = sale.items.any(
-          (item) => item.productName
-              .toLowerCase()
-              .contains(_searchQuery),
+        final bool productMatch =
+            sale.items.any(
+          (item) {
+            return item.productName
+                .trim()
+                .toLowerCase()
+                .contains(
+                  _searchQuery,
+                );
+          },
         );
 
-        return invoice.contains(_searchQuery) ||
-            customer.contains(_searchQuery) ||
-            notes.contains(_searchQuery) ||
+        return invoice.contains(
+              _searchQuery,
+            ) ||
+            customer.contains(
+              _searchQuery,
+            ) ||
+            notes.contains(
+              _searchQuery,
+            ) ||
             productMatch;
       },
     ).toList();
@@ -645,19 +913,42 @@ class _SalesScreenState extends State<SalesScreen> {
     String message, {
     bool isError = false,
   }) {
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(message),
-          backgroundColor: isError
-              ? AppColors.danger
-              : AppColors.success,
-          behavior: SnackBarBehavior.floating,
+          content: Text(
+            message,
+          ),
+          backgroundColor:
+              isError
+                  ? AppColors.danger
+                  : AppColors.success,
+          behavior:
+              SnackBarBehavior.floating,
         ),
       );
+  }
+
+  String _cleanError(
+    Object error,
+  ) {
+    final String message =
+        error.toString();
+
+    if (message.startsWith(
+      'Exception: ',
+    )) {
+      return message.substring(
+        'Exception: '.length,
+      );
+    }
+
+    return message;
   }
 
   // ===========================================================================
@@ -670,7 +961,8 @@ class _SalesScreenState extends State<SalesScreen> {
   ) {
     if (_loadingBusiness) {
       return const Center(
-        child: CircularProgressIndicator(),
+        child:
+            CircularProgressIndicator(),
       );
     }
 
@@ -678,22 +970,30 @@ class _SalesScreenState extends State<SalesScreen> {
       return _buildErrorState();
     }
 
-    final BusinessModel? business = _business;
+    final BusinessModel? business =
+        _business;
 
-    if (business == null) {
+    final Stream<List<SaleModel>>?
+        salesStream =
+        _salesStream;
+
+    if (business == null ||
+        salesStream == null) {
       return _buildNoBusinessState();
     }
 
     return StreamBuilder<List<SaleModel>>(
-      stream: _saleRepository.watchSales(
-        businessId: business.id,
-      ),
-      builder: (context, snapshot) {
+      stream: salesStream,
+      builder: (
+        context,
+        snapshot,
+      ) {
         if (snapshot.connectionState ==
                 ConnectionState.waiting &&
             !snapshot.hasData) {
           return const Center(
-            child: CircularProgressIndicator(),
+            child:
+                CircularProgressIndicator(),
           );
         }
 
@@ -703,53 +1003,69 @@ class _SalesScreenState extends State<SalesScreen> {
           );
         }
 
-        final List<SaleModel> sales =
+        final List<SaleModel>
+            allSales =
+            snapshot.data ??
+                <SaleModel>[];
+
+        final List<SaleModel>
+            sales =
             _filterSales(
-          snapshot.data ?? <SaleModel>[],
+          allSales,
         );
 
         return RefreshIndicator(
-          onRefresh: () async {
-            await _loadBusiness();
-          },
+          onRefresh:
+              _loadBusiness,
           child: LayoutBuilder(
             builder: (
               context,
               constraints,
             ) {
               final bool isDesktop =
-                  constraints.maxWidth >= 900;
+                  constraints.maxWidth >=
+                      900;
 
               return SingleChildScrollView(
                 physics:
                     const AlwaysScrollableScrollPhysics(),
-                padding: EdgeInsets.symmetric(
+                padding:
+                    EdgeInsets.symmetric(
                   horizontal:
-                      isDesktop ? 28 : 16,
+                      isDesktop
+                          ? 28
+                          : 16,
                   vertical: 20,
                 ),
                 child: Center(
-                  child: ConstrainedBox(
+                  child:
+                      ConstrainedBox(
                     constraints:
                         const BoxConstraints(
                       maxWidth: 1200,
                     ),
                     child: Column(
                       crossAxisAlignment:
-                          CrossAxisAlignment.start,
+                          CrossAxisAlignment
+                              .start,
                       children: [
                         _buildHeader(
                           isDesktop,
                         ),
-                        const SizedBox(height: 20),
+                        const SizedBox(
+                          height: 20,
+                        ),
                         _buildSummary(
-                          snapshot.data ??
-                              <SaleModel>[],
+                          allSales,
                           isDesktop,
                         ),
-                        const SizedBox(height: 20),
+                        const SizedBox(
+                          height: 20,
+                        ),
                         _buildSearchCard(),
-                        const SizedBox(height: 20),
+                        const SizedBox(
+                          height: 20,
+                        ),
                         _buildSalesSection(
                           sales,
                         ),
@@ -779,20 +1095,28 @@ class _SalesScreenState extends State<SalesScreen> {
         Container(
           width: 52,
           height: 52,
-          decoration: BoxDecoration(
-            color: AppColors.success.withValues(
+          decoration:
+              BoxDecoration(
+            color:
+                AppColors.success
+                    .withValues(
               alpha: 0.12,
             ),
             borderRadius:
-                BorderRadius.circular(16),
+                BorderRadius.circular(
+              16,
+            ),
           ),
           child: const Icon(
             Icons.point_of_sale_rounded,
-            color: AppColors.success,
+            color:
+                AppColors.success,
             size: 27,
           ),
         ),
-        const SizedBox(width: 14),
+        const SizedBox(
+          width: 14,
+        ),
         Expanded(
           child: Column(
             crossAxisAlignment:
@@ -800,36 +1124,45 @@ class _SalesScreenState extends State<SalesScreen> {
             children: [
               Text(
                 'Sales',
-                style: Theme.of(context)
-                    .textTheme
-                    .headlineSmall
-                    ?.copyWith(
-                      fontWeight:
-                          FontWeight.bold,
-                    ),
+                style:
+                    Theme.of(context)
+                        .textTheme
+                        .headlineSmall
+                        ?.copyWith(
+                          fontWeight:
+                              FontWeight.bold,
+                        ),
               ),
-              const SizedBox(height: 3),
+              const SizedBox(
+                height: 3,
+              ),
               Text(
                 'Manage sales, invoices and payments.',
-                style: Theme.of(context)
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurfaceVariant,
-                    ),
+                style:
+                    Theme.of(context)
+                        .textTheme
+                        .bodyMedium
+                        ?.copyWith(
+                          color:
+                              Theme.of(
+                            context,
+                          )
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                        ),
               ),
             ],
           ),
         ),
         if (isDesktop)
           FilledButton.icon(
-            onPressed: _openAddSale,
+            onPressed:
+                _openAddSale,
             icon: const Icon(
               Icons.add_rounded,
             ),
-            label: const Text(
+            label:
+                const Text(
               'New Sale',
             ),
           ),
@@ -849,76 +1182,119 @@ class _SalesScreenState extends State<SalesScreen> {
     double paid = 0;
     double outstanding = 0;
 
-    for (final SaleModel sale in sales) {
-      total += sale.total;
-      paid += sale.paidAmount;
+    for (final SaleModel sale
+        in sales) {
+      if (sale.total.isFinite &&
+          sale.total > 0) {
+        total += sale.total;
+      }
+
+      if (sale.paidAmount.isFinite &&
+          sale.paidAmount > 0) {
+        paid += sale.paidAmount;
+      }
 
       final double balance =
-          sale.total - sale.paidAmount;
+          sale.total -
+              sale.paidAmount;
 
-      if (balance > 0) {
-        outstanding += balance;
+      if (balance.isFinite &&
+          balance > 0) {
+        outstanding +=
+            balance;
       }
     }
 
-    final int count = sales.length;
+    final int count =
+        sales.length;
 
-    final List<Widget> cards = [
+    final List<Widget> cards =
+        [
       _SummaryMetricCard(
-        icon: Icons.receipt_long_rounded,
-        title: 'Total Sales',
-        value: _formatCurrency(total),
+        icon:
+            Icons.receipt_long_rounded,
+        title:
+            'Total Sales',
+        value:
+            _formatCurrency(
+          total,
+        ),
         subtitle:
             '$count invoice${count == 1 ? '' : 's'}',
-        color: AppColors.primary,
+        color:
+            AppColors.primary,
       ),
       _SummaryMetricCard(
-        icon: Icons.payments_rounded,
-        title: 'Collected',
-        value: _formatCurrency(paid),
-        subtitle: 'Amount received',
-        color: AppColors.success,
+        icon:
+            Icons.payments_rounded,
+        title:
+            'Collected',
+        value:
+            _formatCurrency(
+          paid,
+        ),
+        subtitle:
+            'Amount received',
+        color:
+            AppColors.success,
       ),
       _SummaryMetricCard(
         icon:
             Icons.account_balance_wallet_outlined,
-        title: 'Outstanding',
-        value: _formatCurrency(outstanding),
-        subtitle: 'Amount pending',
-        color: AppColors.warning,
+        title:
+            'Outstanding',
+        value:
+            _formatCurrency(
+          outstanding,
+        ),
+        subtitle:
+            'Amount pending',
+        color:
+            AppColors.warning,
       ),
     ];
 
     if (isDesktop) {
       return Row(
-        children: cards
-            .map(
-              (card) => Expanded(
-                child: Padding(
-                  padding:
-                      const EdgeInsets.only(
-                    right: 12,
+        children:
+            cards
+                .map(
+                  (card) =>
+                      Expanded(
+                    child:
+                        Padding(
+                      padding:
+                          const EdgeInsets
+                              .only(
+                        right: 12,
+                      ),
+                      child:
+                          card,
+                    ),
                   ),
-                  child: card,
-                ),
-              ),
-            )
-            .toList(),
+                )
+                .toList(),
       );
     }
 
     return Column(
       children: [
         cards[0],
-        const SizedBox(height: 12),
+        const SizedBox(
+          height: 12,
+        ),
         Row(
           children: [
             Expanded(
-              child: cards[1],
+              child:
+                  cards[1],
             ),
-            const SizedBox(width: 12),
+            const SizedBox(
+              width: 12,
+            ),
             Expanded(
-              child: cards[2],
+              child:
+                  cards[2],
             ),
           ],
         ),
@@ -933,31 +1309,45 @@ class _SalesScreenState extends State<SalesScreen> {
   Widget _buildSearchCard() {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding:
+            const EdgeInsets.all(
+          14,
+        ),
         child: TextField(
-          controller: _searchController,
+          controller:
+              _searchController,
           textInputAction:
               TextInputAction.search,
-          decoration: InputDecoration(
+          decoration:
+              InputDecoration(
             hintText:
                 'Search invoice, customer or product...',
-            prefixIcon: const Icon(
+            prefixIcon:
+                const Icon(
               Icons.search_rounded,
             ),
             suffixIcon:
-                _searchController.text.isEmpty
+                _searchController
+                        .text
+                        .isEmpty
                     ? null
                     : IconButton(
-                        tooltip: 'Clear search',
-                        onPressed: () {
-                          _searchController.clear();
+                        tooltip:
+                            'Clear search',
+                        onPressed:
+                            () {
+                          _searchController
+                              .clear();
                         },
-                        icon: const Icon(
+                        icon:
+                            const Icon(
                           Icons.close_rounded,
                         ),
                       ),
-            border: InputBorder.none,
-            filled: false,
+            border:
+                InputBorder.none,
+            filled:
+                false,
           ),
         ),
       ),
@@ -973,7 +1363,8 @@ class _SalesScreenState extends State<SalesScreen> {
   ) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(
+        padding:
+            const EdgeInsets.fromLTRB(
           16,
           18,
           16,
@@ -987,56 +1378,77 @@ class _SalesScreenState extends State<SalesScreen> {
               children: [
                 Expanded(
                   child: Text(
-                    _searchQuery.isEmpty
+                    _searchQuery
+                            .isEmpty
                         ? 'Recent Sales'
                         : 'Search Results',
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleLarge
-                        ?.copyWith(
-                          fontWeight:
-                              FontWeight.bold,
-                        ),
+                    style:
+                        Theme.of(context)
+                            .textTheme
+                            .titleLarge
+                            ?.copyWith(
+                              fontWeight:
+                                  FontWeight.bold,
+                            ),
                   ),
                 ),
                 Text(
                   '${sales.length}',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(
-                        fontWeight:
-                            FontWeight.w600,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .primary,
-                      ),
+                  style:
+                      Theme.of(context)
+                          .textTheme
+                          .bodyMedium
+                          ?.copyWith(
+                            fontWeight:
+                                FontWeight.w600,
+                            color:
+                                Theme.of(context)
+                                    .colorScheme
+                                    .primary,
+                          ),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(
+              height: 16,
+            ),
             if (sales.isEmpty)
               _buildEmptyState()
             else
               ...sales.map(
-                (sale) => _SaleListTile(
-                  sale: sale,
-                  onTap: () {
-                    _showSaleDetails(
-                      sale,
-                    );
-                  },
-                  onEdit: () {
-                    _openEditSale(
-                      sale,
-                    );
-                  },
-                  onDelete: () {
-                    _deleteSale(
-                      sale,
-                    );
-                  },
-                ),
+                (sale) {
+                  return _SaleListTile(
+                    sale:
+                        sale,
+                    isBusy:
+                        _busySaleIds
+                            .contains(
+                      sale.id.trim(),
+                    ),
+                    onTap: () {
+                      if (_busySaleIds
+                          .contains(
+                        sale.id.trim(),
+                      )) {
+                        return;
+                      }
+
+                      _showSaleDetails(
+                        sale,
+                      );
+                    },
+                    onEdit: () {
+                      _openEditSale(
+                        sale,
+                      );
+                    },
+                    onDelete: () {
+                      _deleteSale(
+                        sale,
+                      );
+                    },
+                  );
+                },
               ),
           ],
         ),
@@ -1053,7 +1465,8 @@ class _SalesScreenState extends State<SalesScreen> {
         _searchQuery.isNotEmpty;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(
+      padding:
+          const EdgeInsets.symmetric(
         vertical: 46,
       ),
       child: Center(
@@ -1062,56 +1475,74 @@ class _SalesScreenState extends State<SalesScreen> {
             Container(
               width: 72,
               height: 72,
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(
+              decoration:
+                  BoxDecoration(
+                color:
+                    AppColors.primary
+                        .withValues(
                   alpha: 0.10,
                 ),
-                shape: BoxShape.circle,
+                shape:
+                    BoxShape.circle,
               ),
               child: Icon(
                 searching
                     ? Icons.search_off_rounded
                     : Icons.receipt_long_outlined,
                 size: 34,
-                color: AppColors.primary,
+                color:
+                    AppColors.primary,
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(
+              height: 16,
+            ),
             Text(
               searching
                   ? 'No sales found'
                   : 'No sales yet',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(
-                    fontWeight:
-                        FontWeight.bold,
-                  ),
+              style:
+                  Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(
+                        fontWeight:
+                            FontWeight.bold,
+                      ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(
+              height: 6,
+            ),
             Text(
               searching
                   ? 'Try a different invoice, customer or product.'
                   : 'Create your first sale to see it here.',
-              textAlign: TextAlign.center,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurfaceVariant,
-                  ),
+              textAlign:
+                  TextAlign.center,
+              style:
+                  Theme.of(context)
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(
+                        color:
+                            Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant,
+                      ),
             ),
             if (!searching) ...[
-              const SizedBox(height: 18),
+              const SizedBox(
+                height: 18,
+              ),
               FilledButton.icon(
-                onPressed: _openAddSale,
-                icon: const Icon(
+                onPressed:
+                    _openAddSale,
+                icon:
+                    const Icon(
                   Icons.add_rounded,
                 ),
-                label: const Text(
+                label:
+                    const Text(
                   'Create Sale',
                 ),
               ),
@@ -1129,36 +1560,52 @@ class _SalesScreenState extends State<SalesScreen> {
   Widget _buildErrorState() {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding:
+            const EdgeInsets.all(
+          24,
+        ),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisSize:
+              MainAxisSize.min,
           children: [
             const Icon(
               Icons.error_outline_rounded,
               size: 52,
-              color: AppColors.danger,
+              color:
+                  AppColors.danger,
             ),
-            const SizedBox(height: 14),
+            const SizedBox(
+              height: 14,
+            ),
             const Text(
               'Unable to load business',
               style: TextStyle(
                 fontSize: 18,
-                fontWeight: FontWeight.bold,
+                fontWeight:
+                    FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(
+              height: 8,
+            ),
             Text(
               _businessError ??
                   'Something went wrong.',
-              textAlign: TextAlign.center,
+              textAlign:
+                  TextAlign.center,
             ),
-            const SizedBox(height: 18),
+            const SizedBox(
+              height: 18,
+            ),
             FilledButton.icon(
-              onPressed: _loadBusiness,
-              icon: const Icon(
+              onPressed:
+                  _loadBusiness,
+              icon:
+                  const Icon(
                 Icons.refresh_rounded,
               ),
-              label: const Text(
+              label:
+                  const Text(
                 'Try Again',
               ),
             ),
@@ -1171,11 +1618,13 @@ class _SalesScreenState extends State<SalesScreen> {
   Widget _buildNoBusinessState() {
     return const Center(
       child: Padding(
-        padding: EdgeInsets.all(24),
+        padding:
+            EdgeInsets.all(24),
         child: Text(
           'Business profile not found.\n'
           'Please complete business setup.',
-          textAlign: TextAlign.center,
+          textAlign:
+              TextAlign.center,
         ),
       ),
     );
@@ -1186,43 +1635,58 @@ class _SalesScreenState extends State<SalesScreen> {
   ) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding:
+            const EdgeInsets.all(
+          24,
+        ),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisSize:
+              MainAxisSize.min,
           children: [
             const Icon(
               Icons.cloud_off_rounded,
               size: 52,
-              color: AppColors.danger,
+              color:
+                  AppColors.danger,
             ),
-            const SizedBox(height: 14),
+            const SizedBox(
+              height: 14,
+            ),
             Text(
               'Unable to load sales',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(
-                    fontWeight:
-                        FontWeight.bold,
-                  ),
+              style:
+                  Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(
+                        fontWeight:
+                            FontWeight.bold,
+                      ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(
+              height: 8,
+            ),
             Text(
-              error,
-              textAlign: TextAlign.center,
+              _cleanError(error),
+              textAlign:
+                  TextAlign.center,
               maxLines: 4,
               overflow:
                   TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 18),
+            const SizedBox(
+              height: 18,
+            ),
             OutlinedButton.icon(
               onPressed: () {
-                setState(() {});
+                _loadBusiness();
               },
-              icon: const Icon(
+              icon:
+                  const Icon(
                 Icons.refresh_rounded,
               ),
-              label: const Text(
+              label:
+                  const Text(
                 'Retry',
               ),
             ),
@@ -1239,20 +1703,31 @@ class _SalesScreenState extends State<SalesScreen> {
   String _formatCurrency(
     double value,
   ) {
+    final double safeValue =
+        value.isFinite
+            ? value
+            : 0;
+
     return NumberFormat.currency(
       locale: 'en_IN',
       symbol: '₹',
       decimalDigits:
-          value.truncateToDouble() == value
+          safeValue.truncateToDouble() ==
+                  safeValue
               ? 0
               : 2,
-    ).format(value);
+    ).format(safeValue);
   }
 
   String _formatNumber(
     double value,
   ) {
-    return value.truncateToDouble() == value
+    if (!value.isFinite) {
+      return '0';
+    }
+
+    return value.truncateToDouble() ==
+            value
         ? value.toInt().toString()
         : value.toStringAsFixed(2);
   }
@@ -1262,7 +1737,8 @@ class _SalesScreenState extends State<SalesScreen> {
 // SUMMARY METRIC CARD
 // =============================================================================
 
-class _SummaryMetricCard extends StatelessWidget {
+class _SummaryMetricCard
+    extends StatelessWidget {
   final IconData icon;
   final String title;
   final String value;
@@ -1283,25 +1759,34 @@ class _SummaryMetricCard extends StatelessWidget {
   ) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding:
+            const EdgeInsets.all(
+          16,
+        ),
         child: Row(
           children: [
             Container(
               width: 46,
               height: 46,
-              decoration: BoxDecoration(
-                color: color.withValues(
+              decoration:
+                  BoxDecoration(
+                color:
+                    color.withValues(
                   alpha: 0.12,
                 ),
                 borderRadius:
-                    BorderRadius.circular(14),
+                    BorderRadius.circular(
+                  14,
+                ),
               ),
               child: Icon(
                 icon,
                 color: color,
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(
+              width: 12,
+            ),
             Expanded(
               child: Column(
                 crossAxisAlignment:
@@ -1309,43 +1794,52 @@ class _SummaryMetricCard extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurfaceVariant,
-                        ),
+                    style:
+                        Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(
+                              color:
+                                  Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                            ),
                   ),
-                  const SizedBox(height: 3),
+                  const SizedBox(
+                    height: 3,
+                  ),
                   Text(
                     value,
                     maxLines: 1,
                     overflow:
                         TextOverflow.ellipsis,
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(
-                          fontWeight:
-                              FontWeight.bold,
-                        ),
+                    style:
+                        Theme.of(context)
+                            .textTheme
+                            .titleMedium
+                            ?.copyWith(
+                              fontWeight:
+                                  FontWeight.bold,
+                            ),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(
+                    height: 2,
+                  ),
                   Text(
                     subtitle,
                     maxLines: 1,
                     overflow:
                         TextOverflow.ellipsis,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurfaceVariant,
-                        ),
+                    style:
+                        Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(
+                              color:
+                                  Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                            ),
                   ),
                 ],
               ),
@@ -1361,14 +1855,17 @@ class _SummaryMetricCard extends StatelessWidget {
 // SALE LIST TILE
 // =============================================================================
 
-class _SaleListTile extends StatelessWidget {
+class _SaleListTile
+    extends StatelessWidget {
   final SaleModel sale;
+  final bool isBusy;
   final VoidCallback onTap;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   const _SaleListTile({
     required this.sale,
+    required this.isBusy,
     required this.onTap,
     required this.onEdit,
     required this.onDelete,
@@ -1377,14 +1874,20 @@ class _SaleListTile extends StatelessWidget {
   String _formatCurrency(
     double value,
   ) {
+    final double safeValue =
+        value.isFinite
+            ? value
+            : 0;
+
     return NumberFormat.currency(
       locale: 'en_IN',
       symbol: '₹',
       decimalDigits:
-          value.truncateToDouble() == value
+          safeValue.truncateToDouble() ==
+                  safeValue
               ? 0
               : 2,
-    ).format(value);
+    ).format(safeValue);
   }
 
   @override
@@ -1392,165 +1895,243 @@ class _SaleListTile extends StatelessWidget {
     BuildContext context,
   ) {
     final double outstanding =
-        sale.total - sale.paidAmount;
+        sale.total -
+            sale.paidAmount;
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius:
-          BorderRadius.circular(14),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          vertical: 12,
+    final bool hasOutstanding =
+        outstanding.isFinite &&
+            outstanding > 0;
+
+    return Opacity(
+      opacity:
+          isBusy ? 0.60 : 1,
+      child: InkWell(
+        onTap:
+            isBusy
+                ? null
+                : onTap,
+        borderRadius:
+            BorderRadius.circular(
+          14,
         ),
-        child: Row(
-          children: [
-            Container(
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(
-                color: AppColors.success.withValues(
-                  alpha: 0.10,
+        child: Padding(
+          padding:
+              const EdgeInsets.symmetric(
+            vertical: 12,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration:
+                    BoxDecoration(
+                  color:
+                      AppColors.success
+                          .withValues(
+                    alpha: 0.10,
+                  ),
+                  borderRadius:
+                      BorderRadius.circular(
+                    13,
+                  ),
                 ),
-                borderRadius:
-                    BorderRadius.circular(13),
+                child: isBusy
+                    ? const Padding(
+                        padding:
+                            EdgeInsets.all(
+                          12,
+                        ),
+                        child:
+                            CircularProgressIndicator(
+                          strokeWidth:
+                              2,
+                        ),
+                      )
+                    : const Icon(
+                        Icons.receipt_long_rounded,
+                        color:
+                            AppColors.success,
+                      ),
               ),
-              child: const Icon(
-                Icons.receipt_long_rounded,
-                color: AppColors.success,
+              const SizedBox(
+                width: 12,
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          sale.invoiceNumber.isEmpty
-                              ? 'Sale'
-                              : sale.invoiceNumber,
-                          maxLines: 1,
-                          overflow:
-                              TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontWeight:
-                                FontWeight.w700,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            sale.invoiceNumber
+                                    .isEmpty
+                                ? 'Sale'
+                                : sale.invoiceNumber,
+                            maxLines:
+                                1,
+                            overflow:
+                                TextOverflow.ellipsis,
+                            style:
+                                const TextStyle(
+                              fontWeight:
+                                  FontWeight.w700,
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      _StatusChip(
-                        status:
-                            sale.paymentStatus,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    sale.customerName.isEmpty
-                        ? 'Walk-in Customer'
-                        : sale.customerName,
-                    maxLines: 1,
-                    overflow:
-                        TextOverflow.ellipsis,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurfaceVariant,
+                        const SizedBox(
+                          width: 8,
                         ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    '${DateFormat('dd MMM yyyy').format(sale.date)} • ${sale.items.length} item${sale.items.length == 1 ? '' : 's'}',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurfaceVariant,
+                        _StatusChip(
+                          status:
+                              sale.paymentStatus,
                         ),
+                      ],
+                    ),
+                    const SizedBox(
+                      height: 4,
+                    ),
+                    Text(
+                      sale.customerName
+                              .isEmpty
+                          ? 'Walk-in Customer'
+                          : sale.customerName,
+                      maxLines:
+                          1,
+                      overflow:
+                          TextOverflow.ellipsis,
+                      style:
+                          Theme.of(context)
+                              .textTheme
+                              .bodyMedium
+                              ?.copyWith(
+                                color:
+                                    Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                              ),
+                    ),
+                    const SizedBox(
+                      height: 3,
+                    ),
+                    Text(
+                      '${DateFormat('dd MMM yyyy').format(sale.date)} • ${sale.items.length} item${sale.items.length == 1 ? '' : 's'}',
+                      style:
+                          Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(
+                                color:
+                                    Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                              ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(
+                width: 12,
+              ),
+              Column(
+                crossAxisAlignment:
+                    CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    _formatCurrency(
+                      sale.total,
+                    ),
+                    style:
+                        const TextStyle(
+                      fontWeight:
+                          FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(
+                    height: 4,
+                  ),
+                  Text(
+                    hasOutstanding
+                        ? 'Due ${_formatCurrency(outstanding)}'
+                        : 'Paid',
+                    style:
+                        TextStyle(
+                      fontSize: 12,
+                      fontWeight:
+                          FontWeight.w600,
+                      color:
+                          hasOutstanding
+                              ? AppColors.warning
+                              : AppColors.success,
+                    ),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.end,
-              children: [
-                Text(
-                  _formatCurrency(
-                    sale.total,
-                  ),
-                  style: const TextStyle(
-                    fontWeight:
-                        FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  outstanding > 0
-                      ? 'Due ${_formatCurrency(outstanding)}'
-                      : 'Paid',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight:
-                        FontWeight.w600,
-                    color: outstanding > 0
-                        ? AppColors.warning
-                        : AppColors.success,
-                  ),
-                ),
-              ],
-            ),
-            PopupMenuButton<String>(
-              tooltip: 'More options',
-              onSelected: (value) {
-                if (value == 'edit') {
-                  onEdit();
-                } else if (value == 'delete') {
-                  onDelete();
-                }
-              },
-              itemBuilder: (context) {
-                return const [
-                  PopupMenuItem<String>(
-                    value: 'edit',
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.edit_outlined,
-                        ),
-                        SizedBox(width: 10),
-                        Text('Edit'),
-                      ],
+              PopupMenuButton<String>(
+                tooltip:
+                    'More options',
+                enabled:
+                    !isBusy,
+                onSelected:
+                    isBusy
+                        ? null
+                        : (value) {
+                            if (value ==
+                                'edit') {
+                              onEdit();
+                            } else if (value ==
+                                'delete') {
+                              onDelete();
+                            }
+                          },
+                itemBuilder:
+                    (context) {
+                  return const [
+                    PopupMenuItem<String>(
+                      value:
+                          'edit',
+                      child:
+                          Row(
+                        children: [
+                          Icon(
+                            Icons.edit_outlined,
+                          ),
+                          SizedBox(
+                            width: 10,
+                          ),
+                          Text(
+                            'Edit',
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  PopupMenuItem<String>(
-                    value: 'delete',
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.delete_outline_rounded,
-                          color:
-                              AppColors.danger,
-                        ),
-                        SizedBox(width: 10),
-                        Text('Delete'),
-                      ],
+                    PopupMenuItem<String>(
+                      value:
+                          'delete',
+                      child:
+                          Row(
+                        children: [
+                          Icon(
+                            Icons.delete_outline_rounded,
+                            color:
+                                AppColors.danger,
+                          ),
+                          SizedBox(
+                            width: 10,
+                          ),
+                          Text(
+                            'Delete',
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ];
-              },
-            ),
-          ],
+                  ];
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1561,7 +2142,8 @@ class _SaleListTile extends StatelessWidget {
 // STATUS CHIP
 // =============================================================================
 
-class _StatusChip extends StatelessWidget {
+class _StatusChip
+    extends StatelessWidget {
   final String status;
 
   const _StatusChip({
@@ -1569,33 +2151,51 @@ class _StatusChip extends StatelessWidget {
   });
 
   Color _color() {
-    switch (status.toLowerCase()) {
+    switch (status
+        .trim()
+        .toLowerCase()) {
       case 'paid':
         return AppColors.success;
+
       case 'partial':
         return AppColors.warning;
+
       case 'unpaid':
         return AppColors.danger;
+
       default:
         return AppColors.info;
     }
   }
 
   String _label() {
-    switch (status.toLowerCase()) {
+    final String normalized =
+        status.trim();
+
+    if (normalized.isEmpty) {
+      return 'Unknown';
+    }
+
+    switch (normalized
+        .toLowerCase()) {
       case 'paid':
         return 'Paid';
+
       case 'partial':
         return 'Partial';
+
       case 'unpaid':
         return 'Unpaid';
+
       default:
-        if (status.trim().isEmpty) {
-          return 'Unknown';
+        if (normalized.length == 1) {
+          return normalized
+              .toUpperCase();
         }
 
-        return status[0].toUpperCase() +
-            status.substring(1);
+        return normalized[0]
+                .toUpperCase() +
+            normalized.substring(1);
     }
   }
 
@@ -1603,7 +2203,8 @@ class _StatusChip extends StatelessWidget {
   Widget build(
     BuildContext context,
   ) {
-    final Color color = _color();
+    final Color color =
+        _color();
 
     return Container(
       padding:
@@ -1611,16 +2212,21 @@ class _StatusChip extends StatelessWidget {
         horizontal: 8,
         vertical: 4,
       ),
-      decoration: BoxDecoration(
-        color: color.withValues(
+      decoration:
+          BoxDecoration(
+        color:
+            color.withValues(
           alpha: 0.10,
         ),
         borderRadius:
-            BorderRadius.circular(20),
+            BorderRadius.circular(
+          20,
+        ),
       ),
       child: Text(
         _label(),
-        style: TextStyle(
+        style:
+            TextStyle(
           fontSize: 11,
           fontWeight:
               FontWeight.w700,
@@ -1635,7 +2241,8 @@ class _StatusChip extends StatelessWidget {
 // DETAIL SECTION
 // =============================================================================
 
-class _DetailSection extends StatelessWidget {
+class _DetailSection
+    extends StatelessWidget {
   final String title;
   final Widget child;
 
@@ -1654,15 +2261,18 @@ class _DetailSection extends StatelessWidget {
       children: [
         Text(
           title,
-          style: Theme.of(context)
-              .textTheme
-              .titleSmall
-              ?.copyWith(
-                fontWeight:
-                    FontWeight.bold,
-              ),
+          style:
+              Theme.of(context)
+                  .textTheme
+                  .titleSmall
+                  ?.copyWith(
+                    fontWeight:
+                        FontWeight.bold,
+                  ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(
+          height: 10,
+        ),
         child,
       ],
     );
@@ -1673,7 +2283,8 @@ class _DetailSection extends StatelessWidget {
 // SUMMARY CARD
 // =============================================================================
 
-class _SummaryCard extends StatelessWidget {
+class _SummaryCard
+    extends StatelessWidget {
   final double subtotal;
   final double discount;
   final double tax;
@@ -1691,54 +2302,78 @@ class _SummaryCard extends StatelessWidget {
   String _currency(
     double value,
   ) {
+    final double safeValue =
+        value.isFinite
+            ? value
+            : 0;
+
     return NumberFormat.currency(
       locale: 'en_IN',
       symbol: '₹',
       decimalDigits:
-          value.truncateToDouble() == value
+          safeValue.truncateToDouble() ==
+                  safeValue
               ? 0
               : 2,
-    ).format(value);
+    ).format(safeValue);
   }
 
   @override
   Widget build(
     BuildContext context,
   ) {
-    final double outstanding =
+    final double rawOutstanding =
         total - paid;
+
+    final double outstanding =
+        rawOutstanding.isFinite &&
+                rawOutstanding > 0
+            ? rawOutstanding
+            : 0;
 
     return Container(
       padding:
-          const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context)
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(
+          const EdgeInsets.all(
+        16,
+      ),
+      decoration:
+          BoxDecoration(
+        color:
+            Theme.of(context)
+                .colorScheme
+                .surfaceContainerHighest
+                .withValues(
               alpha: 0.45,
             ),
         borderRadius:
-            BorderRadius.circular(14),
+            BorderRadius.circular(
+          14,
+        ),
       ),
       child: Column(
         children: [
           _row(
             context,
             'Subtotal',
-            _currency(subtotal),
+            _currency(
+              subtotal,
+            ),
           ),
-          if (discount > 0)
+          if (discount.isFinite &&
+              discount > 0)
             _row(
               context,
               'Discount',
               '- ${_currency(discount)}',
             ),
-          if (tax > 0)
+          if (tax.isFinite &&
+              tax > 0)
             _row(
               context,
               'Tax',
-              _currency(tax),
+              _currency(
+                tax,
+              ),
             ),
           const Divider(
             height: 20,
@@ -1746,25 +2381,31 @@ class _SummaryCard extends StatelessWidget {
           _row(
             context,
             'Total',
-            _currency(total),
+            _currency(
+              total,
+            ),
             bold: true,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(
+            height: 8,
+          ),
           _row(
             context,
             'Paid',
-            _currency(paid),
+            _currency(
+              paid,
+            ),
             valueColor:
                 AppColors.success,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(
+            height: 8,
+          ),
           _row(
             context,
             'Outstanding',
             _currency(
-              outstanding > 0
-                  ? outstanding
-                  : 0,
+              outstanding,
             ),
             valueColor:
                 outstanding > 0
@@ -1788,20 +2429,25 @@ class _SummaryCard extends StatelessWidget {
         Expanded(
           child: Text(
             label,
-            style: TextStyle(
-              fontWeight: bold
-                  ? FontWeight.bold
-                  : FontWeight.normal,
+            style:
+                TextStyle(
+              fontWeight:
+                  bold
+                      ? FontWeight.bold
+                      : FontWeight.normal,
             ),
           ),
         ),
         Text(
           value,
-          style: TextStyle(
-            fontWeight: bold
-                ? FontWeight.bold
-                : FontWeight.w600,
-            color: valueColor,
+          style:
+              TextStyle(
+            fontWeight:
+                bold
+                    ? FontWeight.bold
+                    : FontWeight.w600,
+            color:
+                valueColor,
           ),
         ),
       ],
@@ -1813,7 +2459,8 @@ class _SummaryCard extends StatelessWidget {
 // INFO ROW
 // =============================================================================
 
-class _InfoRow extends StatelessWidget {
+class _InfoRow
+    extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
@@ -1835,14 +2482,18 @@ class _InfoRow extends StatelessWidget {
         Icon(
           icon,
           size: 20,
-          color: Theme.of(context)
-              .colorScheme
-              .primary,
+          color:
+              Theme.of(context)
+                  .colorScheme
+                  .primary,
         ),
-        const SizedBox(width: 10),
+        const SizedBox(
+          width: 10,
+        ),
         Text(
           '$label: ',
-          style: const TextStyle(
+          style:
+              const TextStyle(
             fontWeight:
                 FontWeight.w600,
           ),

@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/services/purchase_stock_service.dart';
+import '../../models/ledger_transaction_model.dart';
+import '../../services/ledger/supplier_ledger_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/business_model.dart';
 import '../../models/product_model.dart';
@@ -60,6 +62,9 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
 
   final PurchaseStockService _purchaseStockService =
       PurchaseStockService();
+
+  final SupplierLedgerService _supplierLedgerService =
+      SupplierLedgerService();
 
   final TextEditingController _discountController =
       TextEditingController();
@@ -747,17 +752,41 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
       purchase,
     );
 
+    LedgerTransactionModel? createdLedgerEntry;
+    bool stockProcessed = false;
+
     try {
       await _purchaseStockService.processPurchaseStock(
         purchase: savedPurchase,
       );
-    } catch (stockError) {
-      try {
-        await _purchaseStockService.reversePurchaseStock(
+      stockProcessed = true;
+
+      final double outstanding =
+          savedPurchase.total - savedPurchase.paidAmount;
+
+      if (outstanding > 0.000001) {
+        createdLedgerEntry =
+            await _supplierLedgerService.createPurchaseLedgerEntry(
           purchase: savedPurchase,
+          supplier: _selectedSupplier!,
         );
-      } catch (_) {
-        // Preserve the original stock error.
+      }
+    } catch (error) {
+      if (createdLedgerEntry != null) {
+        try {
+          await _supplierLedgerService.deleteTransaction(
+            businessId: savedPurchase.businessId,
+            transactionId: createdLedgerEntry.id,
+          );
+        } catch (_) {}
+      }
+
+      if (stockProcessed) {
+        try {
+          await _purchaseStockService.reversePurchaseStock(
+            purchase: savedPurchase,
+          );
+        } catch (_) {}
       }
 
       try {
@@ -765,9 +794,7 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
           businessId: savedPurchase.businessId,
           purchaseId: savedPurchase.id,
         );
-      } catch (_) {
-        // Preserve the original stock error.
-      }
+      } catch (_) {}
 
       rethrow;
     }
@@ -790,119 +817,192 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
       );
     }
 
-    final List<PurchaseItemModel>
-        reversedOldItems =
+    final String businessId = newPurchase.businessId.trim();
+
+    final List<PurchaseItemModel> reversedOldItems =
         <PurchaseItemModel>[];
 
+    final List<PurchaseItemModel> addedNewItems =
+        <PurchaseItemModel>[];
+
+    LedgerTransactionModel? createdLedgerEntry;
+    LedgerTransactionModel? createdLedgerReversal;
+
+    // Capture the ledger history before creating the old-purchase reversal.
+    // This lets rollback delete only the reversal created by this edit.
+    final List<LedgerTransactionModel> oldLedgerTransactions =
+        oldPurchase.supplierId.trim().isEmpty
+            ? <LedgerTransactionModel>[]
+            : await _supplierLedgerService.getSupplierTransactions(
+                businessId: businessId,
+                supplierId: oldPurchase.supplierId.trim(),
+              );
+
+    final Set<String> oldLedgerTransactionIds =
+        oldLedgerTransactions
+            .map((LedgerTransactionModel transaction) => transaction.id.trim())
+            .where((String id) => id.isNotEmpty)
+            .toSet();
+
     try {
-      for (final PurchaseItemModel item
-          in oldPurchase.items) {
-        await _purchaseStockService
-            .stockRepository
-            .stockOut(
-          businessId:
-              oldPurchase.businessId,
-          productId:
-              item.productId,
-          quantity:
-              item.quantity,
-          unitCost:
-              item.purchaseRate,
-          referenceId:
-              oldPurchase.id,
-          date:
-              DateTime.now(),
-          notes:
-              'Stock reversed for edited purchase',
+      // -----------------------------------------------------------------------
+      // 1. REVERSE OLD STOCK
+      // -----------------------------------------------------------------------
+      for (final PurchaseItemModel item in oldPurchase.items) {
+        await _purchaseStockService.stockRepository.stockOut(
+          businessId: businessId,
+          productId: item.productId,
+          quantity: item.quantity,
+          unitCost: item.purchaseRate,
+          referenceId: oldPurchase.id,
+          date: DateTime.now(),
+          notes: 'Stock reversed for edited purchase',
         );
 
         reversedOldItems.add(item);
       }
-    } catch (reverseError) {
-      for (final PurchaseItemModel item
-          in reversedOldItems.reversed) {
+
+      // -----------------------------------------------------------------------
+      // 2. APPLY NEW STOCK
+      // -----------------------------------------------------------------------
+      try {
+        for (final PurchaseItemModel item in newPurchase.items) {
+          await _purchaseStockService.stockRepository.stockIn(
+            businessId: businessId,
+            productId: item.productId,
+            quantity: item.quantity,
+            unitCost: item.purchaseRate,
+            referenceId: newPurchase.id,
+            date: newPurchase.date,
+            notes: 'Stock added for edited purchase',
+          );
+
+          addedNewItems.add(item);
+        }
+      } catch (_) {
+        await _rollbackNewPurchaseStock(
+          newPurchase,
+          addedNewItems,
+        );
+
+        await _restoreOldPurchaseStock(
+          oldPurchase,
+          reversedOldItems,
+        );
+
+        rethrow;
+      }
+
+      // -----------------------------------------------------------------------
+      // 3. UPDATE PURCHASE DOCUMENT
+      // -----------------------------------------------------------------------
+      try {
+        await _purchaseRepository.updatePurchase(
+          newPurchase,
+        );
+      } catch (_) {
+        await _rollbackNewPurchaseStock(
+          newPurchase,
+          addedNewItems,
+        );
+
+        await _restoreOldPurchaseStock(
+          oldPurchase,
+          reversedOldItems,
+        );
+
+        rethrow;
+      }
+
+      // -----------------------------------------------------------------------
+      // 4. REVERSE OLD SUPPLIER PAYABLE
+      // -----------------------------------------------------------------------
+      if (oldPurchase.supplierId.trim().isNotEmpty) {
+        await _supplierLedgerService.reverseActivePurchaseLedger(
+          purchase: oldPurchase,
+        );
+
+        // Find only the reversal created by this edit. Historical reversals
+        // must never be removed during rollback.
+        final List<LedgerTransactionModel> afterReversal =
+            await _supplierLedgerService.getSupplierTransactions(
+          businessId: businessId,
+          supplierId: oldPurchase.supplierId.trim(),
+        );
+
+        for (final LedgerTransactionModel transaction in afterReversal) {
+          final String type =
+              transaction.transactionType.trim().toUpperCase();
+
+          if (!oldLedgerTransactionIds.contains(transaction.id.trim()) &&
+              transaction.referenceId.trim() == oldPurchase.id.trim() &&
+              type == SupplierLedgerService.purchaseReversalType) {
+            createdLedgerReversal = transaction;
+            break;
+          }
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // 5. CREATE NEW SUPPLIER PAYABLE
+      // -----------------------------------------------------------------------
+      final double outstanding =
+          newPurchase.total - newPurchase.paidAmount;
+
+      if (outstanding > 0.000001) {
+        createdLedgerEntry =
+            await _supplierLedgerService.createPurchaseLedgerEntry(
+          purchase: newPurchase,
+          supplier: _selectedSupplier!,
+        );
+      }
+    } catch (_) {
+      // -----------------------------------------------------------------------
+      // 6. ROLLBACK LEDGER CHANGES
+      // -----------------------------------------------------------------------
+      if (createdLedgerEntry != null) {
         try {
-          await _purchaseStockService
-              .stockRepository
-              .stockIn(
-            businessId:
-                oldPurchase.businessId,
-            productId:
-                item.productId,
-            quantity:
-                item.quantity,
-            unitCost:
-                item.purchaseRate,
-            referenceId:
-                oldPurchase.id,
-            date:
-                DateTime.now(),
-            notes:
-                'Rollback of failed purchase edit',
+          await _supplierLedgerService.deleteTransaction(
+            businessId: businessId,
+            transactionId: createdLedgerEntry.id,
           );
         } catch (_) {}
       }
 
-      rethrow;
-    }
-
-    final List<PurchaseItemModel>
-        addedNewItems =
-        <PurchaseItemModel>[];
-
-    try {
-      for (final PurchaseItemModel item
-          in newPurchase.items) {
-        await _purchaseStockService
-            .stockRepository
-            .stockIn(
-          businessId:
-              newPurchase.businessId,
-          productId:
-              item.productId,
-          quantity:
-              item.quantity,
-          unitCost:
-              item.purchaseRate,
-          referenceId:
-              newPurchase.id,
-          date:
-              newPurchase.date,
-          notes:
-              'Stock added for edited purchase',
-        );
-
-        addedNewItems.add(item);
+      if (createdLedgerReversal != null) {
+        try {
+          await _supplierLedgerService.deleteTransaction(
+            businessId: businessId,
+            transactionId: createdLedgerReversal.id,
+          );
+        } catch (_) {}
       }
-    } catch (stockError) {
-      await _rollbackNewPurchaseStock(
-        newPurchase,
-        addedNewItems,
-      );
 
-      await _restoreOldPurchaseStock(
-        oldPurchase,
-        reversedOldItems,
-      );
+      // -----------------------------------------------------------------------
+      // 7. RESTORE PURCHASE DOCUMENT
+      // -----------------------------------------------------------------------
+      try {
+        await _purchaseRepository.updatePurchase(
+          oldPurchase,
+        );
+      } catch (_) {}
 
-      rethrow;
-    }
+      // -----------------------------------------------------------------------
+      // 8. RESTORE STOCK
+      // -----------------------------------------------------------------------
+      try {
+        await _rollbackNewPurchaseStock(
+          newPurchase,
+          addedNewItems,
+        );
+      } catch (_) {}
 
-    try {
-      await _purchaseRepository
-          .updatePurchase(
-        newPurchase,
-      );
-    } catch (updateError) {
-      await _rollbackNewPurchaseStock(
-        newPurchase,
-        addedNewItems,
-      );
-
-      await _restoreOldPurchaseStock(
-        oldPurchase,
-        reversedOldItems,
-      );
+      try {
+        await _restoreOldPurchaseStock(
+          oldPurchase,
+          reversedOldItems,
+        );
+      } catch (_) {}
 
       rethrow;
     }

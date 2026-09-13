@@ -27,6 +27,9 @@ class PaymentLedgerService {
     final String customerName =
         payment.customerName.trim();
 
+    final String paymentId =
+        payment.id.trim();
+
     if (businessId.isEmpty) {
       throw ArgumentError(
         'Business ID cannot be empty.',
@@ -45,6 +48,12 @@ class PaymentLedgerService {
       );
     }
 
+    if (paymentId.isEmpty) {
+      throw ArgumentError(
+        'Payment ID cannot be empty.',
+      );
+    }
+
     if (!payment.amount.isFinite ||
         payment.amount <= 0) {
       throw ArgumentError(
@@ -52,14 +61,41 @@ class PaymentLedgerService {
       );
     }
 
-    if (!balanceBefore.isFinite) {
+    if (!balanceBefore.isFinite ||
+        balanceBefore < 0) {
       throw ArgumentError(
-        'Balance before must be a valid number.',
+        'Balance before must be a valid non-negative number.',
+      );
+    }
+
+    /*
+     * A customer payment reduces the outstanding balance.
+     *
+     * Do not allow a payment to exceed the actual customer outstanding
+     * balance. This protects the ledger from becoming negative because
+     * of an invalid payment amount.
+     */
+    if (payment.amount >
+        balanceBefore + 0.000001) {
+      throw StateError(
+        'Payment amount cannot be greater than customer outstanding balance.',
       );
     }
 
     final double balanceAfter =
         balanceBefore - payment.amount;
+
+    if (!balanceAfter.isFinite ||
+        balanceAfter < -0.000001) {
+      throw StateError(
+        'Calculated customer balance is invalid.',
+      );
+    }
+
+    final double normalizedBalanceAfter =
+        balanceAfter.abs() <= 0.000001
+            ? 0
+            : balanceAfter;
 
     return _ledgerService.createTransaction(
       businessId: businessId,
@@ -68,8 +104,8 @@ class PaymentLedgerService {
       transactionType: 'PAYMENT',
       amount: payment.amount,
       balanceBefore: balanceBefore,
-      balanceAfter: balanceAfter,
-      referenceId: payment.id.trim(),
+      balanceAfter: normalizedBalanceAfter,
+      referenceId: paymentId,
       date: payment.date,
       notes: _buildPaymentNotes(payment),
     );
@@ -114,6 +150,9 @@ class PaymentLedgerService {
     final String customerName =
         payment.customerName.trim();
 
+    final String paymentId =
+        payment.id.trim();
+
     if (businessId.isEmpty) {
       throw ArgumentError(
         'Business ID cannot be empty.',
@@ -132,6 +171,12 @@ class PaymentLedgerService {
       );
     }
 
+    if (paymentId.isEmpty) {
+      throw ArgumentError(
+        'Payment ID cannot be empty.',
+      );
+    }
+
     if (!payment.amount.isFinite ||
         payment.amount <= 0) {
       throw ArgumentError(
@@ -139,14 +184,21 @@ class PaymentLedgerService {
       );
     }
 
-    if (!balanceBefore.isFinite) {
+    if (!balanceBefore.isFinite ||
+        balanceBefore < 0) {
       throw ArgumentError(
-        'Balance before must be a valid number.',
+        'Balance before must be a valid non-negative number.',
       );
     }
 
     final double balanceAfter =
         balanceBefore + payment.amount;
+
+    if (!balanceAfter.isFinite) {
+      throw StateError(
+        'Calculated customer balance is invalid.',
+      );
+    }
 
     return _ledgerService.createTransaction(
       businessId: businessId,
@@ -156,7 +208,7 @@ class PaymentLedgerService {
       amount: payment.amount,
       balanceBefore: balanceBefore,
       balanceAfter: balanceAfter,
-      referenceId: payment.id.trim(),
+      referenceId: paymentId,
       date: DateTime.now(),
       notes: _buildReversalNotes(payment),
     );
@@ -184,6 +236,12 @@ class PaymentLedgerService {
     if (payment.customerName.trim().isEmpty) {
       throw ArgumentError(
         'Customer name cannot be empty.',
+      );
+    }
+
+    if (payment.id.trim().isEmpty) {
+      throw ArgumentError(
+        'Payment ID cannot be empty.',
       );
     }
 
