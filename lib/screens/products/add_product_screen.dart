@@ -76,8 +76,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
       _sellingPriceController.text =
           product.sellingPrice.toStringAsFixed(2);
 
-      _stockController.text = product.currentStock.toString();
-      _minimumStockController.text = product.minimumStock.toString();
+      _stockController.text = _formatStock(product.currentStock);
+
+      _minimumStockController.text =
+          _formatStock(product.minimumStock);
 
       _isActive = product.isActive;
 
@@ -85,6 +87,14 @@ class _AddProductScreenState extends State<AddProductScreen> {
         _selectedUnit = 'Other';
       }
     }
+  }
+
+  String _formatStock(double value) {
+    if (value == value.roundToDouble()) {
+      return value.toInt().toString();
+    }
+
+    return value.toString();
   }
 
   @override
@@ -142,24 +152,9 @@ class _AddProductScreenState extends State<AddProductScreen> {
         _sellingPriceController.text,
       );
 
-      /*
-       * IMPORTANT:
-       *
-       * When editing an existing product, currentStock is intentionally
-       * preserved from the existing product.
-       *
-       * Stock should be changed through:
-       * - Purchase
-       * - Sale
-       * - Stock adjustment
-       *
-       * It should not be accidentally overwritten from the product edit form.
-       */
-      final double currentStock = widget.isEditMode
-          ? widget.product!.currentStock
-          : _parseDouble(
-              _stockController.text,
-            );
+      final double currentStock = _parseDouble(
+        _stockController.text,
+      );
 
       final double minimumStock = _parseDouble(
         _minimumStockController.text,
@@ -189,6 +184,14 @@ class _AddProductScreenState extends State<AddProductScreen> {
         return;
       }
 
+      if (!currentStock.isFinite) {
+        _showMessage(
+          'Current stock must be a valid number.',
+          isError: true,
+        );
+        return;
+      }
+
       if (minimumStock < 0) {
         _showMessage(
           'Minimum stock cannot be negative.',
@@ -197,8 +200,18 @@ class _AddProductScreenState extends State<AddProductScreen> {
         return;
       }
 
+      if (!minimumStock.isFinite) {
+        _showMessage(
+          'Minimum stock must be a valid number.',
+          isError: true,
+        );
+        return;
+      }
+
       if (widget.isEditMode) {
         final ProductModel oldProduct = widget.product!;
+
+        final double oldStock = oldProduct.currentStock;
 
         final ProductModel updatedProduct = ProductModel(
           id: oldProduct.id,
@@ -213,8 +226,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
           purchasePrice: purchasePrice,
           sellingPrice: sellingPrice,
 
-          // NEVER overwrite stock while editing product details.
-          currentStock: oldProduct.currentStock,
+          // Current stock is now editable from this screen.
+          currentStock: currentStock,
 
           minimumStock: minimumStock,
           isActive: _isActive,
@@ -231,8 +244,24 @@ class _AddProductScreenState extends State<AddProductScreen> {
           return;
         }
 
+        final double stockDifference =
+            currentStock - oldStock;
+
+        String successMessage =
+            'Product updated successfully.';
+
+        if (stockDifference > 0) {
+          successMessage =
+              'Product updated. Stock increased by '
+              '${_formatStock(stockDifference)} $_selectedUnit.';
+        } else if (stockDifference < 0) {
+          successMessage =
+              'Product updated. Stock decreased by '
+              '${_formatStock(stockDifference.abs())} $_selectedUnit.';
+        }
+
         _showMessage(
-          'Product updated successfully.',
+          successMessage,
         );
 
         Navigator.pop(
@@ -565,7 +594,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                 const SizedBox(height: 4),
                 Text(
                   isEdit
-                      ? 'Update product details without changing stock.'
+                      ? 'Update product details and adjust current stock.'
                       : 'Add a product to your inventory.',
                   style: const TextStyle(
                     fontSize: 13,
@@ -876,15 +905,12 @@ class _AddProductScreenState extends State<AddProductScreen> {
                   const TextInputType.numberWithOptions(
                 decimal: true,
               ),
-              readOnly: widget.isEditMode,
-              validator: widget.isEditMode
-                  ? null
-                  : (value) {
-                      return _stockValidator(
-                        value,
-                        'Current stock',
-                      );
-                    },
+              validator: (value) {
+                return _stockValidator(
+                  value,
+                  'Current stock',
+                );
+              },
             );
 
             final Widget minimumStockField = _textField(
@@ -931,9 +957,9 @@ class _AddProductScreenState extends State<AddProductScreen> {
         _infoBanner(
           icon: Icons.sync_alt_rounded,
           text: widget.isEditMode
-              ? 'Current stock is managed by purchase, sale and stock adjustment transactions. '
-                  'Edit Minimum Stock below; use Inventory for stock adjustments.'
-              : 'Opening stock can be entered when creating a product. After that, stock is managed through purchase, sale and stock adjustment transactions.',
+              ? 'Current stock can be increased or decreased directly here. '
+                  'Enter the new stock quantity and save the product.'
+              : 'Opening stock can be entered when creating a product.',
         ),
       ],
     );

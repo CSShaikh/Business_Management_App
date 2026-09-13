@@ -178,20 +178,11 @@ class ProductRepository extends BaseRepository {
   // ---------------------------------------------------------------------------
   // Update Product
   //
-  // IMPORTANT:
-  // currentStock is intentionally NOT taken from the incoming ProductModel.
+  // Current stock is now editable from AddProductScreen in edit mode.
   //
-  // Product editing should update product information such as:
-  // - name
-  // - category
-  // - unit
-  // - purchase price
-  // - selling price
-  // - minimum stock
-  // - active status
-  //
-  // Stock must continue to be changed through purchase, sale, or inventory
-  // stock-adjustment operations.
+  // The incoming ProductModel.currentStock is intentionally saved so the
+  // user can directly increase or decrease the product stock from the
+  // product edit screen.
   // ---------------------------------------------------------------------------
 
   Future<void> updateProduct(
@@ -247,18 +238,23 @@ class ProductRepository extends BaseRepository {
     final ProductModel productToUpdate = ProductModel(
       id: existingProduct.id,
       businessId: existingProduct.businessId,
+
       name: name,
       category: product.category.trim(),
       unit: product.unit.trim(),
+
       purchasePrice: product.purchasePrice,
       sellingPrice: product.sellingPrice,
 
-      // Preserve the actual stock stored in Firestore.
-      currentStock: existingProduct.currentStock,
+      // Allow current stock to be changed during product editing.
+      currentStock: product.currentStock,
 
       minimumStock: product.minimumStock,
       isActive: product.isActive,
+
+      // Preserve original creation timestamp.
       createdAt: existingProduct.createdAt,
+
       updatedAt: DateTime.now(),
     );
 
@@ -332,9 +328,11 @@ class ProductRepository extends BaseRepository {
   // ---------------------------------------------------------------------------
   // Update Stock
   //
-  // This method is kept for direct stock updates where required.
-  // Normal stock movement should preferably go through StockRepository so
-  // that the corresponding stock transaction is also recorded.
+  // This method remains available for dedicated stock operations.
+  //
+  // It directly updates currentStock. For normal purchase/sale flows,
+  // StockRepository should still be preferred because those flows also
+  // maintain stock transaction history.
   // ---------------------------------------------------------------------------
 
   Future<void> updateStock(
@@ -485,10 +483,12 @@ class ProductRepository extends BaseRepository {
       id: data['id'] as String? ?? documentId,
       businessId:
           data['businessId'] as String? ?? businessId,
-      name: data['name'] as String? ?? '',
+      name:
+          data['name'] as String? ?? '',
       category:
           data['category'] as String? ?? '',
-      unit: data['unit'] as String? ?? '',
+      unit:
+          data['unit'] as String? ?? '',
       purchasePrice:
           _toDouble(data['purchasePrice']),
       sellingPrice:
