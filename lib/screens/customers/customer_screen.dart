@@ -31,16 +31,19 @@ class _CustomersScreenState extends State<CustomersScreen> {
   String? _businessError;
 
   String _searchQuery = '';
+  
+@override
+void initState() {
+  super.initState();
 
-  @override
-  void initState() {
-    super.initState();
+  _businessProvider = context.read<BusinessProvider>();
+  _customerProvider = context.read<CustomerProvider>();
 
-    _businessProvider = context.read<BusinessProvider>();
-    _customerProvider = context.read<CustomerProvider>();
-
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (!mounted) return;
     _loadBusiness();
-  }
+  });
+}
 
   // ============================================================
   // BUSINESS + CUSTOMER INITIALIZATION

@@ -5,6 +5,7 @@ import '../../core/theme/app_colors.dart';
 import '../../models/business_model.dart';
 import '../../repositories/business_repository.dart';
 import '../customers/add_customer_screen.dart';
+import '../customers/customer_screen.dart';
 import '../expenses/add_expense_screen.dart';
 import '../payments/add_payment_screen.dart';
 import '../payments/supplier_payment_screen.dart';
@@ -29,7 +30,25 @@ class MainNavigationScreen extends StatefulWidget {
 
 class _MainNavigationScreenState
     extends State<MainNavigationScreen> {
-  int _currentIndex = 0;
+  // ============================================================
+  // NAVIGATION INDEX
+  //
+  // 0 = Home
+  // 1 = Products
+  // 2 = Customers
+  // 3 = Sales
+  // 4 = Reports
+  // 5 = Profile
+  // ============================================================
+
+  static const int _homeIndex = 0;
+  static const int _productsIndex = 1;
+  static const int _customersIndex = 2;
+  static const int _salesIndex = 3;
+  static const int _reportsIndex = 4;
+  static const int _profileIndex = 5;
+
+  int _currentIndex = _homeIndex;
 
   late final List<Widget> _screens;
 
@@ -40,12 +59,16 @@ class _MainNavigationScreenState
   void initState() {
     super.initState();
 
+    // IMPORTANT:
+    // The order here MUST exactly match the NavigationBar
+    // destination order below.
     _screens = const [
-      DashboardHomeScreen(),
-      ProductsScreen(),
-      SalesScreen(),
-      ReportsScreen(),
-      ProfileScreen(),
+      DashboardHomeScreen(), // 0 - Home
+      ProductsScreen(), // 1 - Products
+      CustomersScreen(), // 2 - Customers
+      SalesScreen(), // 3 - Sales
+      ReportsScreen(), // 4 - Reports
+      ProfileScreen(), // 5 - Profile
     ];
   }
 
@@ -54,11 +77,50 @@ class _MainNavigationScreenState
   // ============================================================
 
   void _onNavigationItemTapped(int index) {
+    if (!mounted) {
+      return;
+    }
+
+    switch (index) {
+      case _homeIndex:
+        _openHome();
+        break;
+
+      case _productsIndex:
+        _openProducts();
+        break;
+
+      case _customersIndex:
+        _openCustomers();
+        break;
+
+      case _salesIndex:
+        _openSales();
+        break;
+
+      case _reportsIndex:
+        _openReports();
+        break;
+
+      case _profileIndex:
+        _openProfile();
+        break;
+
+      default:
+        return;
+    }
+  }
+
+  void _setNavigationIndex(int index) {
+    if (!mounted) {
+      return;
+    }
+
     if (index < 0 || index >= _screens.length) {
       return;
     }
 
-    if (!mounted) {
+    if (_currentIndex == index) {
       return;
     }
 
@@ -68,33 +130,27 @@ class _MainNavigationScreenState
   }
 
   void _openHome() {
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {
-      _currentIndex = 0;
-    });
+    _setNavigationIndex(_homeIndex);
   }
 
   void _openProducts() {
-    if (!mounted) {
-      return;
-    }
+    _setNavigationIndex(_productsIndex);
+  }
 
-    setState(() {
-      _currentIndex = 1;
-    });
+  void _openCustomers() {
+    _setNavigationIndex(_customersIndex);
   }
 
   void _openSales() {
-    if (!mounted) {
-      return;
-    }
+    _setNavigationIndex(_salesIndex);
+  }
 
-    setState(() {
-      _currentIndex = 2;
-    });
+  void _openReports() {
+    _setNavigationIndex(_reportsIndex);
+  }
+
+  void _openProfile() {
+    _setNavigationIndex(_profileIndex);
   }
 
   // ============================================================
@@ -102,8 +158,7 @@ class _MainNavigationScreenState
   // ============================================================
 
   Future<BusinessModel?> _getCurrentBusiness() async {
-    final User? user =
-        FirebaseAuth.instance.currentUser;
+    final User? user = FirebaseAuth.instance.currentUser;
 
     if (user == null) {
       _showMessage(
@@ -127,8 +182,7 @@ class _MainNavigationScreenState
         return null;
       }
 
-      final String businessId =
-          business.id.trim();
+      final String businessId = business.id.trim();
 
       if (businessId.isEmpty) {
         _showMessage(
@@ -139,7 +193,7 @@ class _MainNavigationScreenState
       }
 
       return business;
-    } catch (e) {
+    } catch (_) {
       _showMessage(
         'Unable to load business details.',
         isError: true,
@@ -153,11 +207,14 @@ class _MainNavigationScreenState
   // ============================================================
 
   void _showAddOptions() {
+    if (!mounted) {
+      return;
+    }
+
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
-      backgroundColor:
-          Theme.of(context).colorScheme.surface,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       builder: (bottomSheetContext) {
         return SafeArea(
           child: Padding(
@@ -170,8 +227,7 @@ class _MainNavigationScreenState
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     'Quick Add',
@@ -179,8 +235,7 @@ class _MainNavigationScreenState
                         .textTheme
                         .titleLarge
                         ?.copyWith(
-                          fontWeight:
-                              FontWeight.bold,
+                          fontWeight: FontWeight.bold,
                         ),
                   ),
                   const SizedBox(height: 6),
@@ -202,16 +257,12 @@ class _MainNavigationScreenState
                   // ==================================================
 
                   _AddOptionTile(
-                    icon:
-                        Icons.point_of_sale_rounded,
+                    icon: Icons.point_of_sale_rounded,
                     title: 'Add Sale',
-                    subtitle:
-                        'Create a new customer sale',
+                    subtitle: 'Create a new customer sale',
                     color: AppColors.success,
                     onTap: () {
-                      Navigator.pop(
-                        bottomSheetContext,
-                      );
+                      Navigator.pop(bottomSheetContext);
                       _openAddSale();
                     },
                   ),
@@ -221,16 +272,12 @@ class _MainNavigationScreenState
                   // ==================================================
 
                   _AddOptionTile(
-                    icon:
-                        Icons.shopping_cart_rounded,
+                    icon: Icons.shopping_cart_rounded,
                     title: 'Add Purchase',
-                    subtitle:
-                        'Record a new purchase',
+                    subtitle: 'Record a new purchase',
                     color: AppColors.info,
                     onTap: () {
-                      Navigator.pop(
-                        bottomSheetContext,
-                      );
+                      Navigator.pop(bottomSheetContext);
                       _openAddPurchase();
                     },
                   ),
@@ -240,16 +287,12 @@ class _MainNavigationScreenState
                   // ==================================================
 
                   _AddOptionTile(
-                    icon:
-                        Icons.payments_rounded,
+                    icon: Icons.payments_rounded,
                     title: 'Add Payment',
-                    subtitle:
-                        'Record customer payment',
+                    subtitle: 'Record customer payment',
                     color: AppColors.primary,
                     onTap: () {
-                      Navigator.pop(
-                        bottomSheetContext,
-                      );
+                      Navigator.pop(bottomSheetContext);
                       _openAddPayment();
                     },
                   ),
@@ -259,16 +302,12 @@ class _MainNavigationScreenState
                   // ==================================================
 
                   _AddOptionTile(
-                    icon:
-                        Icons.account_balance_rounded,
+                    icon: Icons.account_balance_rounded,
                     title: 'Supplier Payment',
-                    subtitle:
-                        'Record a payment to a supplier',
+                    subtitle: 'Record a payment to a supplier',
                     color: AppColors.secondary,
                     onTap: () {
-                      Navigator.pop(
-                        bottomSheetContext,
-                      );
+                      Navigator.pop(bottomSheetContext);
                       _openSupplierPayment();
                     },
                   ),
@@ -278,16 +317,12 @@ class _MainNavigationScreenState
                   // ==================================================
 
                   _AddOptionTile(
-                    icon:
-                        Icons.receipt_long_rounded,
+                    icon: Icons.receipt_long_rounded,
                     title: 'Add Expense',
-                    subtitle:
-                        'Record business expense',
+                    subtitle: 'Record business expense',
                     color: AppColors.warning,
                     onTap: () {
-                      Navigator.pop(
-                        bottomSheetContext,
-                      );
+                      Navigator.pop(bottomSheetContext);
                       _openAddExpense();
                     },
                   ),
@@ -297,17 +332,12 @@ class _MainNavigationScreenState
                   // ==================================================
 
                   _AddOptionTile(
-                    icon:
-                        Icons.person_add_alt_1_rounded,
-                    title:
-                        'Add Hotel / Customer',
-                    subtitle:
-                        'Create a customer profile',
+                    icon: Icons.person_add_alt_1_rounded,
+                    title: 'Add Hotel / Customer',
+                    subtitle: 'Create a customer profile',
                     color: AppColors.secondary,
                     onTap: () {
-                      Navigator.pop(
-                        bottomSheetContext,
-                      );
+                      Navigator.pop(bottomSheetContext);
                       _openAddCustomer();
                     },
                   ),
@@ -317,16 +347,12 @@ class _MainNavigationScreenState
                   // ==================================================
 
                   _AddOptionTile(
-                    icon:
-                        Icons.inventory_2_outlined,
+                    icon: Icons.inventory_2_outlined,
                     title: 'Add Product',
-                    subtitle:
-                        'Create a new product',
+                    subtitle: 'Create a new product',
                     color: AppColors.primaryDark,
                     onTap: () {
-                      Navigator.pop(
-                        bottomSheetContext,
-                      );
+                      Navigator.pop(bottomSheetContext);
                       _openAddProduct();
                     },
                   ),
@@ -348,8 +374,8 @@ class _MainNavigationScreenState
       return;
     }
 
-    await Navigator.of(context).push(
-      MaterialPageRoute(
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
         builder: (_) => const AddSaleScreen(),
       ),
     );
@@ -358,6 +384,8 @@ class _MainNavigationScreenState
       return;
     }
 
+    // Always return to the Sales section after leaving
+    // the Add Sale screen.
     _openSales();
   }
 
@@ -370,8 +398,8 @@ class _MainNavigationScreenState
       return;
     }
 
-    await Navigator.of(context).push(
-      MaterialPageRoute(
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
         builder: (_) => const AddPurchaseScreen(),
       ),
     );
@@ -392,8 +420,8 @@ class _MainNavigationScreenState
       return;
     }
 
-    await Navigator.of(context).push(
-      MaterialPageRoute(
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
         builder: (_) => const AddPaymentScreen(),
       ),
     );
@@ -414,8 +442,8 @@ class _MainNavigationScreenState
       return;
     }
 
-    await Navigator.of(context).push(
-      MaterialPageRoute(
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
         builder: (_) => SupplierPaymentScreen(),
       ),
     );
@@ -436,8 +464,8 @@ class _MainNavigationScreenState
       return;
     }
 
-    await Navigator.of(context).push(
-      MaterialPageRoute(
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
         builder: (_) => const AddExpenseScreen(),
       ),
     );
@@ -465,8 +493,7 @@ class _MainNavigationScreenState
       return;
     }
 
-    final String businessId =
-        business.id.trim();
+    final String businessId = business.id.trim();
 
     if (businessId.isEmpty) {
       _showMessage(
@@ -476,8 +503,8 @@ class _MainNavigationScreenState
       return;
     }
 
-    await Navigator.of(context).push(
-      MaterialPageRoute(
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
         builder: (_) => AddCustomerScreen(
           businessId: businessId,
         ),
@@ -488,7 +515,7 @@ class _MainNavigationScreenState
       return;
     }
 
-    _openHome();
+    _openCustomers();
   }
 
   // ============================================================
@@ -507,8 +534,7 @@ class _MainNavigationScreenState
       return;
     }
 
-    final String businessId =
-        business.id.trim();
+    final String businessId = business.id.trim();
 
     if (businessId.isEmpty) {
       _showMessage(
@@ -518,8 +544,8 @@ class _MainNavigationScreenState
       return;
     }
 
-    await Navigator.of(context).push(
-      MaterialPageRoute(
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
         builder: (_) => AddProductScreen(
           businessId: businessId,
         ),
@@ -545,19 +571,18 @@ class _MainNavigationScreenState
       return;
     }
 
-    ScaffoldMessenger.of(context)
+    final ScaffoldMessengerState messenger =
+        ScaffoldMessenger.of(context);
+
+    messenger
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
           content: Text(message),
-          behavior:
-              SnackBarBehavior.floating,
-          backgroundColor:
-              isError
-                  ? Theme.of(context)
-                      .colorScheme
-                      .error
-                  : null,
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: isError
+              ? Theme.of(context).colorScheme.error
+              : null,
         ),
       );
   }
@@ -568,18 +593,59 @@ class _MainNavigationScreenState
 
   @override
   Widget build(BuildContext context) {
+    // Defensive safety check.
+    //
+    // This guarantees IndexedStack never receives an invalid
+    // index even if the navigation state is changed unexpectedly.
+    final int safeIndex =
+        (_currentIndex >= 0 &&
+                _currentIndex < _screens.length)
+            ? _currentIndex
+            : _homeIndex;
+
+    // ------------------------------------------------------------
+    // HERO-SAFE NAVIGATION SCREENS
+    //
+    // IndexedStack keeps all screens mounted. Some of those
+    // screens contain FloatingActionButtons, which themselves
+    // participate in Flutter's Hero system.
+    //
+    // Only the currently visible screen is allowed to participate
+    // in Hero animations. All inactive screens remain mounted
+    // for state preservation but their Hero widgets are disabled.
+    // ------------------------------------------------------------
+
+    final List<Widget> heroSafeScreens =
+        List<Widget>.generate(
+      _screens.length,
+      (int index) {
+        return HeroMode(
+          enabled: index == safeIndex,
+          child: _screens[index],
+        );
+      },
+    );
+
     return Scaffold(
+      // ==========================================================
+      // CURRENT MAIN SCREEN
+      // ==========================================================
+
       body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
+        index: safeIndex,
+        children: heroSafeScreens,
       ),
 
       // ==========================================================
       // CENTER ADD BUTTON
       // ==========================================================
 
-      floatingActionButton:
-          FloatingActionButton(
+      floatingActionButton: FloatingActionButton(
+        // Explicitly unique Hero tag.
+        //
+        // This FAB belongs to MainNavigationScreen and must never
+        // use Flutter's default FAB Hero tag.
+        heroTag: 'main_navigation_add_fab',
         onPressed: _showAddOptions,
         tooltip: 'Add',
         child: const Icon(
@@ -594,13 +660,14 @@ class _MainNavigationScreenState
       // BOTTOM NAVIGATION
       // ==========================================================
 
-      bottomNavigationBar:
-          NavigationBar(
-        selectedIndex:
-            _currentIndex,
-        onDestinationSelected:
-            _onNavigationItemTapped,
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: safeIndex,
+        onDestinationSelected: _onNavigationItemTapped,
         destinations: const [
+          // ======================================================
+          // 0 - HOME
+          // ======================================================
+
           NavigationDestination(
             icon: Icon(
               Icons.home_outlined,
@@ -610,6 +677,10 @@ class _MainNavigationScreenState
             ),
             label: 'Home',
           ),
+
+          // ======================================================
+          // 1 - PRODUCTS
+          // ======================================================
 
           NavigationDestination(
             icon: Icon(
@@ -621,6 +692,24 @@ class _MainNavigationScreenState
             label: 'Products',
           ),
 
+          // ======================================================
+          // 2 - CUSTOMERS
+          // ======================================================
+
+          NavigationDestination(
+            icon: Icon(
+              Icons.people_outline_rounded,
+            ),
+            selectedIcon: Icon(
+              Icons.people_rounded,
+            ),
+            label: 'Customers',
+          ),
+
+          // ======================================================
+          // 3 - SALES
+          // ======================================================
+
           NavigationDestination(
             icon: Icon(
               Icons.point_of_sale_outlined,
@@ -631,6 +720,10 @@ class _MainNavigationScreenState
             label: 'Sales',
           ),
 
+          // ======================================================
+          // 4 - REPORTS
+          // ======================================================
+
           NavigationDestination(
             icon: Icon(
               Icons.bar_chart_outlined,
@@ -640,6 +733,10 @@ class _MainNavigationScreenState
             ),
             label: 'Reports',
           ),
+
+          // ======================================================
+          // 5 - PROFILE
+          // ======================================================
 
           NavigationDestination(
             icon: Icon(
@@ -678,8 +775,7 @@ class _AddOptionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      contentPadding:
-          const EdgeInsets.symmetric(
+      contentPadding: const EdgeInsets.symmetric(
         horizontal: 4,
         vertical: 2,
       ),
@@ -690,8 +786,7 @@ class _AddOptionTile extends StatelessWidget {
           color: color.withValues(
             alpha: 0.10,
           ),
-          borderRadius:
-              BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(12),
         ),
         child: Icon(
           icon,
@@ -701,8 +796,7 @@ class _AddOptionTile extends StatelessWidget {
       title: Text(
         title,
         style: const TextStyle(
-          fontWeight:
-              FontWeight.w600,
+          fontWeight: FontWeight.w600,
         ),
       ),
       subtitle: Text(

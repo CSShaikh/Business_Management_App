@@ -387,7 +387,7 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
         [
           _buildTextField(
             controller: _nameController,
-            label: 'Hotel / Customer Name',
+            label: 'Customer Name',
             hint: 'e.g. Taj Hotel',
             icon: Icons.business_outlined,
             required: true,

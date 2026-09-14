@@ -30,17 +30,20 @@ class _ProductsScreenState extends State<ProductsScreen> {
   bool _loadingBusiness = true;
   String? _businessError;
 
-  @override
-  void initState() {
-    super.initState();
+ @override
+void initState() {
+  super.initState();
 
-    _productProvider = context.read<ProductProvider>();
-    _businessProvider = context.read<BusinessProvider>();
+  _productProvider = context.read<ProductProvider>();
+  _businessProvider = context.read<BusinessProvider>();
 
-    _searchController.addListener(_onSearchChanged);
+  _searchController.addListener(_onSearchChanged);
 
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (!mounted) return;
     _loadBusiness();
-  }
+  });
+}
 
   @override
   void dispose() {

@@ -134,6 +134,12 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
         );
       }
 
+      if (business.id.trim().isEmpty) {
+        throw Exception(
+          'Business ID is missing.',
+        );
+      }
+
       final List<ProductModel> products =
           await _productRepository.getActiveProducts(
         business.id,
@@ -199,11 +205,6 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
         customerId: existingCustomerId,
       );
 
-      // IMPORTANT:
-      // An existing sale that already belongs to a customer must never
-      // silently become a walk-in sale just because that customer document
-      // is missing. Doing so can break the relationship between the sale
-      // and its historical customer ledger.
       if (customer == null) {
         throw Exception(
           'Customer for this sale could not be found. '
@@ -215,8 +216,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     final List<_SaleDraftItem> draftItems =
         <_SaleDraftItem>[];
 
-    for (final SaleItemModel saleItem
-        in sale.items) {
+    for (final SaleItemModel saleItem in sale.items) {
       final String productId =
           saleItem.productId.trim();
 
@@ -228,8 +228,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
 
       ProductModel? product;
 
-      for (final ProductModel candidate
-          in products) {
+      for (final ProductModel candidate in products) {
         if (candidate.id == productId) {
           product = candidate;
           break;
@@ -591,6 +590,14 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
         return;
       }
 
+      if (customers.isEmpty) {
+        _showMessage(
+          'No customers are available. Please add a customer first.',
+          isError: true,
+        );
+        return;
+      }
+
       final CustomerModel? customer =
           await showModalBottomSheet<CustomerModel>(
         context: context,
@@ -611,7 +618,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       setState(() {
         _selectedCustomer = customer;
       });
-    } catch (e) {
+    } catch (_) {
       if (!mounted) {
         return;
       }
@@ -655,6 +662,35 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
         isError: true,
       );
       return;
+    }
+
+    final SaleModel? oldSale =
+        widget.sale;
+
+    // -------------------------------------------------------------------------
+    // CUSTOMER IS REQUIRED FOR EVERY NEW SALE
+    // -------------------------------------------------------------------------
+
+    if (oldSale == null) {
+      final CustomerModel? customer =
+          _selectedCustomer;
+
+      if (customer == null ||
+          customer.id.trim().isEmpty) {
+        _showMessage(
+          'Please select a customer before creating the sale.',
+          isError: true,
+        );
+        return;
+      }
+
+      if (customer.name.trim().isEmpty) {
+        _showMessage(
+          'Selected customer has an invalid name.',
+          isError: true,
+        );
+        return;
+      }
     }
 
     if (_items.isEmpty) {
@@ -709,9 +745,6 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       );
       return;
     }
-
-    final SaleModel? oldSale =
-        widget.sale;
 
     final Map<String, double> oldQuantities =
         <String, double>{};
@@ -849,6 +882,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       // -----------------------------------------------------------------------
       // CREATE NEW SALE
       // -----------------------------------------------------------------------
+
       if (oldSale == null) {
         final SaleModel savedSale =
             await _saleRepository
@@ -862,9 +896,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
             <LedgerTransactionModel>[];
 
         try {
-          // ---------------------------------------------------------------
           // 1. DEDUCT STOCK
-          // ---------------------------------------------------------------
           await _saleStockService
               .processSaleStock(
             sale: savedSale,
@@ -872,11 +904,15 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
 
           stockProcessed = true;
 
-          // ---------------------------------------------------------------
           // 2. CREATE CUSTOMER LEDGER
-          // ---------------------------------------------------------------
           final String customerId =
               savedSale.customerId.trim();
+
+          if (customerId.isEmpty) {
+            throw Exception(
+              'Customer selection is required for a new sale.',
+            );
+          }
 
           final double outstanding =
               savedSale.total -
@@ -889,8 +925,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
             );
           }
 
-          if (customerId.isNotEmpty &&
-              outstanding > 0) {
+          if (outstanding > 0) {
             final double currentBalance =
                 await _ledgerService
                     .getCustomerBalance(
@@ -928,9 +963,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
             );
           }
         } catch (error) {
-          // ---------------------------------------------------------------
           // ROLLBACK NEW SALE
-          // ---------------------------------------------------------------
 
           for (final LedgerTransactionModel
               transaction
@@ -979,19 +1012,14 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       // -----------------------------------------------------------------------
       // EDIT EXISTING SALE
       // -----------------------------------------------------------------------
-      else {
-        // The old sale's customer is validated during load. At save time,
-        // selecting another customer or removing the customer is an explicit
-        // user action and is therefore allowed.
 
-        // Reverse old stock first.
+      else {
         await _saleStockService
             .reverseSaleStock(
           sale: oldSale,
         );
 
         try {
-          // Apply new sale stock.
           await _saleStockService
               .processSaleStock(
             sale: sale,
@@ -1003,7 +1031,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
               sale: oldSale,
             );
           } catch (_) {
-            // Preserve the original stock error.
+            // Preserve original stock error.
           }
 
           rethrow;
@@ -1024,13 +1052,12 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
               sale: oldSale,
             );
           } catch (_) {
-            // Preserve the original update error.
+            // Preserve original update error.
           }
 
           rethrow;
         }
 
-        // Keep customer ledger synchronized with edited sale.
         final List<
                 LedgerTransactionModel>
             createdLedgerTransactions =
@@ -1045,8 +1072,6 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                 createdLedgerTransactions,
           );
         } catch (ledgerError) {
-          // Restore the previous sale state.
-
           for (final LedgerTransactionModel
               transaction
               in createdLedgerTransactions
@@ -1209,9 +1234,6 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
         },
       ).toList();
 
-      // LedgerService returns customer transactions newest-first.
-      //
-      // Only the newest active SALE entry is reversed.
       if (saleHistory.isNotEmpty &&
           saleHistory.first.transactionType
                   .trim()
@@ -1269,9 +1291,8 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       }
     }
 
-    // -------------------------------------------------------------------------
     // CREATE NEW ACTIVE SALE LEDGER
-    // -------------------------------------------------------------------------
+
     final String newCustomerId =
         updatedSale.customerId.trim();
 
@@ -1586,36 +1607,45 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
   // ===========================================================================
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          widget.isEditMode
-              ? 'Edit Sale'
-              : 'Add Sale',
-        ),
+  @override
+Widget build(BuildContext context) {
+  return Scaffold(
+    appBar: AppBar(
+      title: Text(
+        widget.isEditMode ? 'Edit Sale' : 'Add Sale',
       ),
-      body: _loading
-          ? const Center(
-              child:
-                  CircularProgressIndicator(),
-            )
-          : _errorMessage != null
-              ? _buildErrorState()
-              : _buildContent(),
-      bottomNavigationBar:
-          _loading ||
-                  _errorMessage != null
-              ? null
-              : _buildBottomBar(),
-    );
+    ),
+    body: _loading
+        ? const Center(
+            child: CircularProgressIndicator(),
+          )
+        : _errorMessage != null
+            ? _buildErrorState()
+            : _buildContent(),
+    bottomNavigationBar:
+        _loading || _errorMessage != null
+            ? null
+            : _buildBottomBar(),
+  );
+}
+
+  Widget _buildBody() {
+    if (_loading) {
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
+    }
+
+    if (_errorMessage != null) {
+      return _buildErrorState();
+    }
+
+    return _buildContent();
   }
 
   Widget _buildErrorState() {
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding:
             const EdgeInsets.all(24),
         child: Column(
@@ -1643,7 +1673,10 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
               height: 18,
             ),
             FilledButton.icon(
-              onPressed: _loadData,
+              onPressed:
+                  _loading
+                      ? null
+                      : _loadData,
               icon: const Icon(
                 Icons.refresh_rounded,
               ),
@@ -1657,51 +1690,56 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     );
   }
 
+  // ===========================================================================
+  // IMPORTANT BLANK-SCREEN FIX
+  //
+  // The ListView previously lived inside Center + ConstrainedBox without
+  // receiving an explicit finite height on Flutter Web.
+  //
+  // LayoutBuilder gives us the exact height available to the Scaffold body.
+  // SizedBox then gives ListView a bounded viewport.
+  // ===========================================================================
+
   Widget _buildContent() {
-    return SafeArea(
-      child: Center(
-        child: ConstrainedBox(
-          constraints:
-              const BoxConstraints(
-            maxWidth: 1200,
+  return SafeArea(
+    child: Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+          maxWidth: 1200,
+        ),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(
+            16,
+            16,
+            16,
+            120,
           ),
-          child: ListView(
-            padding:
-                const EdgeInsets.fromLTRB(
-              16,
-              16,
-              16,
-              120,
-            ),
-            children: [
-              _buildCustomerCard(),
-              const SizedBox(
-                height: 14,
-              ),
-              _buildProductsCard(),
-              const SizedBox(
-                height: 14,
-              ),
-              _buildSummaryCard(),
-              const SizedBox(
-                height: 14,
-              ),
-              _buildPaymentCard(),
-              const SizedBox(
-                height: 14,
-              ),
-              _buildNotesCard(),
-            ],
-          ),
+          children: [
+            _buildCustomerCard(),
+            const SizedBox(height: 14),
+            _buildProductsCard(),
+            const SizedBox(height: 14),
+            _buildSummaryCard(),
+            const SizedBox(height: 14),
+            _buildPaymentCard(),
+            const SizedBox(height: 14),
+            _buildNotesCard(),
+            const SizedBox(height: 8),
+          ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildCustomerCard() {
     final CustomerModel?
         customer =
         _selectedCustomer;
+
+    final bool isNewSale =
+        !widget.isEditMode;
 
     return Card(
       child: Padding(
@@ -1724,7 +1762,9 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                 ),
                 Expanded(
                   child: Text(
-                    'Customer',
+                    isNewSale
+                        ? 'Customer *'
+                        : 'Customer',
                     style: Theme.of(
                             context)
                         .textTheme
@@ -1743,12 +1783,16 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
             if (customer == null)
               OutlinedButton.icon(
                 onPressed:
-                    _selectCustomer,
+                    _saving
+                        ? null
+                        : _selectCustomer,
                 icon: const Icon(
                   Icons.person_add_alt_1_rounded,
                 ),
-                label: const Text(
-                  'Select Customer',
+                label: Text(
+                  isNewSale
+                      ? 'Select Customer *'
+                      : 'Select / Change Customer',
                 ),
               )
             else
@@ -1828,7 +1872,9 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                       tooltip:
                           'Change customer',
                       onPressed:
-                          _selectCustomer,
+                          _saving
+                              ? null
+                              : _selectCustomer,
                       icon: const Icon(
                         Icons.edit_rounded,
                       ),
@@ -1837,7 +1883,9 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                       tooltip:
                           'Remove customer',
                       onPressed:
-                          _removeCustomer,
+                          _saving
+                              ? null
+                              : _removeCustomer,
                       icon: const Icon(
                         Icons.close_rounded,
                       ),
@@ -1849,7 +1897,9 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
               height: 8,
             ),
             Text(
-              'Leave customer empty for a walk-in sale.',
+              isNewSale
+                  ? 'Customer selection is required for every new sale.'
+                  : 'You can change or remove the customer while editing this sale.',
               style: Theme.of(context)
                   .textTheme
                   .bodySmall,
@@ -2358,95 +2408,85 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
   }
 
   Widget _buildBottomBar() {
-    return SafeArea(
+  return SafeArea(
+    top: false,
+    child: SizedBox(
+      height: 76,
+      width: double.infinity,
       child: Container(
-        padding:
-            const EdgeInsets.fromLTRB(
+        padding: const EdgeInsets.fromLTRB(
           16,
-          12,
+          10,
           16,
-          12,
+          10,
         ),
-        decoration:
-            BoxDecoration(
-          color: Theme.of(context)
-              .scaffoldBackgroundColor,
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
           border: Border(
             top: BorderSide(
-              color: Theme.of(context)
-                  .dividerColor,
+              color: Theme.of(context).dividerColor,
             ),
           ),
         ),
-        child: Center(
-          child: ConstrainedBox(
-            constraints:
-                const BoxConstraints(
-              maxWidth: 1200,
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    mainAxisSize:
-                        MainAxisSize.min,
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Total',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall,
-                      ),
-                      Text(
-                        _formatCurrency(
-                          _total,
-                        ),
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleLarge
-                            ?.copyWith(
-                              fontWeight:
-                                  FontWeight.bold,
-                            ),
-                      ),
-                    ],
-                  ),
-                ),
-                FilledButton.icon(
-                  onPressed:
-                      _saving
-                          ? null
-                          : _saveSale,
-                  icon: _saving
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child:
-                              CircularProgressIndicator(
-                            strokeWidth: 2,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: 1200,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Total',
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall,
+                    ),
+                    Text(
+                      _formatCurrency(_total),
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleLarge
+                          ?.copyWith(
+                            fontWeight: FontWeight.bold,
                           ),
-                        )
-                      : const Icon(
-                          Icons
-                              .check_circle_outline_rounded,
-                        ),
-                  label: Text(
-                    _saving
-                        ? 'Saving...'
-                        : widget.isEditMode
-                            ? 'Update Sale'
-                            : 'Save Sale',
-                  ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 16),
+              FilledButton.icon(
+                onPressed: _saving ? null : _saveSale,
+                icon: _saving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Icon(
+                        Icons.check_circle_outline_rounded,
+                      ),
+                label: Text(
+                  _saving
+                      ? 'Saving...'
+                      : widget.isEditMode
+                          ? 'Update Sale'
+                          : 'Save Sale',
+                ),
+              ),
+            ],
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   // ===========================================================================
   // HELPERS
@@ -2495,7 +2535,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                   ? AppColors.danger
                   : null,
           behavior:
-              SnackBarBehavior.floating,
+              SnackBarBehavior.fixed,
         ),
       );
   }
@@ -2877,6 +2917,7 @@ class _CustomerSelectionSheetState
               child: TextField(
                 controller:
                     _searchController,
+                autofocus: true,
                 onChanged: (_) {
                   setState(() {});
                 },
