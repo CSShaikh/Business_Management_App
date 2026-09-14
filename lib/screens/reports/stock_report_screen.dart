@@ -1,5 +1,10 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:public_file_saver/public_file_saver.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../models/business_model.dart';
@@ -28,8 +33,12 @@ class _StockReportScreenState
 
   bool _loading = true;
   bool _refreshing = false;
+  bool _downloadingPdf = false;
 
   String? _errorMessage;
+  BusinessModel? _business;
+  DateTime _reportDate = DateTime.now();
+
   String _searchQuery = '';
   String _selectedStatus = 'All';
 
@@ -93,6 +102,7 @@ class _StockReportScreenState
       if (!mounted) return;
 
       setState(() {
+        _business = business;
         _allProducts = products;
         _loading = false;
         _refreshing = false;
@@ -290,87 +300,296 @@ class _StockReportScreenState
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme =
-        Theme.of(context);
+    final ThemeData theme = Theme.of(context);
 
-    if (_loading) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
-    }
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          tooltip: 'Back',
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => Navigator.of(context).maybePop(),
+        ),
+        title: const Text('Stock Report'),
+        actions: [
+          IconButton(
+            tooltip: 'Download PDF',
+            onPressed: _downloadingPdf || _loading
+                ? null
+                : _downloadPdf,
+            icon: _downloadingPdf
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.picture_as_pdf_rounded),
+          ),
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: _refreshing ? null : _refreshReport,
+            icon: _refreshing
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh_rounded),
+          ),
+        ],
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _errorMessage != null
+              ? _buildErrorState(theme)
+              : RefreshIndicator(
+                  onRefresh: _refreshReport,
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final bool isDesktop = constraints.maxWidth >= 1000;
+                      final bool isTablet =
+                          constraints.maxWidth >= 650 && constraints.maxWidth < 1000;
 
-    if (_errorMessage != null) {
-      return _buildErrorState(theme);
-    }
-
-    final List<ProductModel> products =
-        _filteredProducts;
-
-    return RefreshIndicator(
-      onRefresh: _refreshReport,
-      child: LayoutBuilder(
-        builder: (
-          context,
-          constraints,
-        ) {
-          final bool isDesktop =
-              constraints.maxWidth >= 1000;
-
-          final bool isTablet =
-              constraints.maxWidth >= 650 &&
-                  constraints.maxWidth < 1000;
-
-          return SingleChildScrollView(
-            physics:
-                const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.symmetric(
-              horizontal: isDesktop
-                  ? 28
-                  : isTablet
-                      ? 22
-                      : 16,
-              vertical: 20,
-            ),
-            child: Center(
-              child: ConstrainedBox(
-                constraints:
-                    const BoxConstraints(
-                  maxWidth: 1250,
+                      return SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isDesktop ? 28 : isTablet ? 22 : 16,
+                          vertical: 20,
+                        ),
+                        child: Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 1250),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildHeader(theme, isDesktop),
+                                const SizedBox(height: 20),
+                                _buildReportDateCard(theme),
+                                const SizedBox(height: 20),
+                                _buildSummary(theme, isDesktop),
+                                const SizedBox(height: 20),
+                                _buildStatusOverview(theme),
+                                const SizedBox(height: 20),
+                                _buildFilters(theme),
+                                const SizedBox(height: 20),
+                                _buildProductList(theme, _filteredProducts),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 ),
-                child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-                    _buildHeader(
-                      theme,
-                      isDesktop,
-                    ),
-                    const SizedBox(height: 20),
-                    _buildSummary(
-                      theme,
-                      isDesktop,
-                    ),
-                    const SizedBox(height: 20),
-                    _buildStatusOverview(
-                      theme,
-                    ),
-                    const SizedBox(height: 20),
-                    _buildFilters(
-                      theme,
-                    ),
-                    const SizedBox(height: 20),
-                    _buildProductList(
-                      theme,
-                      products,
-                    ),
-                  ],
+    );
+  }
+
+  Widget _buildReportDateCard(ThemeData theme) {
+    final String date = DateFormat('dd MMM yyyy').format(_reportDate);
+    return _ReportCard(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final bool compact = constraints.maxWidth < 600;
+          final Widget picker = OutlinedButton.icon(
+            onPressed: _selectReportDate,
+            icon: const Icon(Icons.calendar_month_rounded),
+            label: Text(date),
+          );
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Report Date',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
                 ),
               ),
-            ),
+              const SizedBox(height: 5),
+              Text(
+                'Stock report is a current inventory snapshot. The selected date is recorded in the report/PDF.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 14),
+              compact ? picker : Row(children: [picker]),
+            ],
           );
         },
       ),
     );
+  }
+
+  Future<void> _selectReportDate() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _reportDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+      helpText: 'Select stock report date',
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _reportDate = picked);
+  }
+
+  Future<void> _downloadPdf() async {
+    if (_business == null || _downloadingPdf) return;
+
+    setState(() => _downloadingPdf = true);
+
+    try {
+      final pw.Document document = pw.Document();
+      final List<ProductModel> products = _filteredProducts;
+
+      document.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(28),
+          footer: (context) => pw.Align(
+            alignment: pw.Alignment.centerRight,
+            child: pw.Text(
+              'Page ${context.pageNumber} of ${context.pagesCount}',
+              style: const pw.TextStyle(fontSize: 8),
+            ),
+          ),
+          build: (context) => [
+            pw.Text(
+              _business!.businessName,
+              style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
+            ),
+            if (_business!.businessType.trim().isNotEmpty)
+              pw.Text(_business!.businessType),
+            if (_business!.address.trim().isNotEmpty)
+              pw.Text(_business!.address),
+            if (_business!.mobile.trim().isNotEmpty || _business!.email.trim().isNotEmpty)
+              pw.Text(
+                [
+                  if (_business!.mobile.trim().isNotEmpty) 'Mobile: ${_business!.mobile}',
+                  if (_business!.email.trim().isNotEmpty) 'Email: ${_business!.email}',
+                ].join('  |  '),
+              ),
+            if (_business!.gstNumber.trim().isNotEmpty)
+              pw.Text('GSTIN: ${_business!.gstNumber}'),
+            pw.SizedBox(height: 12),
+            pw.Divider(),
+            pw.SizedBox(height: 8),
+            pw.Text(
+              'Stock Report',
+              style: pw.TextStyle(fontSize: 17, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.Text('Report date: ${DateFormat('dd MMM yyyy').format(_reportDate)}'),
+            pw.SizedBox(height: 14),
+            pw.Wrap(
+              spacing: 10,
+              runSpacing: 8,
+              children: [
+                _pdfMetric('Products', '${_allProducts.length}'),
+                _pdfMetric('Current Stock', _number(_totalCurrentStock)),
+                _pdfMetric('Stock Value', 'Rs. ${_totalStockValue.toStringAsFixed(2)}'),
+                _pdfMetric('Potential Sales', 'Rs. ${_totalPotentialSalesValue.toStringAsFixed(2)}'),
+                _pdfMetric('Low Stock', '$_lowStockCount'),
+                _pdfMetric('Out of Stock', '$_outOfStockCount'),
+              ],
+            ),
+            pw.SizedBox(height: 18),
+            pw.Text(
+              'Product Stock Details',
+              style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 8),
+            pw.TableHelper.fromTextArray(
+              headers: const [
+                'Product', 'Category', 'Unit', 'Stock', 'Minimum', 'Purchase', 'Selling', 'Stock Value', 'Status'
+              ],
+              data: products.map((product) {
+                return [
+                  product.name,
+                  product.category,
+                  product.unit,
+                  _number(product.currentStock),
+                  _number(product.minimumStock),
+                  'Rs. ${product.purchasePrice.toStringAsFixed(2)}',
+                  'Rs. ${product.sellingPrice.toStringAsFixed(2)}',
+                  'Rs. ${_stockValue(product).toStringAsFixed(2)}',
+                  _stockStatus(product),
+                ];
+              }).toList(),
+              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 7),
+              cellStyle: const pw.TextStyle(fontSize: 7),
+              cellPadding: const pw.EdgeInsets.all(4),
+              headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
+              border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
+            ),
+            pw.SizedBox(height: 12),
+            pw.Text(
+              'Note: Stock figures are based on the current inventory values available when this report was generated.',
+              style: const pw.TextStyle(fontSize: 8),
+            ),
+          ],
+        ),
+      );
+
+      final Uint8List bytes = await document.save();
+      final String fileName =
+          'stock_report_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.pdf';
+      final PublicSavedFile? saved = await PublicFileSaver().saveBytes(
+        bytes: bytes,
+        fileName: fileName,
+        mimeType: 'application/pdf',
+        subDir: 'Business Management Reports',
+      );
+
+      if (!mounted) return;
+      if (saved?.isSuccess == true) {
+        _showMessage('Stock Report PDF saved successfully.');
+      } else {
+        _showMessage('Unable to save Stock Report PDF.', isError: true);
+      }
+    } catch (e) {
+      if (mounted) {
+        _showMessage('PDF download failed: $e', isError: true);
+      }
+    } finally {
+      if (mounted) setState(() => _downloadingPdf = false);
+    }
+  }
+
+  pw.Widget _pdfMetric(String title, String value) {
+    return pw.Container(
+      width: 155,
+      padding: const pw.EdgeInsets.all(8),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.grey400),
+        borderRadius: pw.BorderRadius.circular(5),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(title, style: const pw.TextStyle(fontSize: 8)),
+          pw.SizedBox(height: 3),
+          pw.Text(value, style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
+  String _stockStatus(ProductModel product) {
+    if (product.currentStock <= 0) return 'Out of Stock';
+    if (product.currentStock <= product.minimumStock) return 'Low Stock';
+    return 'In Stock';
+  }
+
+  void _showMessage(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: isError ? AppColors.danger : AppColors.success,
+        ),
+      );
   }
 
   // ===========================================================================
@@ -472,27 +691,6 @@ class _StockReportScreenState
               ],
             ),
           ),
-          if (isDesktop)
-            IconButton(
-              tooltip: 'Refresh',
-              onPressed: _refreshing
-                  ? null
-                  : _refreshReport,
-              icon: _refreshing
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child:
-                          CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(
-                      Icons.refresh_rounded,
-                      color: Colors.white,
-                    ),
-            ),
         ],
       ),
     );

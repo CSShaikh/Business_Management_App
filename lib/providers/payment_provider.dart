@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../models/payment_model.dart';
+import '../models/ledger_transaction_model.dart';
 import '../repositories/payment_repository.dart';
+import '../services/ledger/ledger_service.dart';
 
 class PaymentProvider extends ChangeNotifier {
   PaymentProvider({
@@ -11,6 +13,8 @@ class PaymentProvider extends ChangeNotifier {
   }) : _repository = repository ?? PaymentRepository();
 
   final PaymentRepository _repository;
+
+  final LedgerService _ledgerService = LedgerService();
 
   // ---------------------------------------------------------------------------
   // STATE
@@ -406,47 +410,188 @@ class PaymentProvider extends ChangeNotifier {
     PaymentModel payment,
   ) async {
     final String id = payment.businessId.trim();
+    final String paymentId = payment.id.trim();
 
     if (id.isEmpty) {
-      _setError(
-        'Business ID is required.',
-      );
+      _setError('Business ID is required.');
       return false;
     }
 
-    if (payment.id.trim().isEmpty) {
-      _setError(
-        'Payment ID is required.',
-      );
+    if (paymentId.isEmpty) {
+      _setError('Payment ID is required.');
+      return false;
+    }
+
+    if (!payment.amount.isFinite || payment.amount <= 0) {
+      _setError('Payment amount must be greater than zero.');
       return false;
     }
 
     _businessId = id;
+    _setSaving(true);
+    _clearError();
 
-    _setError(
-      'Payment editing is disabled because this payment is linked to the customer ledger. '
-      'Use a ledger-safe correction workflow.',
-    );
+    String? createdOldReversalId;
+    String? createdNewLedgerId;
+    PaymentModel? originalPayment;
+    bool paymentDocumentUpdated = false;
 
-    return false;
+    try {
+      originalPayment = await _repository.getPayment(
+        businessId: id,
+        paymentId: paymentId,
+      );
+
+      if (originalPayment == null) {
+        throw StateError('Payment not found.');
+      }
+
+      final List<LedgerTransactionModel> oldTransactions =
+          await _ledgerService.getTransactionsByReferenceId(
+        businessId: id,
+        customerId: originalPayment.customerId.trim(),
+        referenceId: paymentId,
+      );
+
+      final int paymentCount = oldTransactions
+          .where((LedgerTransactionModel transaction) {
+        return transaction.transactionType.trim().toUpperCase() ==
+            LedgerService.paymentType;
+      }).length;
+
+      final int reversalCount = oldTransactions
+          .where((LedgerTransactionModel transaction) {
+        return transaction.transactionType.trim().toUpperCase() ==
+            LedgerService.paymentReversalType;
+      }).length;
+
+      if (paymentCount != reversalCount + 1) {
+        throw StateError(
+          'This payment has an invalid or incomplete ledger history. It cannot be edited safely.',
+        );
+      }
+
+      final String oldCustomerId = originalPayment.customerId.trim();
+      final String oldCustomerName = originalPayment.customerName.trim();
+      final double oldBalanceBeforeReversal =
+          await _ledgerService.getCustomerBalance(
+        businessId: id,
+        customerId: oldCustomerId,
+      );
+
+      final LedgerTransactionModel oldReversal =
+          await _ledgerService.createPaymentReversal(
+        businessId: id,
+        customerId: oldCustomerId,
+        customerName: oldCustomerName,
+        paymentAmount: originalPayment.amount,
+        balanceBefore: oldBalanceBeforeReversal,
+        referenceId: paymentId,
+        date: DateTime.now(),
+        notes: 'Reversal for edited customer payment $paymentId.',
+      );
+
+      createdOldReversalId = oldReversal.id.trim();
+
+      final PaymentModel updatedPayment = PaymentModel(
+        id: originalPayment.id,
+        businessId: id,
+        customerId: payment.customerId.trim(),
+        customerName: payment.customerName.trim(),
+        amount: payment.amount,
+        date: payment.date,
+        paymentMethod: payment.paymentMethod.trim(),
+        transactionReference: payment.transactionReference.trim(),
+        notes: payment.notes.trim(),
+        createdAt: originalPayment.createdAt,
+      );
+
+      await _repository.updatePayment(updatedPayment);
+      paymentDocumentUpdated = true;
+
+      final String newCustomerId = updatedPayment.customerId.trim();
+      final String newCustomerName = updatedPayment.customerName.trim();
+      final double newCustomerBalance =
+          await _ledgerService.getCustomerBalance(
+        businessId: id,
+        customerId: newCustomerId,
+      );
+
+      if (updatedPayment.amount > newCustomerBalance + 0.000001) {
+        throw StateError(
+          'Payment amount cannot be greater than customer outstanding balance of '
+          '${newCustomerBalance.toStringAsFixed(2)}.',
+        );
+      }
+
+      final LedgerTransactionModel newLedger =
+          await _ledgerService.createPaymentLedgerEntry(
+        businessId: id,
+        customerId: newCustomerId,
+        customerName: newCustomerName,
+        paymentAmount: updatedPayment.amount,
+        balanceBefore: newCustomerBalance,
+        referenceId: paymentId,
+        date: updatedPayment.date,
+        notes: updatedPayment.notes.trim().isEmpty
+            ? 'Customer payment received.'
+            : updatedPayment.notes.trim(),
+      );
+
+      createdNewLedgerId = newLedger.id.trim();
+      _upsertLocalPayment(updatedPayment);
+      return true;
+    } catch (e) {
+      if (createdNewLedgerId != null && createdNewLedgerId.isNotEmpty) {
+        try {
+          await _ledgerService.deleteTransaction(
+            businessId: id,
+            transactionId: createdNewLedgerId,
+          );
+        } catch (_) {}
+      }
+
+      if (paymentDocumentUpdated && originalPayment != null) {
+        try {
+          await _repository.updatePayment(originalPayment);
+        } catch (_) {}
+      }
+
+      if (createdOldReversalId != null && createdOldReversalId.isNotEmpty) {
+        try {
+          await _ledgerService.deleteTransaction(
+            businessId: id,
+            transactionId: createdOldReversalId,
+          );
+        } catch (_) {}
+      }
+
+      _setError(
+        _formatError(
+          e,
+          fallback: 'Unable to update payment safely.',
+        ),
+      );
+      return false;
+    } finally {
+      _setSaving(false);
+    }
   }
 
   // ---------------------------------------------------------------------------
-  // DELETE PAYMENT
+  // DELETE PAYMENT — LEDGER SAFE
   // ---------------------------------------------------------------------------
   //
-  // IMPORTANT:
-  // Deleting only the payment document is NOT safe because AddPaymentScreen
-  // also creates a PAYMENT transaction in the customer ledger.
+  // A customer payment creates a PAYMENT ledger transaction. Therefore the
+  // payment document must never be deleted by itself.
   //
-  // A future ledger-safe delete must:
-  //
+  // Safe sequence:
   // 1. Read the payment.
-  // 2. Create a corresponding ledger reversal.
-  // 3. Delete the payment record.
-  // 4. Keep the ledger balance correct.
-  //
-  // Until that workflow is implemented, direct deletion is blocked.
+  // 2. Verify its active PAYMENT ledger entry exists.
+  // 3. Create exactly one PAYMENT_REVERSAL using the current ledger balance.
+  // 4. Delete the payment document.
+  // 5. If deletion fails, remove the newly-created reversal so the operation
+  //    is rolled back.
   // ---------------------------------------------------------------------------
 
   Future<bool> deletePayment({
@@ -454,31 +599,134 @@ class PaymentProvider extends ChangeNotifier {
     String? businessId,
   }) async {
     final String id = (businessId ?? _businessId).trim();
-
     final String paymentDocumentId = paymentId.trim();
 
     if (id.isEmpty) {
-      _setError(
-        'Business ID is required.',
-      );
+      _setError('Business ID is required.');
       return false;
     }
 
     if (paymentDocumentId.isEmpty) {
-      _setError(
-        'Payment ID is required.',
-      );
+      _setError('Payment ID is required.');
       return false;
     }
 
     _businessId = id;
+    _setSaving(true);
+    _clearError();
 
-    _setError(
-      'Payment deletion is disabled because this payment is linked to the '
-      'customer ledger. A ledger-safe reversal is required.',
-    );
+    String? createdReversalId;
 
-    return false;
+    try {
+      final PaymentModel? payment =
+          await _repository.getPayment(
+        businessId: id,
+        paymentId: paymentDocumentId,
+      );
+
+      if (payment == null) {
+        throw StateError('Payment not found.');
+      }
+
+      final List<LedgerTransactionModel> transactions =
+          await _ledgerService.getTransactionsByReferenceId(
+        businessId: id,
+        customerId: payment.customerId.trim(),
+        referenceId: payment.id.trim(),
+      );
+
+      final List<LedgerTransactionModel> activePayments =
+          transactions.where(
+        (LedgerTransactionModel transaction) {
+          return transaction.transactionType.trim() ==
+              LedgerService.paymentType;
+        },
+      ).toList();
+
+      final List<LedgerTransactionModel> reversals =
+          transactions.where(
+        (LedgerTransactionModel transaction) {
+          return transaction.transactionType.trim() ==
+              LedgerService.paymentReversalType;
+        },
+      ).toList();
+
+      if (activePayments.length != reversals.length + 1) {
+        throw StateError(
+          'This payment has an invalid or incomplete ledger history. It cannot be deleted safely.',
+        );
+      }
+
+      if (activePayments.isEmpty) {
+        throw StateError(
+          'Payment ledger entry was not found. The payment was not deleted to protect account balances.',
+        );
+      }
+
+      if (activePayments.length > 1) {
+        throw StateError(
+          'Multiple ledger entries were found for this payment. The payment was not deleted.',
+        );
+      }
+
+      final double balanceBefore =
+          await _ledgerService.getCustomerBalance(
+        businessId: id,
+        customerId: payment.customerId.trim(),
+      );
+
+      final LedgerTransactionModel reversal =
+          await _ledgerService.createPaymentReversal(
+        businessId: id,
+        customerId: payment.customerId.trim(),
+        customerName: payment.customerName.trim(),
+        paymentAmount: payment.amount,
+        balanceBefore: balanceBefore,
+        referenceId: payment.id.trim(),
+        date: DateTime.now(),
+        notes:
+            'Reversal for customer payment ${payment.id.trim()}.',
+      );
+
+      createdReversalId = reversal.id.trim();
+
+      await _repository.deletePayment(
+        businessId: id,
+        paymentId: paymentDocumentId,
+      );
+
+      _payments.removeWhere(
+        (PaymentModel item) =>
+            item.id.trim() == paymentDocumentId,
+      );
+      notifyListeners();
+
+      return true;
+    } catch (e) {
+      if (createdReversalId != null &&
+          createdReversalId.isNotEmpty) {
+        try {
+          await _ledgerService.deleteTransaction(
+            businessId: id,
+            transactionId: createdReversalId,
+          );
+        } catch (_) {
+          // Preserve the original failure. The reversal is intentionally not
+          // hidden if rollback itself fails.
+        }
+      }
+
+      _setError(
+        _formatError(
+          e,
+          fallback: 'Unable to delete payment safely.',
+        ),
+      );
+
+      return false;
+    } finally {
+      _setSaving(false);
+    }
   }
 
   // ---------------------------------------------------------------------------

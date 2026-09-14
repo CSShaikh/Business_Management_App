@@ -16,6 +16,8 @@ import '../../repositories/payment_repository.dart';
 import '../../repositories/product_repository.dart';
 import '../../repositories/purchase_repository.dart';
 import '../../repositories/sale_repository.dart';
+import '../../services/ledger/ledger_service.dart';
+import '../../services/ledger/supplier_ledger_service.dart';
 
 class DashboardHomeScreen extends StatefulWidget {
   const DashboardHomeScreen({
@@ -37,6 +39,12 @@ class _DashboardHomeScreenState
 
   final PurchaseRepository _purchaseRepository =
       PurchaseRepository();
+
+  final LedgerService _ledgerService =
+      LedgerService();
+
+  final SupplierLedgerService _supplierLedgerService =
+      SupplierLedgerService();
 
   final ExpenseRepository _expenseRepository =
       ExpenseRepository();
@@ -68,6 +76,7 @@ class _DashboardHomeScreenState
   double _totalExpenses = 0;
   double _totalReceived = 0;
   double _totalOutstanding = 0;
+  double _supplierOutstanding = 0;
   double _stockValue = 0;
   double _totalProfit = 0;
 
@@ -141,7 +150,10 @@ class _DashboardHomeScreenState
         _saleRepository.getTotalPaid(
           businessId: businessId,
         ),
-        _saleRepository.getTotalOutstanding(
+        _ledgerService.getTotalReceivable(
+          businessId: businessId,
+        ),
+        _supplierLedgerService.getTotalPayable(
           businessId: businessId,
         ),
         _productRepository.getProducts(
@@ -182,45 +194,61 @@ class _DashboardHomeScreenState
       final double totalExpenses =
           _safeDouble(results[4]);
 
-      final double totalReceived =
+      final double saleReceived =
           _safeDouble(results[5]);
 
       final double totalOutstanding =
           _safeDouble(results[6]);
 
-      final List<ProductModel> products =
-          List<ProductModel>.from(
-        results[7] as List,
-      );
+      final double supplierOutstanding =
+          _safeDouble(results[7]);
 
-      final List<ProductModel> lowStock =
+      final List<ProductModel> products =
           List<ProductModel>.from(
         results[8] as List,
       );
 
-      final List<SaleModel> todaySalesList =
-          List<SaleModel>.from(
+      final List<ProductModel> lowStock =
+          List<ProductModel>.from(
         results[9] as List,
       );
 
-      final List<SaleModel> allSales =
+      final List<SaleModel> todaySalesList =
           List<SaleModel>.from(
         results[10] as List,
       );
 
+      final List<SaleModel> allSales =
+          List<SaleModel>.from(
+        results[11] as List,
+      );
+
       final List<PurchaseModel> allPurchases =
           List<PurchaseModel>.from(
-        results[11] as List,
+        results[12] as List,
       );
 
       final List<PaymentModel> allPayments =
           List<PaymentModel>.from(
-        results[12] as List,
+        results[13] as List,
       );
+
+      final double separateCustomerPayments =
+          allPayments.fold<double>(
+        0,
+        (total, payment) => total +
+            (payment.amount.isFinite &&
+                    payment.amount > 0
+                ? payment.amount
+                : 0),
+      );
+
+      final double totalReceived =
+          saleReceived + separateCustomerPayments;
 
       final List<ExpenseModel> allExpenses =
           List<ExpenseModel>.from(
-        results[13] as List,
+        results[14] as List,
       );
 
       final double todayProfit =
@@ -265,6 +293,8 @@ class _DashboardHomeScreenState
         _totalReceived = totalReceived;
         _totalOutstanding =
             totalOutstanding;
+        _supplierOutstanding =
+            supplierOutstanding;
 
         _stockValue = stockValue;
         _totalProfit = totalProfit;
@@ -331,17 +361,29 @@ class _DashboardHomeScreenState
     double profit = 0;
 
     for (final SaleModel sale in sales) {
+      double costOfGoodsSold = 0;
+
       for (final item in sale.items) {
-        final double revenue =
-            item.quantity *
-                item.sellingRate;
+        final double quantity = item.quantity;
+        final double costPrice = item.costPrice;
 
-        final double cost =
-            item.quantity *
-                item.costPrice;
-
-        profit += revenue - cost;
+        if (quantity.isFinite &&
+            quantity >= 0 &&
+            costPrice.isFinite &&
+            costPrice >= 0) {
+          costOfGoodsSold += quantity * costPrice;
+        }
       }
+
+      final double saleTotal = sale.total.isFinite
+          ? sale.total
+          : 0;
+
+      // SaleModel.total already represents the final
+      // customer bill after item discount/tax calculations.
+      // Therefore profit must use the final bill, not the
+      // pre-discount sellingRate subtotal.
+      profit += saleTotal - costOfGoodsSold;
     }
 
     return profit;
@@ -703,7 +745,7 @@ class _DashboardHomeScreenState
         title: 'Received',
         value:
             _formatCurrency(_totalReceived),
-        subtitle: 'Customer payments',
+        subtitle: 'Sale + separate payments',
         icon: Icons.payments_rounded,
         color: AppColors.success,
       ),
@@ -715,6 +757,15 @@ class _DashboardHomeScreenState
         icon:
             Icons.account_balance_wallet_outlined,
         color: AppColors.warning,
+      ),
+      _MetricData(
+        title: 'Supplier Payable',
+        value:
+            _formatCurrency(_supplierOutstanding),
+        subtitle: 'Amount payable to suppliers',
+        icon:
+            Icons.account_balance_outlined,
+        color: AppColors.danger,
       ),
       _MetricData(
         title: 'Stock Value',

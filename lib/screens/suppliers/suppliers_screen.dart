@@ -6,6 +6,7 @@ import '../../models/supplier_model.dart';
 import '../../providers/business_provider.dart';
 import '../../providers/supplier_provider.dart';
 import 'add_supplier_screen.dart';
+import 'supplier_statement_screen.dart';
 
 class SuppliersScreen extends StatefulWidget {
   const SuppliersScreen({
@@ -866,6 +867,16 @@ class _SuppliersScreenState
       tooltip: 'Supplier options',
       onSelected: (value) {
         switch (value) {
+          case 'statement':
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => SupplierStatementScreen(
+                  supplier: supplier,
+                ),
+              ),
+            );
+            break;
+
           case 'edit':
             _openEditSupplier(
               supplier,
@@ -881,6 +892,19 @@ class _SuppliersScreenState
       },
       itemBuilder: (context) {
         return const [
+          PopupMenuItem<String>(
+            value: 'statement',
+            child: Row(
+              children: [
+                Icon(
+                  Icons.receipt_long_outlined,
+                  size: 20,
+                ),
+                SizedBox(width: 10),
+                Text('Supplier Statement'),
+              ],
+            ),
+          ),
           PopupMenuItem<String>(
             value: 'edit',
             child: Row(

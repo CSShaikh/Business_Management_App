@@ -395,10 +395,104 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   }
 
   // ---------------------------------------------------------------------------
+  // EDIT PAYMENT
+  // ---------------------------------------------------------------------------
+
+  Future<void> _openEditPayment(
+    PaymentModel payment,
+  ) async {
+    final bool? updated = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => AddPaymentScreen(payment: payment),
+      ),
+    );
+
+    if (updated == true && mounted) {
+      await context.read<PaymentProvider>().refresh();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // DELETE PAYMENT
   // ---------------------------------------------------------------------------
 
-  
+  Future<void> _deletePayment(
+    PaymentModel payment,
+  ) async {
+    final String customerName =
+        payment.customerName.trim().isEmpty
+            ? 'Unknown Customer'
+            : payment.customerName.trim();
+
+    final bool? confirmed =
+        await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Delete Payment?'),
+          content: Text(
+            'Delete the payment of ${_currencyFormat.format(payment.amount)} received from $customerName?\n\n'
+            'The customer ledger will also be reversed. This action cannot be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () =>
+                  Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.of(dialogContext).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.danger,
+              ),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    final PaymentProvider paymentProvider =
+        context.read<PaymentProvider>();
+
+    final bool deleted =
+        await paymentProvider.deletePayment(
+      paymentId: payment.id,
+      businessId: _businessId,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    if (deleted) {
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Payment deleted and customer ledger reversed successfully.',
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            paymentProvider.errorMessage ??
+                'Unable to delete payment safely.',
+          ),
+          backgroundColor: AppColors.danger,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
 
   // ---------------------------------------------------------------------------
   // PAYMENT DETAILS
@@ -499,7 +593,24 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                   const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
-                    
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        _deletePayment(payment);
+                      },
+                      icon: const Icon(
+                        Icons.delete_outline_rounded,
+                      ),
+                      label: const Text('Delete Payment'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.danger,
+                        side: BorderSide(
+                          color: AppColors.danger.withValues(
+                            alpha: 0.45,
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -1628,7 +1739,11 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                   ),
                 ],
               ),
-              const SizedBox(width: 4),
+              IconButton(
+                tooltip: 'Edit payment',
+                onPressed: () => _openEditPayment(payment),
+                icon: const Icon(Icons.edit_outlined),
+              ),
               const Icon(
                 Icons.chevron_right_rounded,
                 color: Colors.grey,

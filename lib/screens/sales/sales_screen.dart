@@ -547,8 +547,8 @@ class _SalesScreenState extends State<SalesScreen> {
           content: Text(
             'Are you sure you want to delete '
             '${sale.invoiceNumber.isEmpty ? 'this sale' : sale.invoiceNumber}?\n\n'
-            'The sold stock will be restored and any active customer ledger '
-            'entry for this sale will be reversed.',
+            'The sold stock will be restored and all active customer ledger '
+            'entries created for this sale will be reversed.',
           ),
           actions: [
             TextButton(
@@ -601,20 +601,30 @@ class _SalesScreenState extends State<SalesScreen> {
         <LedgerTransactionModel>[];
 
     try {
-      // =======================================================================
-      // 1. PREPARE CUSTOMER LEDGER REVERSAL
-      // =======================================================================
+      // =====================================================================
+      // 1. PREPARE CUSTOMER LEDGER REVERSALS
+      // =====================================================================
       //
-      // Do this BEFORE changing stock.
+      // A paid sale normally creates two ledger entries:
       //
-      // This allows us to detect an invalid accounting state early. In
-      // particular, LedgerService does not permit negative customer balances.
+      //   SALE         -> increases customer outstanding
+      //   SALE_PAYMENT -> decreases customer outstanding
       //
+      // When deleting a fully paid sale, the current balance may therefore be
+      // zero. Reversing the SALE entry first would incorrectly try to reduce
+      // the balance below zero.
+      //
+      // Correct order is:
+      //
+      //   SALE_PAYMENT_REVERSAL -> restore the paid amount
+      //   SALE_REVERSAL         -> remove the sale amount
+      //
+      // This also works for unpaid and partially paid sales.
+      // =====================================================================
 
-      LedgerTransactionModel?
-          activeSaleLedger;
-
-      double? ledgerBalanceBefore;
+      LedgerTransactionModel? saleLedger;
+      LedgerTransactionModel? salePaymentLedger;
+      double ledgerBalance = 0;
 
       if (sale.customerId.trim().isNotEmpty) {
         final String customerId =
@@ -628,90 +638,69 @@ class _SalesScreenState extends State<SalesScreen> {
           customerId: customerId,
         );
 
-        final List<LedgerTransactionModel>
-            saleHistory =
-            transactions.where(
-          (transaction) {
-            final String type =
-                transaction.transactionType
-                    .trim()
-                    .toUpperCase();
-
-            return transaction.referenceId
-                        .trim() ==
-                    saleId &&
-                (type ==
-                        LedgerService.saleType ||
-                    type ==
-                        LedgerService.saleReversalType);
-          },
-        ).toList();
-
-        if (saleHistory.isNotEmpty) {
-          final LedgerTransactionModel
-              latest =
-              saleHistory.first;
-
-          final String latestType =
-              latest.transactionType
+        // Find the active SALE entry belonging to this sale.
+        for (final LedgerTransactionModel
+            transaction in transactions) {
+          final String type =
+              transaction.transactionType
                   .trim()
                   .toUpperCase();
 
-          if (latestType ==
-                  LedgerService.saleType &&
-              latest.amount > 0) {
-            final double currentBalance =
-                await _ledgerService
-                    .getCustomerBalance(
-              businessId:
-                  businessId,
-              customerId:
-                  customerId,
+          if (transaction.referenceId.trim() ==
+                  saleId &&
+              type == LedgerService.saleType &&
+              transaction.amount > 0) {
+            saleLedger = transaction;
+            break;
+          }
+        }
+
+        // Find the active SALE_PAYMENT entry belonging to this sale.
+        for (final LedgerTransactionModel
+            transaction in transactions) {
+          final String type =
+              transaction.transactionType
+                  .trim()
+                  .toUpperCase();
+
+          if (transaction.referenceId.trim() ==
+                  saleId &&
+              type == LedgerService.salePaymentType &&
+              transaction.amount > 0) {
+            salePaymentLedger = transaction;
+            break;
+          }
+        }
+
+        // If there is no active ledger entry for this sale, there is nothing
+        // to reverse. Do not create artificial ledger transactions.
+        if (saleLedger != null ||
+            salePaymentLedger != null) {
+          ledgerBalance =
+              await _ledgerService
+                  .getCustomerBalance(
+            businessId: businessId,
+            customerId: customerId,
+          );
+
+          if (!ledgerBalance.isFinite ||
+              ledgerBalance < -0.000001) {
+            throw Exception(
+              'Customer ledger balance is invalid. '
+              'The sale cannot be deleted safely.',
             );
+          }
 
-            if (!currentBalance.isFinite ||
-                currentBalance < 0) {
-              throw Exception(
-                'Customer ledger balance is invalid. '
-                'The sale cannot be deleted safely.',
-              );
-            }
-
-            final double newBalance =
-                currentBalance -
-                    latest.amount;
-
-            if (!newBalance.isFinite) {
-              throw Exception(
-                'Customer ledger balance calculation is invalid. '
-                'The sale cannot be deleted safely.',
-              );
-            }
-
-            if (newBalance < -0.000001) {
-              throw Exception(
-                'This sale cannot be deleted because reversing its ledger entry '
-                'would make the customer balance negative. '
-                'Please correct the customer ledger/payment history first.',
-              );
-            }
-
-            activeSaleLedger =
-                latest;
-
-            ledgerBalanceBefore =
-                currentBalance;
+          if (ledgerBalance.abs() <=
+              0.000001) {
+            ledgerBalance = 0;
           }
         }
       }
 
-      // =======================================================================
+      // =====================================================================
       // 2. RESTORE STOCK
-      // =======================================================================
-      //
-      // SaleStockService now performs all-or-nothing compensation internally
-      // if a multi-item stock reversal fails.
-      //
+      // =====================================================================
 
       await _saleStockService
           .reverseSaleStock(
@@ -720,62 +709,101 @@ class _SalesScreenState extends State<SalesScreen> {
 
       stockReversed = true;
 
-      // =======================================================================
-      // 3. CREATE CUSTOMER LEDGER REVERSAL
-      // =======================================================================
+      // =====================================================================
+      // 3. REVERSE CUSTOMER SALE PAYMENT FIRST
+      // =====================================================================
       //
+      // This is essential for paid/partially-paid sales. It increases the
+      // outstanding balance back to the amount that existed before the sale
+      // payment was recorded.
+      // =====================================================================
 
-      if (activeSaleLedger != null &&
-          ledgerBalanceBefore != null) {
+      if (salePaymentLedger != null) {
         final String customerId =
             sale.customerId.trim();
 
         final String customerName =
             sale.customerName.trim().isEmpty
-                ? activeSaleLedger
-                    .customerName
+                ? salePaymentLedger.customerName
                     .trim()
-                : sale.customerName
-                    .trim();
+                : sale.customerName.trim();
 
         final LedgerTransactionModel
-            reversal =
+            paymentReversal =
+            await _ledgerService
+                .createSalePaymentReversal(
+          businessId: businessId,
+          customerId: customerId,
+          customerName: customerName,
+          paymentAmount:
+              salePaymentLedger.amount,
+          balanceBefore:
+              ledgerBalance,
+          referenceId: saleId,
+          date: DateTime.now(),
+          notes:
+              'Payment reversal for deleted sale '
+              '${sale.invoiceNumber.isEmpty ? saleId : sale.invoiceNumber}',
+        );
+
+        createdReversals.add(
+          paymentReversal,
+        );
+
+        ledgerBalance =
+            paymentReversal.balanceAfter;
+      }
+
+      // =====================================================================
+      // 4. REVERSE CUSTOMER SALE
+      // =====================================================================
+
+      if (saleLedger != null) {
+        final String customerId =
+            sale.customerId.trim();
+
+        final String customerName =
+            sale.customerName.trim().isEmpty
+                ? saleLedger.customerName.trim()
+                : sale.customerName.trim();
+
+        if (saleLedger.amount >
+            ledgerBalance + 0.000001) {
+          throw Exception(
+            'Customer ledger history is inconsistent. '
+            'The sale cannot be deleted safely. '
+            'Please correct the customer ledger/payment history first.',
+          );
+        }
+
+        final LedgerTransactionModel
+            saleReversal =
             await _ledgerService
                 .createSaleReversal(
-          businessId:
-              businessId,
-          customerId:
-              customerId,
-          customerName:
-              customerName,
-          saleAmount:
-              activeSaleLedger.amount,
-          balanceBefore:
-              ledgerBalanceBefore,
-          referenceId:
-              saleId,
-          date:
-              DateTime.now(),
+          businessId: businessId,
+          customerId: customerId,
+          customerName: customerName,
+          saleAmount: saleLedger.amount,
+          balanceBefore: ledgerBalance,
+          referenceId: saleId,
+          date: DateTime.now(),
           notes:
               'Reversal for deleted sale '
               '${sale.invoiceNumber.isEmpty ? saleId : sale.invoiceNumber}',
         );
 
         createdReversals.add(
-          reversal,
+          saleReversal,
         );
       }
 
-      // =======================================================================
-      // 4. DELETE SALE DOCUMENT
-      // =======================================================================
-      //
+      // =====================================================================
+      // 5. DELETE SALE DOCUMENT
+      // =====================================================================
 
       await _saleRepository.deleteSale(
-        businessId:
-            businessId,
-        saleId:
-            saleId,
+        businessId: businessId,
+        saleId: saleId,
       );
 
       if (!mounted) {
@@ -788,38 +816,26 @@ class _SalesScreenState extends State<SalesScreen> {
             : 'Sale deleted, stock restored and customer ledger reversed successfully.',
       );
     } catch (e) {
-      // =======================================================================
+      // =====================================================================
       // ROLLBACK LEDGER REVERSALS
-      // =======================================================================
-      //
-      // If the sale document could not be deleted after creating one or more
-      // reversal entries, remove only the entries created during this
-      // operation.
-      //
+      // =====================================================================
 
       for (final LedgerTransactionModel
-          reversal
-          in createdReversals.reversed) {
+          reversal in createdReversals.reversed) {
         try {
           await _ledgerService
               .deleteTransaction(
-            businessId:
-                businessId,
-            transactionId:
-                reversal.id,
+            businessId: businessId,
+            transactionId: reversal.id,
           );
         } catch (_) {
           // Keep the original error.
         }
       }
 
-      // =======================================================================
+      // =====================================================================
       // ROLLBACK STOCK
-      // =======================================================================
-      //
-      // If stock was restored but the overall delete failed, process the
-      // original sale again so inventory returns to its previous state.
-      //
+      // =====================================================================
 
       if (stockReversed) {
         try {

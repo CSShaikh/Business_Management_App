@@ -3,6 +3,10 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'dart:typed_data';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:public_file_saver/public_file_saver.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../models/business_model.dart';
@@ -51,7 +55,9 @@ class _AnalyticsReportScreenState
 
   bool _isLoading = true;
   bool _isRefreshing = false;
+  bool _downloadingPdf = false;
   String? _errorMessage;
+  BusinessModel? _business;
 
   _AnalyticsPeriod _period =
       _AnalyticsPeriod.daily;
@@ -140,6 +146,7 @@ class _AnalyticsReportScreenState
       }
 
       setState(() {
+        _business = business;
         _sales =
             results[0] as List<SaleModel>;
         _purchases =
@@ -302,6 +309,168 @@ class _AnalyticsReportScreenState
       _startDate = null;
       _endDate = null;
     });
+  }
+
+  void _setDateRange(DateTime start, DateTime end) {
+    setState(() {
+      _startDate = DateTime(start.year, start.month, start.day);
+      _endDate = DateTime(end.year, end.month, end.day, 23, 59, 59, 999);
+    });
+  }
+
+  void _setToday() {
+    final DateTime now = DateTime.now();
+    _setDateRange(now, now);
+  }
+
+  void _setThisWeek() {
+    final DateTime today = DateTime.now();
+    final DateTime start = DateTime(today.year, today.month, today.day)
+        .subtract(Duration(days: today.weekday - 1));
+    _setDateRange(start, start.add(const Duration(days: 6)));
+  }
+
+  void _setThisMonth() {
+    final DateTime now = DateTime.now();
+    _setDateRange(
+      DateTime(now.year, now.month, 1),
+      DateTime(now.year, now.month + 1, 0),
+    );
+  }
+
+  void _setLastMonth() {
+    final DateTime now = DateTime.now();
+    _setDateRange(
+      DateTime(now.year, now.month - 1, 1),
+      DateTime(now.year, now.month, 0),
+    );
+  }
+
+  String _pdfPeriodText() {
+    if (_startDate == null || _endDate == null) return 'All available data';
+    final DateFormat format = DateFormat('dd MMM yyyy');
+    return '${format.format(_startDate!)} - ${format.format(_endDate!)}';
+  }
+
+  String _pdfMoney(double value) => 'Rs. ${value.toStringAsFixed(2)}';
+
+  Future<void> _downloadPdf() async {
+    if (_downloadingPdf || !mounted) return;
+    final BusinessModel? business = _business;
+    if (business == null) {
+      _showMessage('Business information is not available.', isError: true);
+      return;
+    }
+
+    setState(() => _downloadingPdf = true);
+    try {
+      final List<SaleModel> sales = _filteredSales;
+      final List<PurchaseModel> purchases = _filteredPurchases;
+      final List<ExpenseModel> expenses = _filteredExpenses;
+      final List<PaymentModel> payments = _filteredPayments;
+      final double salesTotal = _totalSales(sales);
+      final double purchaseTotal = _totalPurchases(purchases);
+      final double expenseTotal = _totalExpenses(expenses);
+      final double paymentTotal = _totalSeparatePayments(payments);
+      final double grossProfit = salesTotal - purchaseTotal;
+      final double netProfit = grossProfit - expenseTotal;
+      final double pending = salesTotal - paymentTotal;
+
+      final pw.Document document = pw.Document();
+      final pw.TextStyle small = const pw.TextStyle(fontSize: 9);
+      document.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(28),
+          footer: (context) => pw.Align(
+            alignment: pw.Alignment.center,
+            child: pw.Text(
+              'Business Management App • Page ${context.pageNumber}',
+              style: small,
+            ),
+          ),
+          build: (context) => <pw.Widget>[
+            pw.Text(
+              business.businessName.trim().isEmpty
+                  ? 'Business Report'
+                  : business.businessName.trim(),
+              style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
+            ),
+            if (business.businessType.trim().isNotEmpty)
+              pw.Text(business.businessType.trim(), style: small),
+            if (business.address.trim().isNotEmpty)
+              pw.Text(business.address.trim(), style: small),
+            if (business.mobile.trim().isNotEmpty)
+              pw.Text('Mobile: ${business.mobile.trim()}', style: small),
+            if (business.email.trim().isNotEmpty)
+              pw.Text('Email: ${business.email.trim()}', style: small),
+            if (business.gstNumber.trim().isNotEmpty)
+              pw.Text('GSTIN: ${business.gstNumber.trim()}', style: small),
+            pw.SizedBox(height: 14),
+            pw.Text('Analytics Report', style: pw.TextStyle(fontSize: 15, fontWeight: pw.FontWeight.bold)),
+            pw.Text('Period: ${_pdfPeriodText()}', style: small),
+            pw.SizedBox(height: 12),
+            pw.TableHelper.fromTextArray(
+              headers: const <String>['Metric', 'Value'],
+              data: <List<String>>[
+                <String>['Sales', _pdfMoney(salesTotal)],
+                <String>['Purchases', _pdfMoney(purchaseTotal)],
+                <String>['Expenses', _pdfMoney(expenseTotal)],
+                <String>['Payments Received', _pdfMoney(paymentTotal)],
+                <String>['Pending Collection', _pdfMoney(pending)],
+                <String>['Gross Profit', _pdfMoney(grossProfit)],
+                <String>['Net Profit', _pdfMoney(netProfit)],
+                <String>['Sales Invoices', '${sales.length}'],
+                <String>['Purchase Invoices', '${purchases.length}'],
+                <String>['Expenses Count', '${expenses.length}'],
+                <String>['Payments Count', '${payments.length}'],
+              ],
+              cellStyle: small,
+              headerStyle: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
+              cellPadding: const pw.EdgeInsets.all(6),
+            ),
+            pw.SizedBox(height: 14),
+            pw.Text(
+              'Trend Mode: ${_periodLabel()} • Generated: ${DateFormat('dd MMM yyyy, hh:mm a').format(DateTime.now())}',
+              style: small,
+            ),
+          ],
+        ),
+      );
+
+      final Uint8List bytes = Uint8List.fromList(await document.save());
+      final String stamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final PublicSavedFile? saved = await PublicFileSaver().saveBytes(
+        bytes: bytes,
+        fileName: 'analytics_report_$stamp.pdf',
+        mimeType: 'application/pdf',
+        subDir: 'Business Management Reports',
+      );
+      if (!mounted) return;
+      _showMessage(
+        saved?.isSuccess == true
+            ? 'Analytics PDF saved to Downloads.'
+            : 'Unable to save Analytics PDF.',
+        isError: saved?.isSuccess != true,
+      );
+    } catch (e) {
+      if (mounted) _showMessage('PDF download failed: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _downloadingPdf = false);
+    }
+  }
+
+  void _showMessage(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: isError ? AppColors.danger : AppColors.success,
+        ),
+      );
   }
 
   void _setPeriod(
@@ -889,8 +1058,34 @@ class _AnalyticsReportScreenState
     final List<PaymentModel> payments =
         _filteredPayments;
 
-    return RefreshIndicator(
-      onRefresh: _refreshAnalytics,
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          tooltip: 'Back',
+          onPressed: () => Navigator.of(context).maybePop(),
+          icon: const Icon(Icons.arrow_back_rounded),
+        ),
+        title: const Text('Analytics Report'),
+        actions: [
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: _isRefreshing ? null : _refreshAnalytics,
+            icon: _isRefreshing
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.refresh_rounded),
+          ),
+          IconButton(
+            tooltip: 'Download PDF',
+            onPressed: _downloadingPdf ? null : _downloadPdf,
+            icon: _downloadingPdf
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.picture_as_pdf_rounded),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: _refreshAnalytics,
       child: LayoutBuilder(
         builder: (
           context,
@@ -937,9 +1132,9 @@ class _AnalyticsReportScreenState
                     _buildDateFilter(
                       theme,
                     ),
-                    const SizedBox(
-                      height: 20,
-                    ),
+                    const SizedBox(height: 10),
+                    _buildDatePresets(theme),
+                    const SizedBox(height: 20),
                     _buildSummaryCards(
                       theme,
                       sales,
@@ -1001,6 +1196,7 @@ class _AnalyticsReportScreenState
             ),
           );
         },
+      ),
       ),
     );
   }
@@ -1197,6 +1393,37 @@ class _AnalyticsReportScreenState
                 Icons.clear_rounded,
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDatePresets(ThemeData theme) {
+    return _AnalyticsCard(
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          ActionChip(
+            avatar: const Icon(Icons.today_rounded, size: 16),
+            label: const Text('Today'),
+            onPressed: _setToday,
+          ),
+          ActionChip(
+            avatar: const Icon(Icons.view_week_rounded, size: 16),
+            label: const Text('This Week'),
+            onPressed: _setThisWeek,
+          ),
+          ActionChip(
+            avatar: const Icon(Icons.calendar_month_rounded, size: 16),
+            label: const Text('This Month'),
+            onPressed: _setThisMonth,
+          ),
+          ActionChip(
+            avatar: const Icon(Icons.history_rounded, size: 16),
+            label: const Text('Last Month'),
+            onPressed: _setLastMonth,
+          ),
         ],
       ),
     );

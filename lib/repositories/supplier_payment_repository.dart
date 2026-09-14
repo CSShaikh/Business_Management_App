@@ -111,12 +111,17 @@ class SupplierPaymentRepository {
               'supplierId',
               isEqualTo: normalizedSupplierId,
             )
-            .orderBy('date', descending: true)
             .get();
 
-    return snapshot.docs
+    final payments = snapshot.docs
         .map(SupplierPaymentModel.fromFirestore)
         .toList();
+
+    payments.sort(
+      (a, b) => b.date.compareTo(a.date),
+    );
+
+    return payments;
   }
 
   Stream<List<SupplierPaymentModel>> watchSupplierPayments({
@@ -136,13 +141,18 @@ class SupplierPaymentRepository {
           'supplierId',
           isEqualTo: normalizedSupplierId,
         )
-        .orderBy('date', descending: true)
         .snapshots()
         .map(
           (QuerySnapshot<Map<String, dynamic>> snapshot) {
-            return snapshot.docs
+            final payments = snapshot.docs
                 .map(SupplierPaymentModel.fromFirestore)
                 .toList();
+
+            payments.sort(
+              (a, b) => b.date.compareTo(a.date),
+            );
+
+            return payments;
           },
         );
   }

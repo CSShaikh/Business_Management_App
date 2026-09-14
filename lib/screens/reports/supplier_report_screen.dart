@@ -1,5 +1,10 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:public_file_saver/public_file_saver.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../models/business_model.dart';
@@ -40,8 +45,10 @@ class _SupplierReportScreenState
 
   bool _loading = true;
   bool _refreshing = false;
+  bool _downloadingPdf = false;
 
   String? _errorMessage;
+  BusinessModel? _business;
 
   String _searchQuery = '';
   String _selectedPaymentStatus = 'All';
@@ -122,6 +129,8 @@ class _SupplierReportScreenState
       if (!mounted) return;
 
       setState(() {
+        _business = business;
+
         _suppliers =
             results[0] as List<SupplierModel>;
 
@@ -193,6 +202,51 @@ class _SupplierReportScreenState
         999,
       );
     });
+  }
+
+  void _setDateRange(DateTime start, DateTime end) {
+    setState(() {
+      _startDate = DateTime(start.year, start.month, start.day);
+      _endDate = DateTime(
+        end.year,
+        end.month,
+        end.day,
+        23,
+        59,
+        59,
+        999,
+      );
+    });
+  }
+
+  void _setToday() {
+    final DateTime now = DateTime.now();
+    _setDateRange(now, now);
+  }
+
+  void _setThisWeek() {
+    final DateTime now = DateTime.now();
+    final int daysFromMonday = now.weekday - DateTime.monday;
+    final DateTime start = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(Duration(days: daysFromMonday));
+    _setDateRange(start, start.add(const Duration(days: 6)));
+  }
+
+  void _setThisMonth() {
+    final DateTime now = DateTime.now();
+    final DateTime start = DateTime(now.year, now.month, 1);
+    final DateTime end = DateTime(now.year, now.month + 1, 0);
+    _setDateRange(start, end);
+  }
+
+  void _setLastMonth() {
+    final DateTime now = DateTime.now();
+    final DateTime start = DateTime(now.year, now.month - 1, 1);
+    final DateTime end = DateTime(now.year, now.month, 0);
+    _setDateRange(start, end);
   }
 
   void _clearDateFilter() {
@@ -546,6 +600,248 @@ class _SupplierReportScreenState
   }
 
   // ===========================================================================
+  // PDF EXPORT
+  // ===========================================================================
+
+  String _pdfMoney(double value) {
+    return 'Rs. ${NumberFormat('#,##0.00', 'en_IN').format(value)}';
+  }
+
+  Future<void> _downloadPdf() async {
+    if (_downloadingPdf) return;
+
+    setState(() {
+      _downloadingPdf = true;
+    });
+
+    try {
+      final pw.Document document = pw.Document();
+      final BusinessModel? business = _business;
+      final List<SupplierModel> suppliers = _filteredSuppliers;
+
+      final String period = _startDate != null && _endDate != null
+          ? '${_date(_startDate!)} - ${_date(_endDate!)}'
+          : 'All dates';
+
+      document.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(28),
+          footer: (context) => pw.Align(
+            alignment: pw.Alignment.centerRight,
+            child: pw.Text(
+              'Page ${context.pageNumber} of ${context.pagesCount}',
+              style: const pw.TextStyle(fontSize: 8),
+            ),
+          ),
+          build: (context) => [
+            pw.Text(
+              business?.businessName.trim().isNotEmpty == true
+                  ? business!.businessName
+                  : 'Business Management App',
+              style: pw.TextStyle(
+                fontSize: 20,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+            if (business != null && business.businessType.trim().isNotEmpty)
+              pw.Text(business.businessType),
+            if (business != null && business.address.trim().isNotEmpty)
+              pw.Text(business.address),
+            if (business != null && business.mobile.trim().isNotEmpty)
+              pw.Text('Mobile: ${business.mobile}'),
+            if (business != null && business.email.trim().isNotEmpty)
+              pw.Text('Email: ${business.email}'),
+            if (business != null && business.gstNumber.trim().isNotEmpty)
+              pw.Text('GSTIN: ${business.gstNumber}'),
+            pw.SizedBox(height: 14),
+            pw.Text(
+              'Supplier Report',
+              style: pw.TextStyle(
+                fontSize: 16,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+            pw.Text('Report period: $period'),
+            if (_selectedPaymentStatus != 'All')
+              pw.Text('Payment status: $_selectedPaymentStatus'),
+            if (_searchQuery.trim().isNotEmpty)
+              pw.Text('Search: ${_searchQuery.trim()}'),
+            pw.SizedBox(height: 12),
+            pw.TableHelper.fromTextArray(
+              headers: const ['Metric', 'Value'],
+              data: [
+                ['Suppliers', '${suppliers.length}'],
+                ['Purchase Amount', _pdfMoney(_totalPurchases)],
+                ['Purchase Paid', _pdfMoney(_totalPurchasePaid)],
+                ['Supplier Payments', _pdfMoney(_totalSupplierPayments)],
+                ['Total Paid', _pdfMoney(_totalPaid)],
+                ['Outstanding', _pdfMoney(_totalOutstanding)],
+                ['Payment Rate', '${_paymentRate.toStringAsFixed(1)}%'],
+                ['Paid Purchases', '$_paidPurchaseCount'],
+                ['Partial Purchases', '$_partialPurchaseCount'],
+                ['Unpaid Purchases', '$_unpaidPurchaseCount'],
+              ],
+              cellStyle: const pw.TextStyle(fontSize: 8),
+              headerStyle: pw.TextStyle(
+                fontSize: 8,
+                fontWeight: pw.FontWeight.bold,
+              ),
+              headerDecoration: const pw.BoxDecoration(
+                color: PdfColors.grey300,
+              ),
+              cellPadding: const pw.EdgeInsets.all(5),
+            ),
+            pw.SizedBox(height: 16),
+            pw.Text(
+              'Supplier-wise Summary',
+              style: pw.TextStyle(
+                fontSize: 13,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+            pw.SizedBox(height: 6),
+            if (suppliers.isEmpty)
+              pw.Text('No supplier records found for the selected filters.')
+            else
+              pw.TableHelper.fromTextArray(
+                headers: const [
+                  'Supplier',
+                  'Purchases',
+                  'Qty',
+                  'Paid',
+                  'Payments',
+                  'Outstanding',
+                  'Invoices',
+                ],
+                data: suppliers.map((supplier) {
+                  return [
+                    supplier.name,
+                    _pdfMoney(_supplierPurchaseAmount(supplier)),
+                    _number(_supplierQuantity(supplier)),
+                    _pdfMoney(_supplierPurchasePaidAmount(supplier)),
+                    _pdfMoney(_supplierPaymentAmount(supplier)),
+                    _pdfMoney(_supplierOutstandingAmount(supplier)),
+                    '${_supplierPurchaseCount(supplier)}',
+                  ];
+                }).toList(),
+                cellStyle: const pw.TextStyle(fontSize: 7),
+                headerStyle: pw.TextStyle(
+                  fontSize: 7,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColors.grey300,
+                ),
+                cellPadding: const pw.EdgeInsets.all(4),
+              ),
+            pw.SizedBox(height: 16),
+            pw.Text(
+              'Supplier Payment Details',
+              style: pw.TextStyle(
+                fontSize: 13,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+            pw.SizedBox(height: 6),
+            if (_filteredSupplierPayments.isEmpty)
+              pw.Text('No supplier payment records found for the selected period.')
+            else
+              pw.TableHelper.fromTextArray(
+                headers: const [
+                  'Date',
+                  'Supplier',
+                  'Method',
+                  'Reference',
+                  'Amount',
+                ],
+                data: _filteredSupplierPayments.map((payment) {
+                  return [
+                    _date(payment.date),
+                    payment.supplierName,
+                    payment.paymentMethod,
+                    payment.transactionReference,
+                    _pdfMoney(payment.amount),
+                  ];
+                }).toList(),
+                cellStyle: const pw.TextStyle(fontSize: 7),
+                headerStyle: pw.TextStyle(
+                  fontSize: 7,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColors.grey300,
+                ),
+                cellPadding: const pw.EdgeInsets.all(4),
+              ),
+            pw.SizedBox(height: 14),
+            pw.Text(
+              'Generated by Business Management App',
+              style: const pw.TextStyle(fontSize: 8),
+            ),
+          ],
+        ),
+      );
+
+      final Uint8List bytes = Uint8List.fromList(
+        await document.save(),
+      );
+
+      final String safeName = (business?.businessName ?? 'Business')
+          .replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '_')
+          .replaceAll(RegExp(r'_+'), '_')
+          .replaceAll(RegExp(r'^_|_$'), '');
+
+      final String fileName =
+          '${safeName.isEmpty ? 'Business' : safeName}_Supplier_Report_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.pdf';
+
+      final PublicSavedFile? result = await PublicFileSaver().saveBytes(
+        bytes: bytes,
+        fileName: fileName,
+        mimeType: 'application/pdf',
+        subDir: 'Business Management Reports',
+      );
+
+      if (!mounted) return;
+
+      if (result?.isSuccess == true) {
+        _showMessage('Supplier report PDF saved to Downloads.');
+      } else {
+        _showMessage('Unable to save the PDF.', isError: true);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      _showMessage(
+        'PDF download failed: ${e.toString()}',
+        isError: true,
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _downloadingPdf = false;
+        });
+      }
+    }
+  }
+
+  void _showMessage(
+    String message, {
+    bool isError = false,
+  }) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: isError ? AppColors.danger : Colors.green,
+        ),
+      );
+  }
+
+  // ===========================================================================
   // BUILD
   // ===========================================================================
 
@@ -561,6 +857,11 @@ class _SupplierReportScreenState
         backgroundColor:
             theme.scaffoldBackgroundColor,
         appBar: AppBar(
+          leading: IconButton(
+            tooltip: 'Back',
+            onPressed: () => Navigator.of(context).maybePop(),
+            icon: const Icon(Icons.arrow_back_rounded),
+          ),
           title:
               const Text(
             'Supplier Report',
@@ -579,6 +880,11 @@ class _SupplierReportScreenState
         backgroundColor:
             theme.scaffoldBackgroundColor,
         appBar: AppBar(
+          leading: IconButton(
+            tooltip: 'Back',
+            onPressed: () => Navigator.of(context).maybePop(),
+            icon: const Icon(Icons.arrow_back_rounded),
+          ),
           title:
               const Text(
             'Supplier Report',
@@ -597,11 +903,27 @@ class _SupplierReportScreenState
       backgroundColor:
           theme.scaffoldBackgroundColor,
       appBar: AppBar(
+        leading: IconButton(
+          tooltip: 'Back',
+          onPressed: () => Navigator.of(context).maybePop(),
+          icon: const Icon(Icons.arrow_back_rounded),
+        ),
         title:
             const Text(
           'Supplier Report',
         ),
         actions: [
+          IconButton(
+            tooltip: 'Download PDF',
+            onPressed: _downloadingPdf ? null : _downloadPdf,
+            icon: _downloadingPdf
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.picture_as_pdf_rounded),
+          ),
           IconButton(
             tooltip: 'Refresh',
             onPressed:
@@ -1312,6 +1634,29 @@ class _SupplierReportScreenState
           const SizedBox(
             height: 12,
           ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton(
+                onPressed: _setToday,
+                child: const Text('Today'),
+              ),
+              OutlinedButton(
+                onPressed: _setThisWeek,
+                child: const Text('This Week'),
+              ),
+              OutlinedButton(
+                onPressed: _setThisMonth,
+                child: const Text('This Month'),
+              ),
+              OutlinedButton(
+                onPressed: _setLastMonth,
+                child: const Text('Last Month'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
           Wrap(
             spacing:
                 10,

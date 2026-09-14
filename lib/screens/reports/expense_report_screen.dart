@@ -1,7 +1,13 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:public_file_saver/public_file_saver.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../models/business_model.dart';
 import '../../models/expense_model.dart';
 import '../../repositories/business_repository.dart';
 import '../../repositories/expense_repository.dart';
@@ -29,6 +35,9 @@ class _ExpenseReportScreenState
 
   bool _loading = true;
   bool _refreshing = false;
+  bool _downloadingPdf = false;
+
+  BusinessModel? _business;
 
   String? _errorMessage;
 
@@ -92,6 +101,7 @@ class _ExpenseReportScreenState
       if (!mounted) return;
 
       setState(() {
+        _business = business;
         _allExpenses = expenses;
         _loading = false;
         _refreshing = false;
@@ -175,6 +185,266 @@ class _ExpenseReportScreenState
       _startDate = null;
       _endDate = null;
     });
+  }
+
+  void _setDateRange(DateTime start, DateTime end) {
+    setState(() {
+      _startDate = DateTime(start.year, start.month, start.day);
+      _endDate = DateTime(
+        end.year,
+        end.month,
+        end.day,
+        23,
+        59,
+        59,
+        999,
+      );
+    });
+  }
+
+  void _setToday() {
+    final DateTime now = DateTime.now();
+    _setDateRange(now, now);
+  }
+
+  void _setThisWeek() {
+    final DateTime now = DateTime.now();
+    final int daysFromMonday = now.weekday - DateTime.monday;
+    final DateTime start = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(Duration(days: daysFromMonday));
+    _setDateRange(start, start.add(const Duration(days: 6)));
+  }
+
+  void _setThisMonth() {
+    final DateTime now = DateTime.now();
+    _setDateRange(
+      DateTime(now.year, now.month, 1),
+      DateTime(now.year, now.month + 1, 0),
+    );
+  }
+
+  void _setLastMonth() {
+    final DateTime now = DateTime.now();
+    final DateTime first = DateTime(now.year, now.month - 1, 1);
+    _setDateRange(
+      first,
+      DateTime(first.year, first.month + 1, 0),
+    );
+  }
+
+  String _pdfCurrency(double value) =>
+      'Rs. ${NumberFormat('#,##0.00', 'en_IN').format(value)}';
+
+  void _showMessage(
+    String message, {
+    bool isError = false,
+  }) {
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor:
+              isError ? AppColors.danger : AppColors.success,
+        ),
+      );
+  }
+
+  Future<void> _downloadPdf() async {
+    if (_downloadingPdf) return;
+
+    final BusinessModel? business = _business;
+    if (business == null || business.id.trim().isEmpty) {
+      _showMessage('Business information is not available.', isError: true);
+      return;
+    }
+
+    setState(() => _downloadingPdf = true);
+
+    try {
+      final List<ExpenseModel> expenses = _filteredExpenses;
+      final pw.Document document = pw.Document();
+      final String period = _dateRangeText();
+      final double total = _totalExpenses(expenses);
+      final Map<String, double> categoryTotals = _categoryTotals(expenses);
+      final Map<String, double> paymentTotals = _paymentMethodTotals(expenses);
+
+      final List<MapEntry<String, double>> categoryRows =
+          categoryTotals.entries.toList()
+            ..sort((a, b) => b.value.compareTo(a.value));
+      final List<MapEntry<String, double>> paymentRows =
+          paymentTotals.entries.toList()
+            ..sort((a, b) => b.value.compareTo(a.value));
+
+      document.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(28),
+          header: (context) => pw.Container(
+            margin: const pw.EdgeInsets.only(bottom: 14),
+            child: pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Expanded(
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text(
+                        business.businessName.trim().isEmpty
+                            ? 'Business Management'
+                            : business.businessName.trim(),
+                        style: pw.TextStyle(
+                          fontSize: 18,
+                          fontWeight: pw.FontWeight.bold,
+                        ),
+                      ),
+                      if (business.businessType.trim().isNotEmpty)
+                        pw.Text(business.businessType.trim()),
+                      if (business.address.trim().isNotEmpty)
+                        pw.Text(business.address.trim()),
+                      if (business.mobile.trim().isNotEmpty)
+                        pw.Text('Mobile: ${business.mobile.trim()}'),
+                      if (business.email.trim().isNotEmpty)
+                        pw.Text('Email: ${business.email.trim()}'),
+                      if (business.gstNumber.trim().isNotEmpty)
+                        pw.Text('GSTIN: ${business.gstNumber.trim()}'),
+                    ],
+                  ),
+                ),
+                pw.Text(
+                  'EXPENSE REPORT',
+                  style: pw.TextStyle(
+                    fontSize: 16,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          footer: (context) => pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text('Generated by Business Management App'),
+              pw.Text('Page ${context.pageNumber} of ${context.pagesCount}'),
+            ],
+          ),
+          build: (context) => [
+            pw.Text('Expense Report', style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 4),
+            pw.Text('Period: $period'),
+            pw.SizedBox(height: 16),
+            pw.Table(
+              border: pw.TableBorder.all(color: PdfColors.grey400),
+              children: [
+                pw.TableRow(children: [
+                  _pdfCell('Total Expenses', bold: true),
+                  _pdfCell(_pdfCurrency(total), bold: true),
+                  _pdfCell('Expense Count', bold: true),
+                  _pdfCell(expenses.length.toString(), bold: true),
+                ]),
+                pw.TableRow(children: [
+                  _pdfCell('Today'),
+                  _pdfCell(_pdfCurrency(_todayExpenses(expenses))),
+                  _pdfCell('Average'),
+                  _pdfCell(_pdfCurrency(_averageExpense(expenses))),
+                ]),
+              ],
+            ),
+            pw.SizedBox(height: 18),
+            pw.Text('Expense Details', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 8),
+            if (expenses.isEmpty)
+              pw.Text('No expenses found for the selected filters.')
+            else
+              pw.TableHelper.fromTextArray(
+                headers: const ['Date', 'Category', 'Description', 'Payment Method', 'Amount'],
+                data: expenses.map((expense) => [
+                  _date(expense.date),
+                  expense.category.trim().isEmpty ? 'Other' : expense.category.trim(),
+                  expense.description.trim().isEmpty ? '—' : expense.description.trim(),
+                  expense.paymentMethod.trim().isEmpty ? 'Other' : expense.paymentMethod.trim(),
+                  _pdfCurrency(expense.amount),
+                ]).toList(),
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                cellStyle: const pw.TextStyle(fontSize: 8),
+                cellAlignments: {4: pw.Alignment.centerRight},
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
+              ),
+            pw.SizedBox(height: 18),
+            pw.Text('Category-wise Expenses', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 8),
+            if (categoryRows.isEmpty)
+              pw.Text('No category data available.')
+            else
+              pw.TableHelper.fromTextArray(
+                headers: const ['Category', 'Amount'],
+                data: categoryRows.map((e) => [e.key, _pdfCurrency(e.value)]).toList(),
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                cellStyle: const pw.TextStyle(fontSize: 9),
+                cellAlignments: {1: pw.Alignment.centerRight},
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
+              ),
+            pw.SizedBox(height: 18),
+            pw.Text('Payment Method-wise Expenses', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 8),
+            if (paymentRows.isEmpty)
+              pw.Text('No payment method data available.')
+            else
+              pw.TableHelper.fromTextArray(
+                headers: const ['Payment Method', 'Amount'],
+                data: paymentRows.map((e) => [e.key, _pdfCurrency(e.value)]).toList(),
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                cellStyle: const pw.TextStyle(fontSize: 9),
+                cellAlignments: {1: pw.Alignment.centerRight},
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
+              ),
+          ],
+        ),
+      );
+
+      final Uint8List bytes = await document.save();
+      final String stamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final PublicSavedFile? saved = await PublicFileSaver().saveBytes(
+        bytes: bytes,
+        fileName: 'expense_report_$stamp.pdf',
+        mimeType: 'application/pdf',
+        subDir: 'Business Management Reports',
+      );
+
+      if (!mounted) return;
+      if (saved != null && saved.isSuccess) {
+        _showMessage('Expense report PDF saved successfully.');
+      } else {
+        _showMessage('Unable to save Expense Report PDF.', isError: true);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      _showMessage('Failed to generate PDF: $e', isError: true);
+    } finally {
+      if (mounted) {
+        setState(() => _downloadingPdf = false);
+      }
+    }
+  }
+
+  pw.Widget _pdfCell(String text, {bool bold = false}) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.all(6),
+      child: pw.Text(
+        text,
+        style: pw.TextStyle(
+          fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+        ),
+      ),
+    );
   }
 
   // ===========================================================================
@@ -421,19 +691,61 @@ class _ExpenseReportScreenState
         Theme.of(context);
 
     if (_loading) {
-      return const Center(
-        child: CircularProgressIndicator(),
+      return Scaffold(
+        appBar: AppBar(title: const Text('Expense Report')),
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     if (_errorMessage != null) {
-      return _buildErrorState(theme);
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Expense Report'),
+          leading: const BackButton(),
+          actions: [
+            IconButton(
+              tooltip: 'Refresh',
+              onPressed: _refreshing ? null : _refreshReport,
+              icon: const Icon(Icons.refresh_rounded),
+            ),
+          ],
+        ),
+        body: _buildErrorState(theme),
+      );
     }
 
-    final List<ExpenseModel> expenses =
-        _filteredExpenses;
+    final List<ExpenseModel> expenses = _filteredExpenses;
 
-    return RefreshIndicator(
+    return Scaffold(
+      appBar: AppBar(
+        leading: const BackButton(),
+        title: const Text('Expense Report'),
+        actions: [
+          IconButton(
+            tooltip: 'Download PDF',
+            onPressed: _downloadingPdf ? null : _downloadPdf,
+            icon: _downloadingPdf
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.picture_as_pdf_rounded),
+          ),
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: _refreshing ? null : _refreshReport,
+            icon: _refreshing
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh_rounded),
+          ),
+        ],
+      ),
+      body: RefreshIndicator(
       onRefresh: _refreshReport,
       child: LayoutBuilder(
         builder: (
@@ -509,6 +821,7 @@ class _ExpenseReportScreenState
           );
         },
       ),
+    ),
     );
   }
 
@@ -701,9 +1014,24 @@ class _ExpenseReportScreenState
               ),
             ),
           ),
+          ActionChip(
+            label: const Text('Today'),
+            onPressed: _setToday,
+          ),
+          ActionChip(
+            label: const Text('This Week'),
+            onPressed: _setThisWeek,
+          ),
+          ActionChip(
+            label: const Text('This Month'),
+            onPressed: _setThisMonth,
+          ),
+          ActionChip(
+            label: const Text('Last Month'),
+            onPressed: _setLastMonth,
+          ),
           FilledButton.icon(
-            onPressed:
-                _selectDateRange,
+            onPressed: _selectDateRange,
             icon: const Icon(
               Icons.calendar_month_rounded,
               size: 18,

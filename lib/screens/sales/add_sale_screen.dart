@@ -134,12 +134,6 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
         );
       }
 
-      if (business.id.trim().isEmpty) {
-        throw Exception(
-          'Business ID is missing.',
-        );
-      }
-
       final List<ProductModel> products =
           await _productRepository.getActiveProducts(
         business.id,
@@ -205,6 +199,10 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
         customerId: existingCustomerId,
       );
 
+      // IMPORTANT:
+      // An existing sale that already belongs to a customer must never
+      // silently become a walk-in sale just because that customer document
+      // is missing.
       if (customer == null) {
         throw Exception(
           'Customer for this sale could not be found. '
@@ -216,7 +214,8 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     final List<_SaleDraftItem> draftItems =
         <_SaleDraftItem>[];
 
-    for (final SaleItemModel saleItem in sale.items) {
+    for (final SaleItemModel saleItem
+        in sale.items) {
       final String productId =
           saleItem.productId.trim();
 
@@ -228,7 +227,8 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
 
       ProductModel? product;
 
-      for (final ProductModel candidate in products) {
+      for (final ProductModel candidate
+          in products) {
         if (candidate.id == productId) {
           product = candidate;
           break;
@@ -618,7 +618,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       setState(() {
         _selectedCustomer = customer;
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) {
         return;
       }
@@ -664,12 +664,16 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       return;
     }
 
-    final SaleModel? oldSale =
-        widget.sale;
-
     // -------------------------------------------------------------------------
     // CUSTOMER IS REQUIRED FOR EVERY NEW SALE
     // -------------------------------------------------------------------------
+    //
+    // Existing legacy walk-in sales are still allowed to remain without a
+    // customer while editing. This preserves backward compatibility.
+    //
+    // Every newly created sale, however, MUST belong to a customer.
+    final SaleModel? oldSale =
+        widget.sale;
 
     if (oldSale == null) {
       final CustomerModel? customer =
@@ -882,7 +886,6 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       // -----------------------------------------------------------------------
       // CREATE NEW SALE
       // -----------------------------------------------------------------------
-
       if (oldSale == null) {
         final SaleModel savedSale =
             await _saleRepository
@@ -896,7 +899,9 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
             <LedgerTransactionModel>[];
 
         try {
+          // ---------------------------------------------------------------
           // 1. DEDUCT STOCK
+          // ---------------------------------------------------------------
           await _saleStockService
               .processSaleStock(
             sale: savedSale,
@@ -904,10 +909,14 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
 
           stockProcessed = true;
 
+          // ---------------------------------------------------------------
           // 2. CREATE CUSTOMER LEDGER
+          // ---------------------------------------------------------------
           final String customerId =
               savedSale.customerId.trim();
 
+          // This should always be valid for a NEW sale because customer
+          // selection is mandatory above.
           if (customerId.isEmpty) {
             throw Exception(
               'Customer selection is required for a new sale.',
@@ -963,7 +972,9 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
             );
           }
         } catch (error) {
+          // ---------------------------------------------------------------
           // ROLLBACK NEW SALE
+          // ---------------------------------------------------------------
 
           for (final LedgerTransactionModel
               transaction
@@ -1012,14 +1023,21 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
       // -----------------------------------------------------------------------
       // EDIT EXISTING SALE
       // -----------------------------------------------------------------------
-
       else {
+        // The old sale's customer is validated during load.
+        // Selecting another customer or removing the customer is an explicit
+        // user action and is therefore allowed during edit.
+        //
+        // This also preserves legacy walk-in sales.
+
+        // Reverse old stock first.
         await _saleStockService
             .reverseSaleStock(
           sale: oldSale,
         );
 
         try {
+          // Apply new sale stock.
           await _saleStockService
               .processSaleStock(
             sale: sale,
@@ -1031,7 +1049,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
               sale: oldSale,
             );
           } catch (_) {
-            // Preserve original stock error.
+            // Preserve the original stock error.
           }
 
           rethrow;
@@ -1052,12 +1070,13 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
               sale: oldSale,
             );
           } catch (_) {
-            // Preserve original update error.
+            // Preserve the original update error.
           }
 
           rethrow;
         }
 
+        // Keep customer ledger synchronized with edited sale.
         final List<
                 LedgerTransactionModel>
             createdLedgerTransactions =
@@ -1072,6 +1091,8 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                 createdLedgerTransactions,
           );
         } catch (ledgerError) {
+          // Restore the previous sale state.
+
           for (final LedgerTransactionModel
               transaction
               in createdLedgerTransactions
@@ -1204,95 +1225,107 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
         oldSale.customerId.trim();
 
     if (oldCustomerId.isNotEmpty) {
-      final List<
-              LedgerTransactionModel>
-          oldTransactions =
-          await _ledgerService
-              .getCustomerTransactions(
+      final List<LedgerTransactionModel> oldTransactions =
+          await _ledgerService.getCustomerTransactions(
         businessId: businessId,
-        customerId:
-            oldCustomerId,
+        customerId: oldCustomerId,
       );
 
-      final List<
-              LedgerTransactionModel>
-          saleHistory =
-          oldTransactions
-              .where(
-        (transaction) {
-          final String type =
-              transaction.transactionType
-                  .trim()
-                  .toUpperCase();
+      // A sale can have either the current outstanding SALE entry, or a
+      // legacy/older SALE + SALE_PAYMENT pair. When editing, every active
+      // ledger component belonging to the old sale must be reversed first.
+      // Otherwise the old payment can remain in the customer's ledger and
+      // corrupt the balance after the edit (especially when the customer is
+      // changed or the paid amount changes).
+      final List<LedgerTransactionModel> saleHistory = oldTransactions
+          .where((LedgerTransactionModel transaction) {
+        final String type =
+            transaction.transactionType.trim().toUpperCase();
 
-          return (type == 'SALE' ||
-                  type ==
-                      'SALE_REVERSAL') &&
-              transaction.referenceId
-                      .trim() ==
-                  oldSale.id.trim();
-        },
-      ).toList();
+        return (type == LedgerService.saleType ||
+                type == LedgerService.saleReversalType ||
+                type == LedgerService.salePaymentType ||
+                type == LedgerService.salePaymentReversalType) &&
+            transaction.referenceId.trim() == oldSale.id.trim();
+      }).toList();
 
-      if (saleHistory.isNotEmpty &&
-          saleHistory.first.transactionType
-                  .trim()
-                  .toUpperCase() ==
-              'SALE') {
-        final LedgerTransactionModel
-            activeSaleTransaction =
-            saleHistory.first;
+      final List<LedgerTransactionModel> activeSalePayments =
+          saleHistory.where((LedgerTransactionModel transaction) {
+        return transaction.transactionType.trim().toUpperCase() ==
+                LedgerService.salePaymentType &&
+            transaction.amount.isFinite &&
+            transaction.amount > 0;
+      }).toList();
 
-        if (!activeSaleTransaction.amount.isFinite ||
-            activeSaleTransaction.amount <= 0) {
-          throw Exception(
-            'Existing sale ledger transaction has an invalid amount.',
-          );
-        }
+      final List<LedgerTransactionModel> activeSaleEntries =
+          saleHistory.where((LedgerTransactionModel transaction) {
+        return transaction.transactionType.trim().toUpperCase() ==
+                LedgerService.saleType &&
+            transaction.amount.isFinite &&
+            transaction.amount > 0;
+      }).toList();
 
+      // Reverse the payment component first. This mirrors the safe sale-delete
+      // order and prevents a temporary negative/incorrect customer balance.
+      for (final LedgerTransactionModel paymentTransaction
+          in activeSalePayments) {
         final double currentBalance =
-            await _ledgerService
-                .getCustomerBalance(
-          businessId:
-              businessId,
-          customerId:
-              oldCustomerId,
+            await _ledgerService.getCustomerBalance(
+          businessId: businessId,
+          customerId: oldCustomerId,
         );
 
-        final LedgerTransactionModel
-            reversal =
-            await _ledgerService
-                .createSaleReversal(
-          businessId:
-              businessId,
-          customerId:
-              oldCustomerId,
-          customerName:
-              oldSale.customerName.trim().isEmpty
-                  ? activeSaleTransaction
-                      .customerName
-                  : oldSale.customerName,
-          saleAmount:
-              activeSaleTransaction
-                  .amount,
-          balanceBefore:
-              currentBalance,
-          referenceId:
-              oldSale.id,
-          date:
-              DateTime.now(),
+        final LedgerTransactionModel reversal =
+            await _ledgerService.createSalePaymentReversal(
+          businessId: businessId,
+          customerId: oldCustomerId,
+          customerName: oldSale.customerName.trim().isEmpty
+              ? paymentTransaction.customerName
+              : oldSale.customerName,
+          paymentAmount: paymentTransaction.amount,
+          balanceBefore: currentBalance,
+          referenceId: oldSale.id,
+          date: DateTime.now(),
+          notes:
+              'Ledger payment reversal for edited sale ${oldSale.invoiceNumber}.',
+        );
+
+        createdTransactions.add(reversal);
+      }
+
+      // Reverse the active SALE entry. There should normally be one. If
+      // corrupted duplicate active entries exist, reversing all of them is
+      // safer than leaving an old receivable behind.
+      for (final LedgerTransactionModel saleTransaction
+          in activeSaleEntries) {
+        final double currentBalance =
+            await _ledgerService.getCustomerBalance(
+          businessId: businessId,
+          customerId: oldCustomerId,
+        );
+
+        final LedgerTransactionModel reversal =
+            await _ledgerService.createSaleReversal(
+          businessId: businessId,
+          customerId: oldCustomerId,
+          customerName: oldSale.customerName.trim().isEmpty
+              ? saleTransaction.customerName
+              : oldSale.customerName,
+          saleAmount: saleTransaction.amount,
+          balanceBefore: currentBalance,
+          referenceId: oldSale.id,
+          date: DateTime.now(),
           notes:
               'Ledger reversal for edited sale ${oldSale.invoiceNumber}.',
         );
 
-        createdTransactions.add(
-          reversal,
-        );
+        createdTransactions.add(reversal);
       }
     }
 
+    // -------------------------------------------------------------------------
     // CREATE NEW ACTIVE SALE LEDGER
-
+    // -------------------------------------------------------------------------
     final String newCustomerId =
         updatedSale.customerId.trim();
 
@@ -1607,45 +1640,36 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
   // ===========================================================================
 
   @override
-  @override
-Widget build(BuildContext context) {
-  return Scaffold(
-    appBar: AppBar(
-      title: Text(
-        widget.isEditMode ? 'Edit Sale' : 'Add Sale',
+  Widget build(
+    BuildContext context,
+  ) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          widget.isEditMode
+              ? 'Edit Sale'
+              : 'Add Sale',
+        ),
       ),
-    ),
-    body: _loading
-        ? const Center(
-            child: CircularProgressIndicator(),
-          )
-        : _errorMessage != null
-            ? _buildErrorState()
-            : _buildContent(),
-    bottomNavigationBar:
-        _loading || _errorMessage != null
-            ? null
-            : _buildBottomBar(),
-  );
-}
-
-  Widget _buildBody() {
-    if (_loading) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
-    }
-
-    if (_errorMessage != null) {
-      return _buildErrorState();
-    }
-
-    return _buildContent();
+      body: _loading
+          ? const Center(
+              child:
+                  CircularProgressIndicator(),
+            )
+          : _errorMessage != null
+              ? _buildErrorState()
+              : _buildContent(),
+      bottomNavigationBar:
+          _loading ||
+                  _errorMessage != null
+              ? null
+              : _buildBottomBar(),
+    );
   }
 
   Widget _buildErrorState() {
     return Center(
-      child: SingleChildScrollView(
+      child: Padding(
         padding:
             const EdgeInsets.all(24),
         child: Column(
@@ -1673,10 +1697,7 @@ Widget build(BuildContext context) {
               height: 18,
             ),
             FilledButton.icon(
-              onPressed:
-                  _loading
-                      ? null
-                      : _loadData,
+              onPressed: _loadData,
               icon: const Icon(
                 Icons.refresh_rounded,
               ),
@@ -1690,48 +1711,46 @@ Widget build(BuildContext context) {
     );
   }
 
-  // ===========================================================================
-  // IMPORTANT BLANK-SCREEN FIX
-  //
-  // The ListView previously lived inside Center + ConstrainedBox without
-  // receiving an explicit finite height on Flutter Web.
-  //
-  // LayoutBuilder gives us the exact height available to the Scaffold body.
-  // SizedBox then gives ListView a bounded viewport.
-  // ===========================================================================
-
   Widget _buildContent() {
-  return SafeArea(
-    child: Align(
-      alignment: Alignment.topCenter,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(
-          maxWidth: 1200,
-        ),
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(
-            16,
-            16,
-            16,
-            120,
+    return SafeArea(
+      child: Center(
+        child: ConstrainedBox(
+          constraints:
+              const BoxConstraints(
+            maxWidth: 1200,
           ),
-          children: [
-            _buildCustomerCard(),
-            const SizedBox(height: 14),
-            _buildProductsCard(),
-            const SizedBox(height: 14),
-            _buildSummaryCard(),
-            const SizedBox(height: 14),
-            _buildPaymentCard(),
-            const SizedBox(height: 14),
-            _buildNotesCard(),
-            const SizedBox(height: 8),
-          ],
+          child: ListView(
+            padding:
+                const EdgeInsets.fromLTRB(
+              16,
+              16,
+              16,
+              120,
+            ),
+            children: [
+              _buildCustomerCard(),
+              const SizedBox(
+                height: 14,
+              ),
+              _buildProductsCard(),
+              const SizedBox(
+                height: 14,
+              ),
+              _buildSummaryCard(),
+              const SizedBox(
+                height: 14,
+              ),
+              _buildPaymentCard(),
+              const SizedBox(
+                height: 14,
+              ),
+              _buildNotesCard(),
+            ],
+          ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   Widget _buildCustomerCard() {
     final CustomerModel?
@@ -2408,85 +2427,95 @@ Widget build(BuildContext context) {
   }
 
   Widget _buildBottomBar() {
-  return SafeArea(
-    top: false,
-    child: SizedBox(
-      height: 76,
-      width: double.infinity,
+    return SafeArea(
       child: Container(
-        padding: const EdgeInsets.fromLTRB(
+        padding:
+            const EdgeInsets.fromLTRB(
           16,
-          10,
+          12,
           16,
-          10,
+          12,
         ),
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
+        decoration:
+            BoxDecoration(
+          color: Theme.of(context)
+              .scaffoldBackgroundColor,
           border: Border(
             top: BorderSide(
-              color: Theme.of(context).dividerColor,
+              color: Theme.of(context)
+                  .dividerColor,
             ),
           ),
         ),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(
-            maxWidth: 1200,
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'Total',
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodySmall,
-                    ),
-                    Text(
-                      _formatCurrency(_total),
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleLarge
-                          ?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 16),
-              FilledButton.icon(
-                onPressed: _saving ? null : _saveSale,
-                icon: _saving
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : const Icon(
-                        Icons.check_circle_outline_rounded,
+        child: Center(
+          child: ConstrainedBox(
+            constraints:
+                const BoxConstraints(
+              maxWidth: 1200,
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    mainAxisSize:
+                        MainAxisSize.min,
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Total',
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall,
                       ),
-                label: Text(
-                  _saving
-                      ? 'Saving...'
-                      : widget.isEditMode
-                          ? 'Update Sale'
-                          : 'Save Sale',
+                      Text(
+                        _formatCurrency(
+                          _total,
+                        ),
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleLarge
+                            ?.copyWith(
+                              fontWeight:
+                                  FontWeight.bold,
+                            ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                FilledButton.icon(
+                  onPressed:
+                      _saving
+                          ? null
+                          : _saveSale,
+                  icon: _saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child:
+                              CircularProgressIndicator(
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Icon(
+                          Icons
+                              .check_circle_outline_rounded,
+                        ),
+                  label: Text(
+                    _saving
+                        ? 'Saving...'
+                        : widget.isEditMode
+                            ? 'Update Sale'
+                            : 'Save Sale',
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   // ===========================================================================
   // HELPERS
@@ -2535,7 +2564,7 @@ Widget build(BuildContext context) {
                   ? AppColors.danger
                   : null,
           behavior:
-              SnackBarBehavior.fixed,
+              SnackBarBehavior.floating,
         ),
       );
   }

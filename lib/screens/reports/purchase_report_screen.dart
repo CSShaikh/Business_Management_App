@@ -1,7 +1,13 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:public_file_saver/public_file_saver.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../models/business_model.dart';
 import '../../models/purchase_model.dart';
 import '../../models/supplier_payment_model.dart';
 import '../../repositories/business_repository.dart';
@@ -34,6 +40,9 @@ class _PurchaseReportScreenState
 
   bool _loading = true;
   bool _refreshing = false;
+  bool _downloadingPdf = false;
+
+  BusinessModel? _business;
 
   String? _errorMessage;
 
@@ -106,6 +115,7 @@ class _PurchaseReportScreenState
       }
 
       setState(() {
+        _business = business;
         _allPurchases = purchases;
         _allSupplierPayments = supplierPayments;
         _loading = false;
@@ -195,6 +205,50 @@ class _PurchaseReportScreenState
       _startDate = null;
       _endDate = null;
     });
+  }
+
+  void _setDateRange(DateTime start, DateTime end) {
+    setState(() {
+      _startDate = DateTime(start.year, start.month, start.day);
+      _endDate = DateTime(
+        end.year,
+        end.month,
+        end.day,
+        23,
+        59,
+        59,
+        999,
+      );
+    });
+  }
+
+  void _setToday() {
+    final DateTime now = DateTime.now();
+    _setDateRange(now, now);
+  }
+
+  void _setThisWeek() {
+    final DateTime now = DateTime.now();
+    final DateTime start = now.subtract(
+      Duration(days: now.weekday - DateTime.monday),
+    );
+    _setDateRange(start, now);
+  }
+
+  void _setThisMonth() {
+    final DateTime now = DateTime.now();
+    _setDateRange(
+      DateTime(now.year, now.month, 1),
+      now,
+    );
+  }
+
+  void _setLastMonth() {
+    final DateTime now = DateTime.now();
+    _setDateRange(
+      DateTime(now.year, now.month - 1, 1),
+      DateTime(now.year, now.month, 0),
+    );
   }
 
   // ===========================================================================
@@ -684,147 +738,104 @@ class _PurchaseReportScreenState
   Widget build(
     BuildContext context,
   ) {
-    final ThemeData theme =
-        Theme.of(context);
+    final ThemeData theme = Theme.of(context);
 
-    if (_loading) {
-      return const Center(
-        child:
-            CircularProgressIndicator(),
-      );
-    }
+    return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
+      appBar: AppBar(
+        leading: IconButton(
+          tooltip: 'Back',
+          onPressed: () => Navigator.of(context).maybePop(),
+          icon: const Icon(Icons.arrow_back_rounded),
+        ),
+        title: const Text('Purchase Report'),
+        actions: [
+          IconButton(
+            tooltip: 'Download PDF',
+            onPressed: _loading || _downloadingPdf
+                ? null
+                : _downloadPdf,
+            icon: _downloadingPdf
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.picture_as_pdf_rounded),
+          ),
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: _refreshing ? null : _refreshReport,
+            icon: _refreshing
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh_rounded),
+          ),
+          const SizedBox(width: 4),
+        ],
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _errorMessage != null
+              ? _buildErrorState(theme)
+              : _buildPurchaseReportBody(theme),
+    );
+  }
 
-    if (_errorMessage != null) {
-      return _buildErrorState(
-        theme,
-      );
-    }
-
-    final List<PurchaseModel>
-        purchases =
-        _filteredPurchases;
-
-    final List<SupplierPaymentModel>
-        supplierPayments =
+  Widget _buildPurchaseReportBody(ThemeData theme) {
+    final List<PurchaseModel> purchases = _filteredPurchases;
+    final List<SupplierPaymentModel> supplierPayments =
         _filteredSupplierPayments;
 
     return RefreshIndicator(
       onRefresh: _refreshReport,
       child: LayoutBuilder(
-        builder: (
-          context,
-          constraints,
-        ) {
-          final bool isDesktop =
-              constraints.maxWidth >= 1000;
-
+        builder: (context, constraints) {
+          final bool isDesktop = constraints.maxWidth >= 1000;
           final bool isTablet =
-              constraints.maxWidth >= 650 &&
-                  constraints.maxWidth <
-                      1000;
+              constraints.maxWidth >= 650 && constraints.maxWidth < 1000;
 
           return SingleChildScrollView(
-            physics:
-                const AlwaysScrollableScrollPhysics(),
-            padding:
-                EdgeInsets.symmetric(
-              horizontal:
-                  isDesktop
-                      ? 28
-                      : isTablet
-                          ? 22
-                          : 16,
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.symmetric(
+              horizontal: isDesktop ? 28 : isTablet ? 22 : 16,
               vertical: 20,
             ),
             child: Center(
               child: ConstrainedBox(
-                constraints:
-                    const BoxConstraints(
-                  maxWidth: 1250,
-                ),
+                constraints: const BoxConstraints(maxWidth: 1250),
                 child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment
-                          .start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildHeader(
-                      theme,
-                      isDesktop,
-                    ),
-
-                    const SizedBox(
-                      height: 20,
-                    ),
-
-                    _buildDateFilter(
-                      theme,
-                    ),
-
-                    const SizedBox(
-                      height: 20,
-                    ),
-
+                    _buildHeader(theme, isDesktop),
+                    const SizedBox(height: 20),
+                    _buildDateFilter(theme),
+                    const SizedBox(height: 20),
                     _buildSummaryCards(
                       theme,
                       purchases,
                       supplierPayments,
                       isDesktop,
                     ),
-
-                    const SizedBox(
-                      height: 20,
-                    ),
-
-                    _buildPaymentStatus(
-                      theme,
-                      purchases,
-                    ),
-
-                    const SizedBox(
-                      height: 20,
-                    ),
-
-                    _buildSearchAndFilters(
-                      theme,
-                    ),
-
-                    const SizedBox(
-                      height: 20,
-                    ),
-
+                    const SizedBox(height: 20),
+                    _buildPaymentStatus(theme, purchases),
+                    const SizedBox(height: 20),
+                    _buildSearchAndFilters(theme),
+                    const SizedBox(height: 20),
                     _buildSupplierWiseSection(
                       theme,
                       purchases,
                       supplierPayments,
                     ),
-
-                    const SizedBox(
-                      height: 20,
-                    ),
-
-                    _buildProductWiseSection(
-                      theme,
-                      purchases,
-                    ),
-
-                    const SizedBox(
-                      height: 20,
-                    ),
-
-                    _buildPurchaseList(
-                      theme,
-                      purchases,
-                    ),
-
-                    const SizedBox(
-                      height: 20,
-                    ),
-
-                    _buildFooter(
-                      theme,
-                      purchases,
-                      supplierPayments,
-                    ),
+                    const SizedBox(height: 20),
+                    _buildProductWiseSection(theme, purchases),
+                    const SizedBox(height: 20),
+                    _buildPurchaseList(theme, purchases),
+                    const SizedBox(height: 20),
+                    _buildFooter(theme, purchases, supplierPayments),
                   ],
                 ),
               ),
@@ -966,30 +977,6 @@ class _PurchaseReportScreenState
             ),
           ),
 
-          if (isDesktop)
-            IconButton(
-              tooltip: 'Refresh',
-              onPressed:
-                  _refreshing
-                      ? null
-                      : _refreshReport,
-              icon: _refreshing
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child:
-                          CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color:
-                            Colors.white,
-                      ),
-                    )
-                  : const Icon(
-                      Icons.refresh_rounded,
-                      color:
-                          Colors.white,
-                    ),
-            ),
         ],
       ),
     );
@@ -1002,90 +989,78 @@ class _PurchaseReportScreenState
   Widget _buildDateFilter(
     ThemeData theme,
   ) {
-    final bool hasFilter =
-        _startDate != null &&
-            _endDate != null;
+    final bool hasFilter = _startDate != null && _endDate != null;
 
     return _ReportCard(
-      child: Wrap(
-        spacing: 10,
-        runSpacing: 10,
-        crossAxisAlignment:
-            WrapCrossAlignment.center,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(
-            Icons.date_range_rounded,
-            size: 21,
-          ),
-
-          Text(
-            'Report Period',
-            style:
-                theme.textTheme
-                    .titleMedium
-                    ?.copyWith(
-              fontWeight:
-                  FontWeight.w700,
-            ),
-          ),
-
-          Container(
-            padding:
-                const EdgeInsets
-                    .symmetric(
-              horizontal: 13,
-              vertical: 9,
-            ),
-            decoration:
-                BoxDecoration(
-              color: theme
-                  .colorScheme
-                  .surfaceContainerHighest,
-              borderRadius:
-                  BorderRadius.circular(
-                10,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.date_range_rounded,
+                  color: AppColors.primary,
+                  size: 21,
+                ),
               ),
-            ),
-            child: Text(
-              _dateRangeText(),
-              style:
-                  theme.textTheme
-                      .bodyMedium
-                      ?.copyWith(
-                fontWeight:
-                    FontWeight.w600,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Reporting Period',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      _dateRangeText(),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.65),
+                      ),
+                    ),
+                  ],
+                ),
               ),
+              if (hasFilter)
+                IconButton(
+                  tooltip: 'Clear date filter',
+                  onPressed: _clearDateFilter,
+                  icon: const Icon(Icons.clear_rounded),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _DatePresetButton(label: 'Today', onPressed: _setToday),
+              _DatePresetButton(label: 'This Week', onPressed: _setThisWeek),
+              _DatePresetButton(label: 'This Month', onPressed: _setThisMonth),
+              _DatePresetButton(label: 'Last Month', onPressed: _setLastMonth),
+              _DatePresetButton(label: 'All Dates', onPressed: _clearDateFilter),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _selectDateRange,
+              icon: const Icon(Icons.calendar_month_rounded),
+              label: Text(hasFilter ? 'Change Date Range' : 'Select Date Range'),
             ),
           ),
-
-          FilledButton.icon(
-            onPressed:
-                _selectDateRange,
-            icon:
-                const Icon(
-              Icons
-                  .calendar_month_rounded,
-              size: 18,
-            ),
-            label: Text(
-              hasFilter
-                  ? 'Change Period'
-                  : 'Select Period',
-            ),
-          ),
-
-          if (hasFilter)
-            OutlinedButton.icon(
-              onPressed:
-                  _clearDateFilter,
-              icon:
-                  const Icon(
-                Icons.clear_rounded,
-                size: 18,
-              ),
-              label:
-                  const Text('Clear'),
-            ),
         ],
       ),
     );
@@ -2082,6 +2057,323 @@ class _PurchaseReportScreenState
   }
 
   // ===========================================================================
+  // PDF DOWNLOAD
+  // ===========================================================================
+
+  String _pdfCurrency(double value) {
+    return 'Rs. ${NumberFormat('#,##0.00', 'en_IN').format(value)}';
+  }
+
+  String _pdfFileName() {
+    final String start = _startDate == null
+        ? 'all'
+        : DateFormat('yyyy-MM-dd').format(_startDate!);
+    final String end = _endDate == null
+        ? 'dates'
+        : DateFormat('yyyy-MM-dd').format(_endDate!);
+    return 'Purchase_Report_${start}_to_$end.pdf';
+  }
+
+  String _businessDetailsForPdf() {
+    final BusinessModel? business = _business;
+    if (business == null) return '';
+
+    final List<String> details = <String>[];
+    if (business.businessType.trim().isNotEmpty) {
+      details.add(business.businessType.trim());
+    }
+    if (business.address.trim().isNotEmpty) {
+      details.add(business.address.trim());
+    }
+    if (business.mobile.trim().isNotEmpty) {
+      details.add('Mobile: ${business.mobile.trim()}');
+    }
+    if (business.email.trim().isNotEmpty) {
+      details.add('Email: ${business.email.trim()}');
+    }
+    if (business.gstNumber.trim().isNotEmpty) {
+      details.add('GSTIN: ${business.gstNumber.trim()}');
+    }
+    return details.join(' | ');
+  }
+
+  Future<void> _downloadPdf() async {
+    if (_business == null || _downloadingPdf) return;
+
+    setState(() {
+      _downloadingPdf = true;
+    });
+
+    try {
+      final List<PurchaseModel> purchases = _filteredPurchases;
+      final List<SupplierPaymentModel> payments = _filteredSupplierPayments;
+      final pw.Document document = pw.Document();
+
+      final String businessName = _business!.businessName.trim().isEmpty
+          ? 'Business'
+          : _business!.businessName.trim();
+      final String businessDetails = _businessDetailsForPdf();
+
+      final pw.TextStyle titleStyle = pw.TextStyle(
+        fontSize: 18,
+        fontWeight: pw.FontWeight.bold,
+      );
+      final pw.TextStyle smallStyle = pw.TextStyle(
+        fontSize: 8,
+        color: PdfColors.grey700,
+      );
+
+      document.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(28),
+          header: (context) => pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                businessName,
+                style: pw.TextStyle(
+                  fontSize: 20,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              if (businessDetails.isNotEmpty) ...[
+                pw.SizedBox(height: 4),
+                pw.Text(businessDetails, style: smallStyle),
+              ],
+              pw.SizedBox(height: 7),
+              pw.Divider(),
+              pw.SizedBox(height: 5),
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text('Purchase Report', style: titleStyle),
+                  pw.Text(_dateRangeText(), style: smallStyle),
+                ],
+              ),
+              pw.SizedBox(height: 10),
+            ],
+          ),
+          footer: (context) => pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text('Business Management App', style: smallStyle),
+              pw.Text(
+                'Page ${context.pageNumber} of ${context.pagesCount}',
+                style: smallStyle,
+              ),
+            ],
+          ),
+          build: (context) => [
+            pw.Container(
+              padding: const pw.EdgeInsets.all(9),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.grey300),
+                borderRadius: pw.BorderRadius.circular(6),
+              ),
+              child: pw.Table(
+                columnWidths: const {
+                  0: pw.FlexColumnWidth(1),
+                  1: pw.FlexColumnWidth(1),
+                  2: pw.FlexColumnWidth(1),
+                  3: pw.FlexColumnWidth(1),
+                },
+                children: [
+                  pw.TableRow(
+                    children: [
+                      _pdfMetric('Total Purchases', _pdfCurrency(_totalPurchases(purchases))),
+                      _pdfMetric('Paid', _pdfCurrency(_totalPaid(purchases, payments))),
+                      _pdfMetric('Outstanding', _pdfCurrency(_totalOutstanding(purchases, payments))),
+                      _pdfMetric('Items Purchased', _number(_totalQuantity(purchases))),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 16),
+            pw.Text('Purchase Details', style: titleStyle),
+            pw.SizedBox(height: 8),
+            if (purchases.isEmpty)
+              pw.Text('No purchases available for the selected filters.', style: smallStyle)
+            else
+              pw.TableHelper.fromTextArray(
+                headers: const [
+                  'Date',
+                  'Purchase ID',
+                  'Supplier',
+                  'Total',
+                  'Paid',
+                  'Balance',
+                  'Status',
+                ],
+                data: purchases.map((purchase) {
+                  final double balance = purchase.total - purchase.paidAmount;
+                  return [
+                    _date(purchase.date),
+                    purchase.id,
+                    purchase.supplierName.trim().isEmpty
+                        ? 'Unknown Supplier'
+                        : purchase.supplierName,
+                    _pdfCurrency(purchase.total),
+                    _pdfCurrency(purchase.paidAmount),
+                    _pdfCurrency(balance > 0 ? balance : 0),
+                    purchase.paymentStatus,
+                  ];
+                }).toList(),
+                headerStyle: pw.TextStyle(
+                  fontSize: 7,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+                cellStyle: const pw.TextStyle(fontSize: 7),
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                border: pw.TableBorder.all(
+                  color: PdfColors.grey300,
+                  width: 0.5,
+                ),
+                cellPadding: const pw.EdgeInsets.symmetric(
+                  horizontal: 5,
+                  vertical: 5,
+                ),
+              ),
+            pw.SizedBox(height: 18),
+            pw.Text('Supplier-wise Purchases', style: titleStyle),
+            pw.SizedBox(height: 8),
+            pw.TableHelper.fromTextArray(
+              headers: const [
+                'Supplier',
+                'Invoices',
+                'Purchases',
+                'Paid',
+                'Outstanding',
+              ],
+              data: _supplierWisePurchases(purchases, payments).values.map((supplier) {
+                return [
+                  supplier.name,
+                  supplier.invoiceCount.toString(),
+                  _pdfCurrency(supplier.purchases),
+                  _pdfCurrency(supplier.paid),
+                  _pdfCurrency(supplier.outstanding),
+                ];
+              }).toList(),
+              headerStyle: pw.TextStyle(
+                fontSize: 7,
+                fontWeight: pw.FontWeight.bold,
+              ),
+              cellStyle: const pw.TextStyle(fontSize: 7),
+              headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+              border: pw.TableBorder.all(
+                color: PdfColors.grey300,
+                width: 0.5,
+              ),
+              cellPadding: const pw.EdgeInsets.symmetric(
+                horizontal: 5,
+                vertical: 5,
+              ),
+            ),
+            pw.SizedBox(height: 18),
+            pw.Text('Product-wise Purchases', style: titleStyle),
+            pw.SizedBox(height: 8),
+            pw.TableHelper.fromTextArray(
+              headers: const [
+                'Product',
+                'Quantity',
+                'Purchase Cost',
+                'Invoices',
+              ],
+              data: (_productWisePurchases(purchases).values.toList()
+                    ..sort((a, b) => b.amount.compareTo(a.amount)))
+                  .map((product) {
+                return [
+                  product.name,
+                  '${_number(product.quantity)} ${product.unit}'.trim(),
+                  _pdfCurrency(product.amount),
+                  product.invoiceCount.toString(),
+                ];
+              }).toList(),
+              headerStyle: pw.TextStyle(
+                fontSize: 7,
+                fontWeight: pw.FontWeight.bold,
+              ),
+              cellStyle: const pw.TextStyle(fontSize: 7),
+              headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+              border: pw.TableBorder.all(
+                color: PdfColors.grey300,
+                width: 0.5,
+              ),
+              cellPadding: const pw.EdgeInsets.symmetric(
+                horizontal: 5,
+                vertical: 5,
+              ),
+            ),
+          ],
+        ),
+      );
+
+      final Uint8List bytes = Uint8List.fromList(await document.save());
+
+      final PublicSavedFile? saved = await PublicFileSaver().saveBytes(
+        bytes: bytes,
+        fileName: _pdfFileName(),
+        mimeType: 'application/pdf',
+        subDir: 'Business Management Reports',
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            saved != null && saved.isSuccess
+                ? 'Purchase Report PDF saved successfully.'
+                : 'PDF save was cancelled or failed.',
+          ),
+          behavior: SnackBarBehavior.fixed,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unable to create Purchase Report PDF: $e'),
+          behavior: SnackBarBehavior.fixed,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _downloadingPdf = false;
+        });
+      }
+    }
+  }
+
+  pw.Widget _pdfMetric(String label, String value) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.all(5),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            label,
+            style: const pw.TextStyle(
+              fontSize: 7,
+              color: PdfColors.grey700,
+            ),
+          ),
+          pw.SizedBox(height: 3),
+          pw.Text(
+            value,
+            style: pw.TextStyle(
+              fontSize: 9,
+              fontWeight: pw.FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ===========================================================================
   // ERROR
   // ===========================================================================
 
@@ -2192,6 +2484,35 @@ class _PurchaseReportScreenState
 // =============================================================================
 // DATA CLASSES
 // =============================================================================
+
+// ===========================================================================
+// DATE PRESET BUTTON
+// ===========================================================================
+
+class _DatePresetButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onPressed;
+
+  const _DatePresetButton({
+    required this.label,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 10,
+        ),
+        visualDensity: VisualDensity.compact,
+      ),
+      child: Text(label),
+    );
+  }
+}
 
 class _SummaryItem {
   final String title;

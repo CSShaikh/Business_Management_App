@@ -267,6 +267,10 @@ class LedgerRepository extends BaseRepository {
       );
     }
 
+    // Only one Firestore filter is used here. The old combination of
+    // where(customerId) + orderBy(date) required a composite index.
+    // Sorting locally keeps the same newest-first behavior without requiring
+    // a manually-created Firestore index.
     final QuerySnapshot<Map<String, dynamic>>
         snapshot =
         await _ledger(
@@ -274,25 +278,32 @@ class LedgerRepository extends BaseRepository {
     ).where(
       'customerId',
       isEqualTo: normalizedCustomerId,
-    ).orderBy(
-      'date',
-      descending: true,
     ).get();
 
-    return snapshot.docs
-        .map(
-          (
-            QueryDocumentSnapshot<
-                Map<String, dynamic>> doc,
-          ) =>
-              _fromMap(
-            doc.id,
-            doc.data(),
-            fallbackBusinessId:
-                normalizedBusinessId,
-          ),
-        )
-        .toList();
+    final List<LedgerTransactionModel>
+        transactions =
+        snapshot.docs
+            .map(
+              (
+                QueryDocumentSnapshot<
+                    Map<String, dynamic>> doc,
+              ) =>
+                  _fromMap(
+                doc.id,
+                doc.data(),
+                fallbackBusinessId:
+                    normalizedBusinessId,
+              ),
+            )
+            .toList();
+
+    transactions.sort(
+      (LedgerTransactionModel a,
+          LedgerTransactionModel b) =>
+          b.date.compareTo(a.date),
+    );
+
+    return transactions;
   }
 
   Stream<List<LedgerTransactionModel>>
@@ -323,28 +334,35 @@ class LedgerRepository extends BaseRepository {
     ).where(
       'customerId',
       isEqualTo: normalizedCustomerId,
-    ).orderBy(
-      'date',
-      descending: true,
     ).snapshots().map(
       (
         QuerySnapshot<Map<String, dynamic>>
             snapshot,
       ) {
-        return snapshot.docs
-            .map(
-              (
-                QueryDocumentSnapshot<
-                    Map<String, dynamic>> doc,
-              ) =>
-                  _fromMap(
-                doc.id,
-                doc.data(),
-                fallbackBusinessId:
-                    normalizedBusinessId,
-              ),
-            )
-            .toList();
+        final List<LedgerTransactionModel>
+            transactions =
+            snapshot.docs
+                .map(
+                  (
+                    QueryDocumentSnapshot<
+                        Map<String, dynamic>> doc,
+                  ) =>
+                      _fromMap(
+                    doc.id,
+                    doc.data(),
+                    fallbackBusinessId:
+                        normalizedBusinessId,
+                  ),
+                )
+                .toList();
+
+        transactions.sort(
+          (LedgerTransactionModel a,
+              LedgerTransactionModel b) =>
+              b.date.compareTo(a.date),
+        );
+
+        return transactions;
       },
     );
   }
@@ -376,6 +394,7 @@ class LedgerRepository extends BaseRepository {
       );
     }
 
+    // Keep supplier ledger queries index-free as well.
     final QuerySnapshot<Map<String, dynamic>>
         snapshot =
         await _ledger(
@@ -383,25 +402,32 @@ class LedgerRepository extends BaseRepository {
     ).where(
       'supplierId',
       isEqualTo: normalizedSupplierId,
-    ).orderBy(
-      'date',
-      descending: true,
     ).get();
 
-    return snapshot.docs
-        .map(
-          (
-            QueryDocumentSnapshot<
-                Map<String, dynamic>> doc,
-          ) =>
-              _fromMap(
-            doc.id,
-            doc.data(),
-            fallbackBusinessId:
-                normalizedBusinessId,
-          ),
-        )
-        .toList();
+    final List<LedgerTransactionModel>
+        transactions =
+        snapshot.docs
+            .map(
+              (
+                QueryDocumentSnapshot<
+                    Map<String, dynamic>> doc,
+              ) =>
+                  _fromMap(
+                doc.id,
+                doc.data(),
+                fallbackBusinessId:
+                    normalizedBusinessId,
+              ),
+            )
+            .toList();
+
+    transactions.sort(
+      (LedgerTransactionModel a,
+          LedgerTransactionModel b) =>
+          b.date.compareTo(a.date),
+    );
+
+    return transactions;
   }
 
   Stream<List<LedgerTransactionModel>>
@@ -432,28 +458,35 @@ class LedgerRepository extends BaseRepository {
     ).where(
       'supplierId',
       isEqualTo: normalizedSupplierId,
-    ).orderBy(
-      'date',
-      descending: true,
     ).snapshots().map(
       (
         QuerySnapshot<Map<String, dynamic>>
             snapshot,
       ) {
-        return snapshot.docs
-            .map(
-              (
-                QueryDocumentSnapshot<
-                    Map<String, dynamic>> doc,
-              ) =>
-                  _fromMap(
-                doc.id,
-                doc.data(),
-                fallbackBusinessId:
-                    normalizedBusinessId,
-              ),
-            )
-            .toList();
+        final List<LedgerTransactionModel>
+            transactions =
+            snapshot.docs
+                .map(
+                  (
+                    QueryDocumentSnapshot<
+                        Map<String, dynamic>> doc,
+                  ) =>
+                      _fromMap(
+                    doc.id,
+                    doc.data(),
+                    fallbackBusinessId:
+                        normalizedBusinessId,
+                  ),
+                )
+                .toList();
+
+        transactions.sort(
+          (LedgerTransactionModel a,
+              LedgerTransactionModel b) =>
+              b.date.compareTo(a.date),
+        );
+
+        return transactions;
       },
     );
   }

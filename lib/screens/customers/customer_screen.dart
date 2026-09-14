@@ -1,14 +1,21 @@
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'dart:typed_data';
 
+import 'package:flutter/material.dart';
+import 'package:printing/printing.dart';
+import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
+
+import '../../core/services/customer_sales_bill_pdf_service.dart';
 import '../../core/services/customer_statement_pdf_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/business_model.dart';
 import '../../models/customer_model.dart';
 import '../../models/ledger_transaction_model.dart';
+import '../../models/sale_model.dart';
 import '../../providers/business_provider.dart';
 import '../../providers/customer_provider.dart';
 import '../../providers/ledger_provider.dart';
+import '../../repositories/sale_repository.dart';
 import 'add_customer_screen.dart';
 
 class CustomersScreen extends StatefulWidget {
@@ -24,6 +31,7 @@ class CustomersScreen extends StatefulWidget {
 class _CustomersScreenState extends State<CustomersScreen> {
   late final BusinessProvider _businessProvider;
   late final CustomerProvider _customerProvider;
+  late final SaleRepository _saleRepository;
 
   BusinessModel? _business;
 
@@ -31,19 +39,17 @@ class _CustomersScreenState extends State<CustomersScreen> {
   String? _businessError;
 
   String _searchQuery = '';
-  
-@override
-void initState() {
-  super.initState();
 
-  _businessProvider = context.read<BusinessProvider>();
-  _customerProvider = context.read<CustomerProvider>();
+  @override
+  void initState() {
+    super.initState();
 
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    if (!mounted) return;
+    _businessProvider = context.read<BusinessProvider>();
+    _customerProvider = context.read<CustomerProvider>();
+    _saleRepository = SaleRepository();
+
     _loadBusiness();
-  });
-}
+  }
 
   // ============================================================
   // BUSINESS + CUSTOMER INITIALIZATION
@@ -398,6 +404,18 @@ void initState() {
         customerId: customerId,
       );
 
+      // Fetch sales through the business-wide date query and filter locally.
+      // This avoids the customerId + date composite-index requirement.
+      final List<SaleModel> customerSales =
+          (await _saleRepository.getSales(
+        businessId: businessId,
+      ))
+              .where(
+                (SaleModel sale) =>
+                    sale.customerId.trim() == customerId,
+              )
+              .toList(growable: false);
+
       if (!mounted) {
         return;
       }
@@ -427,6 +445,7 @@ void initState() {
         business: business,
         customer: customer,
         transactions: transactions,
+        customerSales: customerSales,
       );
     } catch (_) {
       if (!mounted) {
@@ -450,6 +469,7 @@ void initState() {
     required BusinessModel business,
     required CustomerModel customer,
     required List<LedgerTransactionModel> transactions,
+    required List<SaleModel> customerSales,
   }) async {
     await showDialog<void>(
       context: context,
@@ -458,6 +478,15 @@ void initState() {
           business: business,
           customer: customer,
           transactions: transactions,
+          customerSales: customerSales,
+          onSendSalesBill: () async {
+            Navigator.of(dialogContext).pop();
+            await _sendCustomerSalesBill(
+              business: business,
+              customer: customer,
+              customerSales: customerSales,
+            );
+          },
           onPrint: () async {
             Navigator.of(dialogContext).pop();
 
@@ -552,6 +581,311 @@ void initState() {
   }
 
   // ============================================================
+  // DATE-TO-DATE CUSTOMER SALES BILL
+  // ============================================================
+
+  Future<void> _sendCustomerSalesBill({
+    required BusinessModel business,
+    required CustomerModel customer,
+    required List<SaleModel> customerSales,
+  }) async {
+    if (customerSales.isEmpty) {
+      _showMessage(
+        'No sales found for this customer.',
+        isError: true,
+      );
+      return;
+    }
+
+    final DateTimeRange? range =
+        await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+      initialDateRange: DateTimeRange(
+        start: DateTime(
+          DateTime.now().year,
+          DateTime.now().month,
+          1,
+        ),
+        end: DateTime(
+          DateTime.now().year,
+          DateTime.now().month,
+          DateTime.now().day,
+        ),
+      ),
+      helpText: 'Select customer bill period',
+      saveText: 'Continue',
+    );
+
+    if (range == null || !mounted) {
+      return;
+    }
+
+    final DateTime fromDate = DateTime(
+      range.start.year,
+      range.start.month,
+      range.start.day,
+    );
+
+    final DateTime toDate = DateTime(
+      range.end.year,
+      range.end.month,
+      range.end.day,
+    );
+
+    final DateTime endExclusive =
+        toDate.add(const Duration(days: 1));
+
+    final List<SaleModel> selectedSales =
+        customerSales.where((SaleModel sale) {
+      final DateTime date = sale.date.toLocal();
+      return !date.isBefore(fromDate) &&
+          date.isBefore(endExclusive);
+    }).toList(growable: false)
+          ..sort(
+            (SaleModel a, SaleModel b) =>
+                a.date.compareTo(b.date),
+          );
+
+    if (selectedSales.isEmpty) {
+      _showMessage(
+        'No sales found between ${_formatDate(fromDate)} and ${_formatDate(toDate)}.',
+        isError: true,
+      );
+      return;
+    }
+
+    final double total = selectedSales.fold<double>(
+      0,
+      (double value, SaleModel sale) => value + sale.total,
+    );
+    final double paid = selectedSales.fold<double>(
+      0,
+      (double value, SaleModel sale) => value + sale.paidAmount,
+    );
+    final double pending = selectedSales.fold<double>(
+      0,
+      (double value, SaleModel sale) => value + sale.pendingAmount,
+    );
+
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Send Customer Sales Bill'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                customer.name.trim().isEmpty
+                    ? 'Customer'
+                    : customer.name.trim(),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 17,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '${_formatDate(fromDate)} → ${_formatDate(toDate)}',
+              ),
+              const SizedBox(height: 12),
+              Text('Invoices: ${selectedSales.length}'),
+              const SizedBox(height: 4),
+              Text('Total Bill: ${_formatCurrency(total)}'),
+              const SizedBox(height: 4),
+              Text('Received: ${_formatCurrency(paid)}'),
+              const SizedBox(height: 4),
+              Text('Pending: ${_formatCurrency(pending)}'),
+              const SizedBox(height: 14),
+              const Text(
+                'Choose PDF or image to send to the customer.',
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () =>
+                  Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () async {
+                Navigator.of(dialogContext).pop();
+                await _shareCustomerSalesBillPdf(
+                  business: business,
+                  customer: customer,
+                  sales: selectedSales,
+                  fromDate: fromDate,
+                  toDate: toDate,
+                );
+              },
+              icon: const Icon(Icons.picture_as_pdf_outlined),
+              label: const Text('Send PDF'),
+            ),
+            FilledButton.icon(
+              onPressed: () async {
+                Navigator.of(dialogContext).pop();
+                await _shareCustomerSalesBillImage(
+                  business: business,
+                  customer: customer,
+                  sales: selectedSales,
+                  fromDate: fromDate,
+                  toDate: toDate,
+                );
+              },
+              icon: const Icon(Icons.image_outlined),
+              label: const Text('Send Image'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<Uint8List> _generateCustomerSalesBillPdf({
+    required BusinessModel business,
+    required CustomerModel customer,
+    required List<SaleModel> sales,
+    required DateTime fromDate,
+    required DateTime toDate,
+  }) {
+    return CustomerSalesBillPdfService.generateSalesBillPdf(
+      business: business,
+      customer: customer,
+      sales: sales,
+      fromDate: fromDate,
+      toDate: toDate,
+    );
+  }
+
+  Future<void> _shareCustomerSalesBillPdf({
+    required BusinessModel business,
+    required CustomerModel customer,
+    required List<SaleModel> sales,
+    required DateTime fromDate,
+    required DateTime toDate,
+  }) async {
+    try {
+      final Uint8List bytes =
+          await _generateCustomerSalesBillPdf(
+        business: business,
+        customer: customer,
+        sales: sales,
+        fromDate: fromDate,
+        toDate: toDate,
+      );
+
+      final String fileName =
+          'Customer_Sales_Bill_${_safeFileName(customer.name)}_${_dateForFile(fromDate)}_${_dateForFile(toDate)}.pdf';
+
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [
+            XFile.fromData(
+              bytes,
+              name: fileName,
+              mimeType: 'application/pdf',
+            ),
+          ],
+          fileNameOverrides: [fileName],
+          title: 'Customer Sales Bill',
+          text:
+              'Customer sales bill for ${customer.name.trim()} (${_formatDate(fromDate)} to ${_formatDate(toDate)}).',
+        ),
+      );
+
+      if (mounted) {
+        _showMessage(
+          'Customer sales bill PDF is ready to send.',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        _showMessage(
+          'Unable to create customer sales bill PDF: ${_cleanError(e)}',
+          isError: true,
+        );
+      }
+    }
+  }
+
+  Future<void> _shareCustomerSalesBillImage({
+    required BusinessModel business,
+    required CustomerModel customer,
+    required List<SaleModel> sales,
+    required DateTime fromDate,
+    required DateTime toDate,
+  }) async {
+    try {
+      final Uint8List pdfBytes =
+          await _generateCustomerSalesBillPdf(
+        business: business,
+        customer: customer,
+        sales: sales,
+        fromDate: fromDate,
+        toDate: toDate,
+      );
+
+      final List<XFile> images = <XFile>[];
+      int pageNumber = 0;
+
+      await for (final raster in Printing.raster(
+        pdfBytes,
+        dpi: 120,
+      )) {
+        pageNumber++;
+        final Uint8List pngBytes = await raster.toPng();
+        final String fileName =
+            'Customer_Sales_Bill_${_safeFileName(customer.name)}_${_dateForFile(fromDate)}_${_dateForFile(toDate)}_Page_$pageNumber.png';
+
+        images.add(
+          XFile.fromData(
+            pngBytes,
+            name: fileName,
+            mimeType: 'image/png',
+          ),
+        );
+      }
+
+      if (images.isEmpty) {
+        throw Exception('No bill image was generated.');
+      }
+
+      await SharePlus.instance.share(
+        ShareParams(
+          files: images,
+          fileNameOverrides: images
+              .map(
+                (XFile file) => file.name,
+              )
+              .toList(growable: false),
+          title: 'Customer Sales Bill Image',
+          text:
+              'Customer sales bill image for ${customer.name.trim()} (${_formatDate(fromDate)} to ${_formatDate(toDate)}).',
+        ),
+      );
+
+      if (mounted) {
+        _showMessage(
+          images.length == 1
+              ? 'Customer sales bill image is ready to send.'
+              : 'Customer sales bill images are ready to send.',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        _showMessage(
+          'Unable to create customer sales bill image: ${_cleanError(e)}',
+          isError: true,
+        );
+      }
+    }
+  }
+
+  // ============================================================
   // SEARCH
   // ============================================================
 
@@ -599,6 +933,32 @@ void initState() {
                 .contains(query);
       },
     ).toList();
+  }
+
+  // ============================================================
+  // ERROR CLEANUP
+  // ============================================================
+
+  String _cleanError(Object error) {
+    final String raw = error.toString().trim();
+
+    if (raw.isEmpty) {
+      return 'Something went wrong. Please try again.';
+    }
+
+    if (raw.startsWith('Exception: ')) {
+      return raw.substring('Exception: '.length).trim();
+    }
+
+    final int separator = raw.indexOf('] ');
+    if (separator >= 0 && separator + 2 < raw.length) {
+      final String message = raw.substring(separator + 2).trim();
+      if (message.isNotEmpty) {
+        return message;
+      }
+    }
+
+    return raw;
   }
 
   // ============================================================
@@ -1847,6 +2207,8 @@ class _CustomerStatementDialog extends StatelessWidget {
   final BusinessModel business;
   final CustomerModel customer;
   final List<LedgerTransactionModel> transactions;
+  final List<SaleModel> customerSales;
+  final Future<void> Function() onSendSalesBill;
   final Future<void> Function() onPrint;
   final Future<void> Function() onShare;
 
@@ -1854,6 +2216,8 @@ class _CustomerStatementDialog extends StatelessWidget {
     required this.business,
     required this.customer,
     required this.transactions,
+    required this.customerSales,
+    required this.onSendSalesBill,
     required this.onPrint,
     required this.onShare,
   });
@@ -1866,10 +2230,22 @@ class _CustomerStatementDialog extends StatelessWidget {
         Theme.of(context);
 
     final double totalSales =
-        _totalByType('SALE');
+        customerSales.isNotEmpty
+            ? customerSales.fold<double>(
+                0,
+                (double total, SaleModel sale) =>
+                    total + sale.total,
+              )
+            : _totalByType('SALE');
 
     final double totalPayments =
-        _totalByType('PAYMENT');
+        customerSales.isNotEmpty
+            ? customerSales.fold<double>(
+                0,
+                (double total, SaleModel sale) =>
+                    total + sale.paidAmount,
+              )
+            : _totalPayments();
 
     final double balance =
         transactions.isEmpty
@@ -2051,17 +2427,41 @@ class _CustomerStatementDialog extends StatelessWidget {
                     .reversed
                     .take(10)
                     .map(
-                  (transaction) =>
-                      _StatementTransactionTile(
-                    transaction:
-                        transaction,
-                  ),
+                  (transaction) {
+                    SaleModel? sale;
+
+                    if (transaction.transactionType
+                            .trim()
+                            .toUpperCase() ==
+                        'SALE') {
+                      for (final SaleModel item
+                          in customerSales) {
+                        if (item.id.trim() ==
+                            transaction.referenceId.trim()) {
+                          sale = item;
+                          break;
+                        }
+                      }
+                    }
+
+                    return _StatementTransactionTile(
+                      transaction: transaction,
+                      sale: sale,
+                    );
+                  },
                 ),
             ],
           ),
         ),
       ),
       actions: [
+        OutlinedButton.icon(
+          onPressed: () async {
+            await onSendSalesBill();
+          },
+          icon: const Icon(Icons.send_outlined),
+          label: const Text('Send Sales Bill'),
+        ),
         TextButton(
           onPressed: () {
             Navigator.of(context).pop();
@@ -2093,6 +2493,23 @@ class _CustomerStatementDialog extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  double _totalPayments() {
+    double total = 0;
+
+    for (final LedgerTransactionModel transaction
+        in transactions) {
+      final String type =
+          transaction.transactionType.trim().toUpperCase();
+
+      if (type == 'PAYMENT' ||
+          type == 'SALE_PAYMENT') {
+        total += transaction.amount;
+      }
+    }
+
+    return total;
   }
 
   double _totalByType(
@@ -2509,9 +2926,11 @@ class _StatementMetric
 class _StatementTransactionTile
     extends StatelessWidget {
   final LedgerTransactionModel transaction;
+  final SaleModel? sale;
 
   const _StatementTransactionTile({
     required this.transaction,
+    this.sale,
   });
 
   @override
@@ -2530,7 +2949,8 @@ class _StatementTransactionTile
         type == 'SALE';
 
     final bool isPayment =
-        type == 'PAYMENT';
+        type == 'PAYMENT' ||
+        type == 'SALE_PAYMENT';
 
     final Color color = isSale
         ? AppColors.primary
@@ -2541,14 +2961,30 @@ class _StatementTransactionTile
     final String label =
         _transactionLabel(type);
 
+    final String productSummary =
+        sale == null
+            ? ''
+            : sale!.items
+                .map(
+                  (SaleItemModel item) =>
+                      '${item.productName.trim()} × ${_formatQuantity(item.quantity)}',
+                )
+                .where(
+                  (String value) => value.trim().isNotEmpty,
+                )
+                .join(', ');
+
     final String description =
-        transaction.notes.trim().isNotEmpty
-            ? transaction.notes.trim()
-            : transaction.referenceId
-                    .trim()
-                    .isNotEmpty
-                ? 'Ref: ${transaction.referenceId.trim()}'
-                : label;
+        isSale && sale != null
+            ? 'Invoice: ${sale!.invoiceNumber.trim().isEmpty ? sale!.id : sale!.invoiceNumber.trim()}'
+                '${productSummary.isEmpty ? '' : ' • $productSummary'}'
+            : transaction.notes.trim().isNotEmpty
+                ? transaction.notes.trim()
+                : transaction.referenceId
+                        .trim()
+                        .isNotEmpty
+                    ? 'Ref: ${transaction.referenceId.trim()}'
+                    : label;
 
     return Container(
       margin:
@@ -2711,8 +3147,20 @@ String _transactionLabel(
     case 'SALE':
       return 'Sale';
 
+    case 'SALE_PAYMENT':
+      return 'Sale Payment';
+
+    case 'SALE_REVERSAL':
+      return 'Sale Reversal';
+
+    case 'SALE_PAYMENT_REVERSAL':
+      return 'Sale Payment Reversal';
+
     case 'PAYMENT':
       return 'Payment';
+
+    case 'PAYMENT_REVERSAL':
+      return 'Payment Reversal';
 
     case 'RETURN':
       return 'Return';
@@ -2728,6 +3176,34 @@ String _transactionLabel(
       return type[0].toUpperCase() +
           type.substring(1).toLowerCase();
   }
+}
+
+String _formatQuantity(double value) {
+  if (value == value.roundToDouble()) {
+    return value.toInt().toString();
+  }
+
+  return value.toStringAsFixed(2)
+      .replaceFirst(RegExp(r'0+$'), '')
+      .replaceFirst(RegExp(r'\.$'), '');
+}
+
+String _safeFileName(String value) {
+  final String normalized = value.trim().isEmpty
+      ? 'Customer'
+      : value.trim();
+
+  return normalized.replaceAll(
+    RegExp(r'[^a-zA-Z0-9_-]+'),
+    '_',
+  );
+}
+
+String _dateForFile(DateTime date) {
+  final DateTime local = date.toLocal();
+  return '${local.year.toString().padLeft(4, '0')}'
+      '${local.month.toString().padLeft(2, '0')}'
+      '${local.day.toString().padLeft(2, '0')}';
 }
 
 String _formatDate(

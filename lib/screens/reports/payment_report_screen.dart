@@ -1,5 +1,10 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:public_file_saver/public_file_saver.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../models/business_model.dart';
@@ -28,6 +33,9 @@ class _PaymentReportScreenState
 
   bool _loading = true;
   bool _refreshing = false;
+  bool _downloadingPdf = false;
+
+  BusinessModel? _business;
 
   String? _errorMessage;
   String _searchQuery = '';
@@ -97,6 +105,7 @@ class _PaymentReportScreenState
       if (!mounted) return;
 
       setState(() {
+        _business = business;
         _allPayments = payments;
         _loading = false;
         _refreshing = false;
@@ -170,6 +179,54 @@ class _PaymentReportScreenState
         999,
       );
     });
+  }
+
+  void _setDateRange(DateTime start, DateTime end) {
+    setState(() {
+      _startDate = DateTime(start.year, start.month, start.day);
+      _endDate = DateTime(
+        end.year,
+        end.month,
+        end.day,
+        23,
+        59,
+        59,
+        999,
+      );
+    });
+  }
+
+  void _setToday() {
+    final DateTime now = DateTime.now();
+    _setDateRange(now, now);
+  }
+
+  void _setThisWeek() {
+    final DateTime now = DateTime.now();
+    final int daysFromMonday = now.weekday - DateTime.monday;
+    final DateTime start = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(Duration(days: daysFromMonday));
+    _setDateRange(start, start.add(const Duration(days: 6)));
+  }
+
+  void _setThisMonth() {
+    final DateTime now = DateTime.now();
+    _setDateRange(
+      DateTime(now.year, now.month, 1),
+      DateTime(now.year, now.month + 1, 0),
+    );
+  }
+
+  void _setLastMonth() {
+    final DateTime now = DateTime.now();
+    final DateTime first = DateTime(now.year, now.month - 1, 1);
+    _setDateRange(
+      first,
+      DateTime(first.year, first.month + 1, 0),
+    );
   }
 
   void _clearDateFilter() {
@@ -403,99 +460,278 @@ class _PaymentReportScreenState
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme =
-        Theme.of(context);
+    final ThemeData theme = Theme.of(context);
 
+    Widget body;
     if (_loading) {
-      return const Center(
+      body = const Center(
         child: CircularProgressIndicator(),
+      );
+    } else if (_errorMessage != null) {
+      body = _buildErrorState(theme);
+    } else {
+      final List<PaymentModel> payments = _filteredPayments;
+
+      body = RefreshIndicator(
+        onRefresh: _refreshReport,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final bool isDesktop = constraints.maxWidth >= 1000;
+            final bool isTablet =
+                constraints.maxWidth >= 650 && constraints.maxWidth < 1000;
+
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: EdgeInsets.symmetric(
+                horizontal: isDesktop ? 28 : isTablet ? 22 : 16,
+                vertical: 20,
+              ),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1250),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildHeader(theme, isDesktop),
+                      const SizedBox(height: 20),
+                      _buildDateFilter(theme),
+                      const SizedBox(height: 20),
+                      _buildSummary(theme, payments, isDesktop),
+                      const SizedBox(height: 20),
+                      _buildFilters(theme),
+                      const SizedBox(height: 20),
+                      _buildMethodSection(theme, payments),
+                      const SizedBox(height: 20),
+                      _buildMonthlySection(theme, payments),
+                      const SizedBox(height: 20),
+                      _buildCustomerSection(theme, payments),
+                      const SizedBox(height: 20),
+                      _buildPaymentList(theme, payments),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
       );
     }
 
-    if (_errorMessage != null) {
-      return _buildErrorState(theme);
-    }
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          tooltip: 'Back',
+          onPressed: () => Navigator.of(context).maybePop(),
+          icon: const Icon(Icons.arrow_back_rounded),
+        ),
+        title: const Text('Payment Report'),
+        actions: [
+          IconButton(
+            tooltip: 'Download PDF',
+            onPressed: _loading || _downloadingPdf ? null : _downloadPdf,
+            icon: _downloadingPdf
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.picture_as_pdf_rounded),
+          ),
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: _refreshing ? null : _refreshReport,
+            icon: _refreshing
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh_rounded),
+          ),
+        ],
+      ),
+      body: body,
+    );
+  }
 
-    final List<PaymentModel> payments =
-        _filteredPayments;
+  // ===========================================================================
+  // PDF
+  // ===========================================================================
 
-    return RefreshIndicator(
-      onRefresh: _refreshReport,
-      child: LayoutBuilder(
-        builder: (
-          context,
-          constraints,
-        ) {
-          final bool isDesktop =
-              constraints.maxWidth >= 1000;
+  Future<void> _downloadPdf() async {
+    if (_downloadingPdf || _business == null) return;
 
-          final bool isTablet =
-              constraints.maxWidth >= 650 &&
-                  constraints.maxWidth < 1000;
+    setState(() {
+      _downloadingPdf = true;
+    });
 
-          return SingleChildScrollView(
-            physics:
-                const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.symmetric(
-              horizontal: isDesktop
-                  ? 28
-                  : isTablet
-                      ? 22
-                      : 16,
-              vertical: 20,
+    try {
+      final List<PaymentModel> payments = _filteredPayments;
+      final pw.Document document = pw.Document();
+      final BusinessModel business = _business!;
+      final String period = _dateRangeText();
+      final double total = _totalReceived(payments);
+      final double average = _averagePayment(payments);
+
+      document.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(28),
+          footer: (context) => pw.Align(
+            alignment: pw.Alignment.centerRight,
+            child: pw.Text(
+              'Page ${context.pageNumber} of ${context.pagesCount}',
+              style: const pw.TextStyle(fontSize: 8),
             ),
-            child: Center(
-              child: ConstrainedBox(
-                constraints:
-                    const BoxConstraints(
-                  maxWidth: 1250,
-                ),
-                child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-                    _buildHeader(
-                      theme,
-                      isDesktop,
-                    ),
-                    const SizedBox(height: 20),
-                    _buildDateFilter(theme),
-                    const SizedBox(height: 20),
-                    _buildSummary(
-                      theme,
-                      payments,
-                      isDesktop,
-                    ),
-                    const SizedBox(height: 20),
-                    _buildFilters(theme),
-                    const SizedBox(height: 20),
-                    _buildMethodSection(
-                      theme,
-                      payments,
-                    ),
-                    const SizedBox(height: 20),
-                    _buildMonthlySection(
-                      theme,
-                      payments,
-                    ),
-                    const SizedBox(height: 20),
-                    _buildCustomerSection(
-                      theme,
-                      payments,
-                    ),
-                    const SizedBox(height: 20),
-                    _buildPaymentList(
-                      theme,
-                      payments,
-                    ),
-                  ],
-                ),
+          ),
+          build: (context) => [
+            pw.Text(
+              business.businessName.trim().isEmpty
+                  ? 'Business Management App'
+                  : business.businessName,
+              style: pw.TextStyle(
+                fontSize: 20,
+                fontWeight: pw.FontWeight.bold,
               ),
             ),
-          );
-        },
-      ),
-    );
+            pw.SizedBox(height: 4),
+            if (business.businessType.trim().isNotEmpty)
+              pw.Text(business.businessType),
+            if (business.address.trim().isNotEmpty)
+              pw.Text(business.address),
+            if (business.mobile.trim().isNotEmpty)
+              pw.Text('Mobile: ${business.mobile}'),
+            if (business.email.trim().isNotEmpty)
+              pw.Text('Email: ${business.email}'),
+            if (business.gstNumber.trim().isNotEmpty)
+              pw.Text('GSTIN: ${business.gstNumber}'),
+            pw.SizedBox(height: 14),
+            pw.Text(
+              'PAYMENT REPORT',
+              style: pw.TextStyle(
+                fontSize: 16,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+            pw.SizedBox(height: 4),
+            pw.Text('Report Period: $period'),
+            pw.Text('Generated: ${_dateTime(DateTime.now())}'),
+            pw.SizedBox(height: 14),
+            pw.TableHelper.fromTextArray(
+              headers: const ['Summary', 'Value'],
+              data: [
+                ['Total Received', 'Rs. ${total.toStringAsFixed(2)}'],
+                ['Transactions', payments.length.toString()],
+                ['Average Payment', 'Rs. ${average.toStringAsFixed(2)}'],
+                ['Customers', _customerTotals(payments).length.toString()],
+              ],
+              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+              cellPadding: const pw.EdgeInsets.all(6),
+            ),
+            pw.SizedBox(height: 18),
+            pw.Text(
+              'Payment Method Breakdown',
+              style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 7),
+            pw.TableHelper.fromTextArray(
+              headers: const ['Method', 'Amount', 'Share'],
+              data: _methodTotals(payments).entries.map((entry) {
+                final double share = total > 0 ? entry.value / total * 100 : 0;
+                return [
+                  entry.key,
+                  'Rs. ${entry.value.toStringAsFixed(2)}',
+                  '${share.toStringAsFixed(1)}%',
+                ];
+              }).toList(),
+              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+              cellPadding: const pw.EdgeInsets.all(6),
+            ),
+            pw.SizedBox(height: 18),
+            pw.Text(
+              'Customer-wise Collections',
+              style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 7),
+            pw.TableHelper.fromTextArray(
+              headers: const ['Customer', 'Payments', 'Amount'],
+              data: (_customerTotals(payments).values.toList()
+                    ..sort((a, b) => b.amount.compareTo(a.amount)))
+                  .map((customer) => [
+                customer.customerName,
+                customer.paymentCount.toString(),
+                'Rs. ${customer.amount.toStringAsFixed(2)}',
+              ])
+                  .toList(),
+              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+              cellPadding: const pw.EdgeInsets.all(6),
+            ),
+            pw.SizedBox(height: 18),
+            pw.Text(
+              'Payment Transactions',
+              style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 7),
+            pw.TableHelper.fromTextArray(
+              headers: const ['Date', 'Customer', 'Method', 'Reference', 'Amount'],
+              data: payments.map((payment) => [
+                _date(payment.date),
+                payment.customerName.trim().isEmpty ? 'Unknown Customer' : payment.customerName,
+                payment.paymentMethod,
+                payment.transactionReference.trim().isEmpty ? '-' : payment.transactionReference,
+                'Rs. ${payment.amount.toStringAsFixed(2)}',
+              ]).toList(),
+              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+              cellPadding: const pw.EdgeInsets.all(5),
+              cellStyle: const pw.TextStyle(fontSize: 8),
+              headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
+            ),
+          ],
+        ),
+      );
+
+      final Uint8List bytes = Uint8List.fromList(await document.save());
+      final String fileName =
+          'payment_report_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.pdf';
+
+      final PublicSavedFile? saved = await PublicFileSaver().saveBytes(
+        bytes: bytes,
+        fileName: fileName,
+        mimeType: 'application/pdf',
+        subDir: 'Business Management Reports',
+      );
+
+      if (!mounted) return;
+
+      if (saved?.isSuccess == true) {
+        _showMessage('Payment report PDF saved successfully.');
+      } else {
+        _showMessage('Unable to save the Payment report PDF.', isError: true);
+      }
+    } catch (e) {
+      if (mounted) {
+        _showMessage('PDF download failed: $e', isError: true);
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _downloadingPdf = false;
+        });
+      }
+    }
+  }
+
+  void _showMessage(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: isError ? AppColors.danger : AppColors.success,
+        ),
+      );
   }
 
   // ===========================================================================
@@ -597,27 +833,6 @@ class _PaymentReportScreenState
               ],
             ),
           ),
-          if (isDesktop)
-            IconButton(
-              tooltip: 'Refresh',
-              onPressed: _refreshing
-                  ? null
-                  : _refreshReport,
-              icon: _refreshing
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child:
-                          CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(
-                      Icons.refresh_rounded,
-                      color: Colors.white,
-                    ),
-            ),
         ],
       ),
     );
@@ -630,76 +845,71 @@ class _PaymentReportScreenState
   Widget _buildDateFilter(
     ThemeData theme,
   ) {
-    final bool hasFilter =
-        _startDate != null &&
-            _endDate != null;
+    final bool hasFilter = _startDate != null && _endDate != null;
 
     return _ReportCard(
-      child: Wrap(
-        spacing: 10,
-        runSpacing: 10,
-        crossAxisAlignment:
-            WrapCrossAlignment.center,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(
-            Icons.date_range_rounded,
-            size: 21,
+          Row(
+            children: [
+              const Icon(Icons.date_range_rounded, size: 21),
+              const SizedBox(width: 9),
+              Text(
+                'Report Period',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Spacer(),
+              if (hasFilter)
+                IconButton(
+                  tooltip: 'Clear date filter',
+                  onPressed: _clearDateFilter,
+                  icon: const Icon(Icons.clear_rounded),
+                ),
+            ],
           ),
-          Text(
-            'Report Period',
-            style:
-                theme.textTheme.titleMedium
-                    ?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _datePresetChip('Today', _setToday),
+              _datePresetChip('This Week', _setThisWeek),
+              _datePresetChip('This Month', _setThisMonth),
+              _datePresetChip('Last Month', _setLastMonth),
+              FilledButton.icon(
+                onPressed: _selectDateRange,
+                icon: const Icon(Icons.calendar_month_rounded, size: 18),
+                label: Text(hasFilter ? 'Change Period' : 'Custom Range'),
+              ),
+            ],
           ),
+          const SizedBox(height: 12),
           Container(
-            padding:
-                const EdgeInsets.symmetric(
-              horizontal: 13,
-              vertical: 9,
-            ),
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
             decoration: BoxDecoration(
-              color: theme
-                  .colorScheme
-                  .surfaceContainerHighest,
-              borderRadius:
-                  BorderRadius.circular(10),
+              color: theme.colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
               _dateRangeText(),
-              style: theme
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(
-                fontWeight:
-                    FontWeight.w600,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
-          FilledButton.icon(
-            onPressed: _selectDateRange,
-            icon: const Icon(
-              Icons.calendar_month_rounded,
-              size: 18,
-            ),
-            label: Text(
-              hasFilter
-                  ? 'Change Period'
-                  : 'Select Period',
-            ),
-          ),
-          if (hasFilter)
-            OutlinedButton.icon(
-              onPressed: _clearDateFilter,
-              icon: const Icon(
-                Icons.clear_rounded,
-                size: 18,
-              ),
-              label: const Text('Clear'),
-            ),
         ],
       ),
+    );
+  }
+
+  Widget _datePresetChip(String label, VoidCallback onPressed) {
+    return OutlinedButton(
+      onPressed: onPressed,
+      child: Text(label),
     );
   }
 

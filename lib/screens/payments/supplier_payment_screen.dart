@@ -632,6 +632,9 @@ class _SupplierPaymentScreenState
             paymentAmount: payment.amount,
             supplierId: payment.supplierId.trim(),
             supplierName: payment.supplierName.trim(),
+            referenceId: payment.id.trim(),
+            notes:
+                'Reversal for supplier payment ${payment.id.trim()}.',
           );
         }
       }

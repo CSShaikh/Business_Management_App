@@ -8,6 +8,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   firebase_core
   firebase_storage
   printing
+  public_file_saver
   share_plus
   url_launcher_windows
 )

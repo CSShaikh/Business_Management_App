@@ -1,5 +1,10 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:public_file_saver/public_file_saver.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../models/business_model.dart';
@@ -34,6 +39,9 @@ class _CustomerReportScreenState
 
   final PaymentRepository _paymentRepository =
       PaymentRepository();
+
+  BusinessModel? _business;
+  bool _downloadingPdf = false;
 
   final TextEditingController _searchController =
       TextEditingController();
@@ -116,6 +124,8 @@ class _CustomerReportScreenState
       }
 
       setState(() {
+        _business = business;
+
         _customers =
             results[0] as List<CustomerModel>;
 
@@ -198,6 +208,36 @@ class _CustomerReportScreenState
       _startDate = null;
       _endDate = null;
     });
+  }
+
+  void _setDateRange(DateTime start, DateTime end) {
+    setState(() {
+      _startDate = DateTime(start.year, start.month, start.day);
+      _endDate = DateTime(end.year, end.month, end.day, 23, 59, 59, 999);
+    });
+  }
+
+  void _setToday() {
+    final now = DateTime.now();
+    _setDateRange(now, now);
+  }
+
+  void _setThisWeek() {
+    final now = DateTime.now();
+    final start = now.subtract(Duration(days: now.weekday - 1));
+    _setDateRange(start, now);
+  }
+
+  void _setThisMonth() {
+    final now = DateTime.now();
+    _setDateRange(DateTime(now.year, now.month, 1), now);
+  }
+
+  void _setLastMonth() {
+    final now = DateTime.now();
+    final first = DateTime(now.year, now.month - 1, 1);
+    final last = DateTime(now.year, now.month, 0);
+    _setDateRange(first, last);
   }
 
   // ===========================================================================
@@ -497,6 +537,124 @@ class _CustomerReportScreenState
   }
 
   // ===========================================================================
+  // PDF DOWNLOAD
+  // ===========================================================================
+
+  Future<void> _downloadPdf() async {
+    if (_downloadingPdf || _business == null) {
+      return;
+    }
+
+    setState(() => _downloadingPdf = true);
+
+    try {
+      final pw.Document document = pw.Document();
+      final List<CustomerModel> customers = _filteredCustomers;
+      final String period = _startDate != null && _endDate != null
+          ? '${_date(_startDate!)} - ${_date(_endDate!)}'
+          : 'All dates';
+
+      document.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(28),
+          header: (context) => pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                _business!.businessName,
+                style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
+              ),
+              if (_business!.businessType.trim().isNotEmpty)
+                pw.Text(_business!.businessType),
+              if (_business!.address.trim().isNotEmpty)
+                pw.Text(_business!.address),
+              pw.Text(
+                [
+                  if (_business!.mobile.trim().isNotEmpty) 'Mobile: ${_business!.mobile}',
+                  if (_business!.email.trim().isNotEmpty) 'Email: ${_business!.email}',
+                  if (_business!.gstNumber.trim().isNotEmpty) 'GSTIN: ${_business!.gstNumber}',
+                ].join('   '),
+              ),
+              pw.SizedBox(height: 8),
+              pw.Divider(),
+              pw.Text('Customer Report', style: pw.TextStyle(fontSize: 15, fontWeight: pw.FontWeight.bold)),
+              pw.Text('Period: $period'),
+              pw.SizedBox(height: 10),
+            ],
+          ),
+          footer: (context) => pw.Align(
+            alignment: pw.Alignment.centerRight,
+            child: pw.Text('Page ${context.pageNumber}'),
+          ),
+          build: (context) => [
+            pw.TableHelper.fromTextArray(
+              headers: const ['Metric', 'Value'],
+              data: [
+                ['Customers', '${customers.length}'],
+                ['Customer Sales', 'Rs. ${_totalSales.toStringAsFixed(2)}'],
+                ['Received', 'Rs. ${_totalReceived.toStringAsFixed(2)}'],
+                ['Outstanding', 'Rs. ${_totalOutstanding.toStringAsFixed(2)}'],
+                ['Profit', 'Rs. ${_totalProfit.toStringAsFixed(2)}'],
+                ['Collection Rate', '${_collectionRate.toStringAsFixed(1)}%'],
+              ],
+            ),
+            pw.SizedBox(height: 16),
+            pw.Text('Customer-wise Performance', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 6),
+            pw.TableHelper.fromTextArray(
+              headers: const ['Customer', 'Invoices', 'Sales', 'Received', 'Outstanding', 'Profit'],
+              data: customers.map((customer) => [
+                customer.name,
+                '${_customerInvoiceCount(customer)}',
+                'Rs. ${_customerSalesAmount(customer).toStringAsFixed(2)}',
+                'Rs. ${_customerReceivedAmount(customer).toStringAsFixed(2)}',
+                'Rs. ${_customerOutstandingAmount(customer).toStringAsFixed(2)}',
+                'Rs. ${_customerProfit(customer).toStringAsFixed(2)}',
+              ]).toList(),
+            ),
+          ],
+        ),
+      );
+
+      final Uint8List bytes = await document.save();
+      final String stamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final PublicSavedFile? saved = await PublicFileSaver().saveBytes(
+        bytes: bytes,
+        fileName: 'customer_report_$stamp.pdf',
+        mimeType: 'application/pdf',
+        subDir: 'Business Management Reports',
+      );
+
+      if (!mounted) return;
+      if (saved?.isSuccess == true) {
+        _showMessage('Customer report PDF saved successfully.');
+      } else {
+        _showMessage('Unable to save the PDF.', isError: true);
+      }
+    } catch (e) {
+      if (mounted) {
+        _showMessage('PDF download failed: $e', isError: true);
+      }
+    } finally {
+      if (mounted) setState(() => _downloadingPdf = false);
+    }
+  }
+
+  void _showMessage(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: isError ? AppColors.danger : AppColors.success,
+        ),
+      );
+  }
+
+  // ===========================================================================
   // FORMATTERS
   // ===========================================================================
 
@@ -533,15 +691,37 @@ class _CustomerReportScreenState
         Theme.of(context);
 
     if (_loading) {
-      return const Center(
-        child:
-            CircularProgressIndicator(),
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Customer Report'),
+          leading: IconButton(
+            tooltip: 'Back',
+            onPressed: () => Navigator.of(context).maybePop(),
+            icon: const Icon(Icons.arrow_back_rounded),
+          ),
+        ),
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     if (_errorMessage != null) {
-      return _buildErrorState(
-        theme,
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Customer Report'),
+          leading: IconButton(
+            tooltip: 'Back',
+            onPressed: () => Navigator.of(context).maybePop(),
+            icon: const Icon(Icons.arrow_back_rounded),
+          ),
+          actions: [
+            IconButton(
+              tooltip: 'Refresh',
+              onPressed: _refreshReport,
+              icon: const Icon(Icons.refresh_rounded),
+            ),
+          ],
+        ),
+        body: _buildErrorState(theme),
       );
     }
 
@@ -549,9 +729,34 @@ class _CustomerReportScreenState
         customers =
         _filteredCustomers;
 
-    return RefreshIndicator(
-      onRefresh: _refreshReport,
-      child: LayoutBuilder(
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Customer Report'),
+        leading: IconButton(
+          tooltip: 'Back',
+          onPressed: () => Navigator.of(context).maybePop(),
+          icon: const Icon(Icons.arrow_back_rounded),
+        ),
+        actions: [
+          IconButton(
+            tooltip: 'Download PDF',
+            onPressed: _downloadingPdf ? null : _downloadPdf,
+            icon: _downloadingPdf
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.picture_as_pdf_rounded),
+          ),
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: _refreshing ? null : _refreshReport,
+            icon: _refreshing
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.refresh_rounded),
+          ),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: _refreshReport,
+        child: LayoutBuilder(
         builder: (
           context,
           constraints,
@@ -631,6 +836,7 @@ class _CustomerReportScreenState
             ),
           );
         },
+      ),
       ),
     );
   }
@@ -1114,6 +1320,19 @@ class _CustomerReportScreenState
           const SizedBox(
             height: 14,
           ),
+
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ActionChip(label: const Text('Today'), onPressed: _setToday),
+              ActionChip(label: const Text('This Week'), onPressed: _setThisWeek),
+              ActionChip(label: const Text('This Month'), onPressed: _setThisMonth),
+              ActionChip(label: const Text('Last Month'), onPressed: _setLastMonth),
+            ],
+          ),
+
+          const SizedBox(height: 10),
 
           Wrap(
             spacing: 10,

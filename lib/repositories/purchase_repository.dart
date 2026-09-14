@@ -160,13 +160,9 @@ class PurchaseRepository extends BaseRepository {
           'supplierId',
           isEqualTo: supplierId,
         )
-        .orderBy(
-          'date',
-          descending: true,
-        )
         .get();
 
-    return snapshot.docs
+    final List<PurchaseModel> purchases = snapshot.docs
         .map(
           (doc) => _fromMap(
             doc.data(),
@@ -174,6 +170,12 @@ class PurchaseRepository extends BaseRepository {
           ),
         )
         .toList();
+
+    purchases.sort(
+      (a, b) => b.date.compareTo(a.date),
+    );
+
+    return purchases;
   }
 
   Stream<List<PurchaseModel>> watchSupplierPurchases({
@@ -187,20 +189,24 @@ class PurchaseRepository extends BaseRepository {
           'supplierId',
           isEqualTo: supplierId,
         )
-        .orderBy(
-          'date',
-          descending: true,
-        )
         .snapshots()
         .map(
-          (snapshot) => snapshot.docs
-              .map(
-                (doc) => _fromMap(
-                  doc.data(),
-                  doc.id,
-                ),
-              )
-              .toList(),
+          (snapshot) {
+            final List<PurchaseModel> purchases = snapshot.docs
+                .map(
+                  (doc) => _fromMap(
+                    doc.data(),
+                    doc.id,
+                  ),
+                )
+                .toList();
+
+            purchases.sort(
+              (a, b) => b.date.compareTo(a.date),
+            );
+
+            return purchases;
+          },
         );
   }
 

@@ -1,5 +1,10 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:public_file_saver/public_file_saver.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../models/business_model.dart';
@@ -39,7 +44,9 @@ class _ProfitReportScreenState
 
   bool _loading = true;
   bool _refreshing = false;
+  bool _downloadingPdf = false;
 
+  BusinessModel? _business;
   String? _errorMessage;
   String _searchQuery = '';
 
@@ -106,6 +113,7 @@ class _ProfitReportScreenState
       if (!mounted) return;
 
       setState(() {
+        _business = business;
         _allSales =
             results[0] as List<SaleModel>;
 
@@ -194,6 +202,52 @@ class _ProfitReportScreenState
       _startDate = null;
       _endDate = null;
     });
+  }
+
+  void _setDateRange(DateTime start, DateTime end) {
+    setState(() {
+      _startDate = DateTime(start.year, start.month, start.day);
+      _endDate = DateTime(
+        end.year,
+        end.month,
+        end.day,
+        23,
+        59,
+        59,
+        999,
+      );
+    });
+  }
+
+  void _setToday() {
+    final DateTime now = DateTime.now();
+    _setDateRange(now, now);
+  }
+
+  void _setThisWeek() {
+    final DateTime now = DateTime.now();
+    final int difference = now.weekday - DateTime.monday;
+    final DateTime start = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(Duration(days: difference));
+    _setDateRange(start, now);
+  }
+
+  void _setThisMonth() {
+    final DateTime now = DateTime.now();
+    _setDateRange(
+      DateTime(now.year, now.month, 1),
+      now,
+    );
+  }
+
+  void _setLastMonth() {
+    final DateTime now = DateTime.now();
+    final DateTime first = DateTime(now.year, now.month - 1, 1);
+    final DateTime last = DateTime(now.year, now.month, 0);
+    _setDateRange(first, last);
   }
 
   // ===========================================================================
@@ -632,8 +686,225 @@ class _ProfitReportScreenState
   // BUILD
   // ===========================================================================
 
+  Future<void> _downloadPdf() async {
+    if (_downloadingPdf) return;
+
+    setState(() => _downloadingPdf = true);
+
+    try {
+      final List<SaleModel> sales = _filteredSales;
+      final List<ExpenseModel> expenses = _filteredExpenses;
+      final double salesTotal = _totalSales(sales);
+      final double costTotal = _totalCost(sales);
+      final double grossProfit = _grossProfit(sales);
+      final double expenseTotal = _totalExpenses(expenses);
+      final double netProfit = grossProfit - expenseTotal;
+
+      final List<_MonthlyProfitData> monthly =
+          _monthlyProfitData(sales, expenses).values.toList()
+            ..sort((a, b) => DateTime(a.year, a.month)
+                .compareTo(DateTime(b.year, b.month)));
+      final List<_ProductProfitData> products =
+          _productProfitData(sales).values.toList()
+            ..sort((a, b) => b.profit.compareTo(a.profit));
+      final List<_CustomerProfitData> customers =
+          _customerProfitData(sales).values.toList()
+            ..sort((a, b) => b.profit.compareTo(a.profit));
+
+      final pw.Document document = pw.Document();
+      final String businessName =
+          _business?.businessName.trim().isNotEmpty == true
+              ? _business!.businessName.trim()
+              : 'Business Management App';
+
+      pw.Widget text(String value, {bool bold = false, double size = 9}) {
+        return pw.Text(
+          value,
+          style: pw.TextStyle(
+            fontSize: size,
+            fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+          ),
+        );
+      }
+
+      document.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(28),
+          header: (context) => pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              text(businessName, bold: true, size: 18),
+              if ((_business?.businessType ?? '').trim().isNotEmpty)
+                text(_business!.businessType.trim(), size: 9),
+              if ((_business?.address ?? '').trim().isNotEmpty)
+                text(_business!.address.trim(), size: 8),
+              if ((_business?.mobile ?? '').trim().isNotEmpty ||
+                  (_business?.email ?? '').trim().isNotEmpty)
+                text(
+                  '${_business?.mobile ?? ''}${(_business?.mobile ?? '').isNotEmpty && (_business?.email ?? '').isNotEmpty ? '  |  ' : ''}${_business?.email ?? ''}',
+                  size: 8,
+                ),
+              if ((_business?.gstNumber ?? '').trim().isNotEmpty)
+                text('GSTIN: ${_business!.gstNumber.trim()}', size: 8),
+              pw.SizedBox(height: 8),
+              pw.Divider(),
+              text('Profit & Loss Report', bold: true, size: 15),
+              text('Period: ${_dateRangeText()}', size: 9),
+              pw.SizedBox(height: 10),
+            ],
+          ),
+          footer: (context) => pw.Align(
+            alignment: pw.Alignment.centerRight,
+            child: text('Page ${context.pageNumber}', size: 8),
+          ),
+          build: (context) => [
+            pw.TableHelper.fromTextArray(
+              headers: const ['Metric', 'Amount'],
+              data: [
+                ['Total Sales', 'Rs. ${_pdfNumber(salesTotal)}'],
+                ['Cost of Goods Sold', 'Rs. ${_pdfNumber(costTotal)}'],
+                ['Gross Profit', 'Rs. ${_pdfNumber(grossProfit)}'],
+                ['Operating Expenses', 'Rs. ${_pdfNumber(expenseTotal)}'],
+                ['Net Profit', 'Rs. ${_pdfNumber(netProfit)}'],
+                ['Net Margin', '${_pdfNumber(_profitMargin(netProfit, salesTotal))}%'],
+              ],
+            ),
+            pw.SizedBox(height: 18),
+            text('Monthly Profit', bold: true, size: 12),
+            pw.SizedBox(height: 6),
+            pw.TableHelper.fromTextArray(
+              headers: const ['Month', 'Sales', 'Cost', 'Gross Profit', 'Expenses', 'Net Profit'],
+              data: monthly.map((m) => [
+                _monthName(m.year, m.month),
+                'Rs. ${_pdfNumber(m.sales)}',
+                'Rs. ${_pdfNumber(m.cost)}',
+                'Rs. ${_pdfNumber(m.grossProfit)}',
+                'Rs. ${_pdfNumber(m.expenses)}',
+                'Rs. ${_pdfNumber(m.grossProfit - m.expenses)}',
+              ]).toList(),
+            ),
+            pw.SizedBox(height: 18),
+            text('Product-wise Profit', bold: true, size: 12),
+            pw.SizedBox(height: 6),
+            pw.TableHelper.fromTextArray(
+              headers: const ['Product', 'Qty', 'Revenue', 'Cost', 'Profit'],
+              data: products.map((p) => [
+                p.productName,
+                _pdfNumber(p.quantity),
+                'Rs. ${_pdfNumber(p.revenue)}',
+                'Rs. ${_pdfNumber(p.cost)}',
+                'Rs. ${_pdfNumber(p.profit)}',
+              ]).toList(),
+            ),
+            pw.SizedBox(height: 18),
+            text('Customer-wise Profit', bold: true, size: 12),
+            pw.SizedBox(height: 6),
+            pw.TableHelper.fromTextArray(
+              headers: const ['Customer', 'Invoices', 'Sales', 'Cost', 'Profit'],
+              data: customers.map((c) => [
+                c.customerName,
+                c.invoiceCount.toString(),
+                'Rs. ${_pdfNumber(c.sales)}',
+                'Rs. ${_pdfNumber(c.cost)}',
+                'Rs. ${_pdfNumber(c.profit)}',
+              ]).toList(),
+            ),
+            pw.SizedBox(height: 18),
+            text('Expense Impact', bold: true, size: 12),
+            pw.SizedBox(height: 6),
+            pw.TableHelper.fromTextArray(
+              headers: const ['Date', 'Category', 'Amount', 'Payment'],
+              data: expenses.map((e) => [
+                _date(e.date),
+                e.category,
+                'Rs. ${_pdfNumber(e.amount)}',
+                e.paymentMethod,
+              ]).toList(),
+            ),
+          ],
+        ),
+      );
+
+      final Uint8List bytes = Uint8List.fromList(await document.save());
+      final String stamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final PublicSavedFile? saved = await PublicFileSaver().saveBytes(
+        bytes: bytes,
+        fileName: 'profit_report_$stamp.pdf',
+        mimeType: 'application/pdf',
+        subDir: 'Business Management Reports',
+      );
+
+      if (!mounted) return;
+      if (saved?.isSuccess == true) {
+        _showMessage('Profit report PDF saved successfully.');
+      } else {
+        _showMessage('Unable to save the Profit report PDF.', isError: true);
+      }
+    } catch (e) {
+      if (mounted) {
+        _showMessage('PDF download failed: $e', isError: true);
+      }
+    } finally {
+      if (mounted) setState(() => _downloadingPdf = false);
+    }
+  }
+
+  String _pdfNumber(double value) => value.toStringAsFixed(2);
+
+  void _showMessage(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: isError ? AppColors.danger : AppColors.success,
+        ),
+      );
+  }
+
   @override
   Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          tooltip: 'Back',
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => Navigator.of(context).maybePop(),
+        ),
+        title: const Text('Profit Report'),
+        actions: [
+          IconButton(
+            tooltip: 'Download PDF',
+            onPressed: _downloadingPdf || _loading ? null : _downloadPdf,
+            icon: _downloadingPdf
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.picture_as_pdf_rounded),
+          ),
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: _refreshing ? null : _refreshReport,
+            icon: _refreshing
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh_rounded),
+          ),
+        ],
+      ),
+      body: _buildProfitReportBody(context),
+    );
+  }
+
+  Widget _buildProfitReportBody(BuildContext context) {
     final ThemeData theme =
         Theme.of(context);
 
@@ -907,6 +1178,22 @@ class _ProfitReportScreenState
               fontWeight:
                   FontWeight.w700,
             ),
+          ),
+          ActionChip(
+            label: const Text('Today'),
+            onPressed: _setToday,
+          ),
+          ActionChip(
+            label: const Text('This Week'),
+            onPressed: _setThisWeek,
+          ),
+          ActionChip(
+            label: const Text('This Month'),
+            onPressed: _setThisMonth,
+          ),
+          ActionChip(
+            label: const Text('Last Month'),
+            onPressed: _setLastMonth,
           ),
           OutlinedButton.icon(
             onPressed: _selectDateRange,

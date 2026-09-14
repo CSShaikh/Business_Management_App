@@ -210,13 +210,9 @@ class PaymentRepository extends BaseRepository {
           'customerId',
           isEqualTo: normalizedCustomerId,
         )
-        .orderBy(
-          'date',
-          descending: true,
-        )
         .get();
 
-    return snapshot.docs
+    final payments = snapshot.docs
         .map(
           (doc) => _fromMap(
             doc.id,
@@ -226,6 +222,12 @@ class PaymentRepository extends BaseRepository {
           ),
         )
         .toList();
+
+    payments.sort(
+      (a, b) => b.date.compareTo(a.date),
+    );
+
+    return payments;
   }
 
   Stream<List<PaymentModel>> watchCustomerPayments({
@@ -257,22 +259,26 @@ class PaymentRepository extends BaseRepository {
           'customerId',
           isEqualTo: normalizedCustomerId,
         )
-        .orderBy(
-          'date',
-          descending: true,
-        )
         .snapshots()
         .map(
-          (snapshot) => snapshot.docs
-              .map(
-                (doc) => _fromMap(
-                  doc.id,
-                  doc.data(),
-                  fallbackBusinessId:
-                      normalizedBusinessId,
-                ),
-              )
-              .toList(),
+          (snapshot) {
+            final payments = snapshot.docs
+                .map(
+                  (doc) => _fromMap(
+                    doc.id,
+                    doc.data(),
+                    fallbackBusinessId:
+                        normalizedBusinessId,
+                  ),
+                )
+                .toList();
+
+            payments.sort(
+              (a, b) => b.date.compareTo(a.date),
+            );
+
+            return payments;
+          },
         );
   }
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/theme/app_colors.dart';
@@ -8,13 +9,17 @@ import '../../models/payment_model.dart';
 import '../../repositories/business_repository.dart';
 import '../../repositories/customer_repository.dart';
 import '../../repositories/payment_repository.dart';
+import '../../providers/payment_provider.dart';
 import '../../services/ledger/ledger_service.dart';
 import '../../services/payment/payment_ledger_service.dart';
 
 class AddPaymentScreen extends StatefulWidget {
   const AddPaymentScreen({
     super.key,
+    this.payment,
   });
+
+  final PaymentModel? payment;
 
   @override
   State<AddPaymentScreen> createState() =>
@@ -71,6 +76,8 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
   String _paymentMethod = 'Cash';
 
   bool _isLoading = true;
+
+  bool get _isEditing => widget.payment != null;
   bool _isSaving = false;
 
   String? _errorMessage;
@@ -132,6 +139,27 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
       setState(() {
         _business = business;
         _customers = customers;
+
+        final PaymentModel? existingPayment = widget.payment;
+        if (existingPayment != null) {
+          _amountController.text = existingPayment.amount.toStringAsFixed(2);
+          _referenceController.text = existingPayment.transactionReference;
+          _notesController.text = existingPayment.notes;
+          _paymentDate = existingPayment.date;
+          _paymentMethod = _paymentMethods.contains(existingPayment.paymentMethod)
+              ? existingPayment.paymentMethod
+              : 'Other';
+
+          CustomerModel? matchingCustomer;
+          for (final customer in customers) {
+            if (customer.id.trim() == existingPayment.customerId.trim()) {
+              matchingCustomer = customer;
+              break;
+            }
+          }
+          _selectedCustomer = matchingCustomer;
+        }
+
         _isLoading = false;
         _errorMessage = null;
 
@@ -267,76 +295,58 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
       final DateTime now =
           DateTime.now();
 
-      final PaymentModel payment =
-          PaymentModel(
-        id: '',
-        businessId:
-            business.id.trim(),
-        customerId:
-            customer.id.trim(),
-        customerName:
-            customer.name.trim(),
+      final PaymentModel payment = PaymentModel(
+        id: widget.payment?.id ?? '',
+        businessId: business.id.trim(),
+        customerId: customer.id.trim(),
+        customerName: customer.name.trim(),
         amount: amount,
         date: _paymentDate,
-        paymentMethod:
-            paymentMethod,
-        transactionReference:
-            _referenceController.text
-                .trim(),
-        notes:
-            _notesController.text
-                .trim(),
-        createdAt: now,
+        paymentMethod: paymentMethod,
+        transactionReference: _referenceController.text.trim(),
+        notes: _notesController.text.trim(),
+        createdAt: widget.payment?.createdAt ?? now,
       );
 
-      /*
-       * Step 1:
-       * Save the actual payment record first.
-       */
-      final PaymentModel createdPayment =
-          await _paymentRepository
-              .createPayment(
-        payment,
-      );
+      if (_isEditing) {
+        final PaymentProvider paymentProvider =
+            context.read<PaymentProvider>();
 
-      savedPayment = createdPayment;
+        final bool updated =
+            await paymentProvider.updatePayment(payment);
 
-      /*
-       * Step 2:
-       * Read the customer's current balance
-       * immediately before creating the ledger
-       * transaction.
-       */
-      final double balanceBefore =
-          await _ledgerService
-              .getCustomerBalance(
-        businessId:
-            business.id.trim(),
-        customerId:
-            customer.id.trim(),
-      );
+        if (!updated) {
+          throw StateError(
+            paymentProvider.errorMessage ??
+                'Unable to update payment safely.',
+          );
+        }
+      } else {
+        final PaymentModel createdPayment =
+            await _paymentRepository.createPayment(payment);
 
-      /*
-       * Step 3:
-       * Create the payment ledger entry through
-       * the dedicated PaymentLedgerService.
-       *
-       * This keeps payment-specific ledger
-       * business rules in one place.
-       */
-      await _paymentLedgerService
-          .createPaymentLedgerEntry(
-        payment: createdPayment,
-        balanceBefore:
-            balanceBefore,
-      );
+        savedPayment = createdPayment;
+
+        final double balanceBefore =
+            await _ledgerService.getCustomerBalance(
+          businessId: business.id.trim(),
+          customerId: customer.id.trim(),
+        );
+
+        await _paymentLedgerService.createPaymentLedgerEntry(
+          payment: createdPayment,
+          balanceBefore: balanceBefore,
+        );
+      }
 
       if (!mounted) {
         return;
       }
 
       _showMessage(
-        'Payment recorded and customer ledger updated successfully.',
+        _isEditing
+            ? 'Payment updated and customer ledger updated successfully.'
+            : 'Payment recorded and customer ledger updated successfully.',
       );
 
       Navigator.pop(
@@ -977,7 +987,7 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
                 CrossAxisAlignment.start,
             children: [
               Text(
-                'Add Payment',
+                _isEditing ? 'Edit Payment' : 'Add Payment',
                 style: Theme.of(context)
                     .textTheme
                     .headlineSmall
@@ -990,7 +1000,7 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
                 height: 3,
               ),
               Text(
-                'Record customer payment',
+                _isEditing ? 'Update customer payment' : 'Record customer payment',
                 style: Theme.of(context)
                     .textTheme
                     .bodySmall
@@ -1033,8 +1043,8 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
               ),
         label: Text(
           _isSaving
-              ? 'Saving Payment...'
-              : 'Save Payment',
+              ? (_isEditing ? 'Updating Payment...' : 'Saving Payment...')
+              : (_isEditing ? 'Update Payment' : 'Save Payment'),
         ),
       ),
     );
@@ -1288,8 +1298,8 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
   ) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Add Payment',
+        title: Text(
+          _isEditing ? 'Edit Payment' : 'Add Payment',
         ),
       ),
       body: SafeArea(
