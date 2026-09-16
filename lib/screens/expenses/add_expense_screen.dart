@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../../core/widgets/app_date_picker.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../models/business_model.dart';
@@ -196,9 +197,10 @@ class _AddExpenseScreenState
     final now = DateTime.now();
 
     final selectedDate =
-        await showDatePicker(
+        await AppDatePicker.showDatePicker(
       context: context,
-      initialDate: _expenseDate,
+      
+      initialEntryMode: DatePickerEntryMode.calendar,initialDate: _expenseDate,
       firstDate: DateTime(2020),
       lastDate: DateTime(
         now.year + 2,

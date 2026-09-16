@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import '../../core/widgets/app_date_picker.dart';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
@@ -16,31 +18,22 @@ import '../../repositories/product_repository.dart';
 import '../../repositories/sale_repository.dart';
 
 class ProfitReportScreen extends StatefulWidget {
-  const ProfitReportScreen({
-    super.key,
-  });
+  const ProfitReportScreen({super.key});
 
   @override
-  State<ProfitReportScreen> createState() =>
-      _ProfitReportScreenState();
+  State<ProfitReportScreen> createState() => _ProfitReportScreenState();
 }
 
-class _ProfitReportScreenState
-    extends State<ProfitReportScreen> {
-  final BusinessRepository _businessRepository =
-      BusinessRepository();
+class _ProfitReportScreenState extends State<ProfitReportScreen> {
+  final BusinessRepository _businessRepository = BusinessRepository();
 
-  final SaleRepository _saleRepository =
-      SaleRepository();
+  final SaleRepository _saleRepository = SaleRepository();
 
-  final ExpenseRepository _expenseRepository =
-      ExpenseRepository();
+  final ExpenseRepository _expenseRepository = ExpenseRepository();
 
-  final ProductRepository _productRepository =
-      ProductRepository();
+  final ProductRepository _productRepository = ProductRepository();
 
-  final TextEditingController _searchController =
-      TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
 
   bool _loading = true;
   bool _refreshing = false;
@@ -72,9 +65,7 @@ class _ProfitReportScreenState
   // LOAD REPORT
   // ===========================================================================
 
-  Future<void> _loadReport({
-    bool showLoader = true,
-  }) async {
+  Future<void> _loadReport({bool showLoader = true}) async {
     if (showLoader) {
       setState(() {
         _loading = true;
@@ -88,37 +79,26 @@ class _ProfitReportScreenState
     }
 
     try {
-      final BusinessModel? business =
-          await _businessRepository
-              .getBusinessForCurrentUser();
+      final BusinessModel? business = await _businessRepository
+          .getBusinessForCurrentUser();
 
       if (business == null) {
-        throw Exception(
-          'Business information is not available.',
-        );
+        throw Exception('Business information is not available.');
       }
 
       final results = await Future.wait([
-        _saleRepository.getSales(
-          businessId: business.id,
-        ),
-        _expenseRepository.getExpenses(
-          businessId: business.id,
-        ),
-        _productRepository.getProducts(
-          business.id,
-        ),
+        _saleRepository.getSales(businessId: business.id),
+        _expenseRepository.getExpenses(businessId: business.id),
+        _productRepository.getProducts(business.id),
       ]);
 
       if (!mounted) return;
 
       setState(() {
         _business = business;
-        _allSales =
-            results[0] as List<SaleModel>;
+        _allSales = results[0] as List<SaleModel>;
 
-        _allExpenses =
-            results[1] as List<ExpenseModel>;
+        _allExpenses = results[1] as List<ExpenseModel>;
 
         _loading = false;
         _refreshing = false;
@@ -136,9 +116,7 @@ class _ProfitReportScreenState
   }
 
   Future<void> _refreshReport() async {
-    await _loadReport(
-      showLoader: false,
-    );
+    await _loadReport(showLoader: false);
   }
 
   // ===========================================================================
@@ -148,30 +126,15 @@ class _ProfitReportScreenState
   Future<void> _selectDateRange() async {
     final DateTime now = DateTime.now();
 
-    final DateTimeRange? selected =
-        await showDateRangePicker(
+    final DateTimeRange? selected = await AppDatePicker.showDateRangePicker(
       context: context,
+
+      initialEntryMode: DatePickerEntryMode.calendar,
       firstDate: DateTime(2020),
-      lastDate: DateTime(
-        now.year + 2,
-        12,
-        31,
-      ),
-      initialDateRange:
-          _startDate != null &&
-                  _endDate != null
-              ? DateTimeRange(
-                  start: _startDate!,
-                  end: _endDate!,
-                )
-              : DateTimeRange(
-                  start: DateTime(
-                    now.year,
-                    now.month,
-                    1,
-                  ),
-                  end: now,
-                ),
+      lastDate: DateTime(now.year + 2, 12, 31),
+      initialDateRange: _startDate != null && _endDate != null
+          ? DateTimeRange(start: _startDate!, end: _endDate!)
+          : DateTimeRange(start: DateTime(now.year, now.month, 1), end: now),
       helpText: 'Select Profit Report Period',
       saveText: 'Apply',
     );
@@ -207,15 +170,7 @@ class _ProfitReportScreenState
   void _setDateRange(DateTime start, DateTime end) {
     setState(() {
       _startDate = DateTime(start.year, start.month, start.day);
-      _endDate = DateTime(
-        end.year,
-        end.month,
-        end.day,
-        23,
-        59,
-        59,
-        999,
-      );
+      _endDate = DateTime(end.year, end.month, end.day, 23, 59, 59, 999);
     });
   }
 
@@ -237,10 +192,7 @@ class _ProfitReportScreenState
 
   void _setThisMonth() {
     final DateTime now = DateTime.now();
-    _setDateRange(
-      DateTime(now.year, now.month, 1),
-      now,
-    );
+    _setDateRange(DateTime(now.year, now.month, 1), now);
   }
 
   void _setLastMonth() {
@@ -255,18 +207,14 @@ class _ProfitReportScreenState
   // ===========================================================================
 
   List<SaleModel> get _filteredSales {
-    final String query =
-        _searchQuery.trim().toLowerCase();
+    final String query = _searchQuery.trim().toLowerCase();
 
-    final List<SaleModel> result =
-        _allSales.where((sale) {
-      if (_startDate != null &&
-          sale.date.isBefore(_startDate!)) {
+    final List<SaleModel> result = _allSales.where((sale) {
+      if (_startDate != null && sale.date.isBefore(_startDate!)) {
         return false;
       }
 
-      if (_endDate != null &&
-          sale.date.isAfter(_endDate!)) {
+      if (_endDate != null && sale.date.isAfter(_endDate!)) {
         return false;
       }
 
@@ -274,25 +222,15 @@ class _ProfitReportScreenState
         return true;
       }
 
-      return sale.customerName
-              .toLowerCase()
-              .contains(query) ||
-          sale.invoiceNumber
-              .toLowerCase()
-              .contains(query) ||
-          sale.notes
-              .toLowerCase()
-              .contains(query) ||
+      return sale.customerName.toLowerCase().contains(query) ||
+          sale.invoiceNumber.toLowerCase().contains(query) ||
+          sale.notes.toLowerCase().contains(query) ||
           sale.items.any(
-            (item) => item.productName
-                .toLowerCase()
-                .contains(query),
+            (item) => item.productName.toLowerCase().contains(query),
           );
     }).toList();
 
-    result.sort(
-      (a, b) => b.date.compareTo(a.date),
-    );
+    result.sort((a, b) => b.date.compareTo(a.date));
 
     return result;
   }
@@ -303,13 +241,11 @@ class _ProfitReportScreenState
 
   List<ExpenseModel> get _filteredExpenses {
     return _allExpenses.where((expense) {
-      if (_startDate != null &&
-          expense.date.isBefore(_startDate!)) {
+      if (_startDate != null && expense.date.isBefore(_startDate!)) {
         return false;
       }
 
-      if (_endDate != null &&
-          expense.date.isAfter(_endDate!)) {
+      if (_endDate != null && expense.date.isAfter(_endDate!)) {
         return false;
       }
 
@@ -321,47 +257,32 @@ class _ProfitReportScreenState
   // SALES CALCULATIONS
   // ===========================================================================
 
-  double _totalSales(
-    List<SaleModel> sales,
-  ) {
-    return sales.fold(
-      0,
-      (sum, sale) => sum + sale.total,
-    );
+  double _totalSales(List<SaleModel> sales) {
+    return sales.fold(0, (sum, sale) => sum + sale.total);
   }
 
-  double _totalCost(
-    List<SaleModel> sales,
-  ) {
+  double _totalCost(List<SaleModel> sales) {
     double total = 0;
 
     for (final sale in sales) {
       for (final item in sale.items) {
-        total +=
-            item.quantity * item.costPrice;
+        total += item.quantity * item.costPrice;
       }
     }
 
     return total;
   }
 
-  double _grossProfit(
-    List<SaleModel> sales,
-  ) {
+  double _grossProfit(List<SaleModel> sales) {
     double profit = 0;
 
     for (final sale in sales) {
       double saleCost = 0;
 
       for (final item in sale.items) {
-        final double quantity = item.quantity.isFinite
-            ? item.quantity
-            : 0;
+        final double quantity = item.quantity.isFinite ? item.quantity : 0;
 
-        final double costPrice =
-            item.costPrice.isFinite
-                ? item.costPrice
-                : 0;
+        final double costPrice = item.costPrice.isFinite ? item.costPrice : 0;
 
         saleCost += quantity * costPrice;
       }
@@ -375,29 +296,17 @@ class _ProfitReportScreenState
     return profit;
   }
 
-  double _totalExpenses(
-    List<ExpenseModel> expenses,
-  ) {
-    return expenses.fold(
-      0,
-      (sum, expense) =>
-          sum + expense.amount,
-    );
+  double _totalExpenses(List<ExpenseModel> expenses) {
+    return expenses.fold(0, (sum, expense) => sum + expense.amount);
   }
 
-  double _profitMargin(
-    double netProfit,
-    double sales,
-  ) {
+  double _profitMargin(double netProfit, double sales) {
     if (sales <= 0) return 0;
 
     return (netProfit / sales) * 100;
   }
 
-  double _grossMargin(
-    double grossProfit,
-    double sales,
-  ) {
+  double _grossMargin(double grossProfit, double sales) {
     if (sales <= 0) return 0;
 
     return (grossProfit / sales) * 100;
@@ -407,77 +316,52 @@ class _ProfitReportScreenState
   // PRODUCT-WISE PROFIT
   // ===========================================================================
 
-  Map<String, _ProductProfitData>
-      _productProfitData(
-    List<SaleModel> sales,
-  ) {
-    final Map<String, _ProductProfitData>
-        result =
+  Map<String, _ProductProfitData> _productProfitData(List<SaleModel> sales) {
+    final Map<String, _ProductProfitData> result =
         <String, _ProductProfitData>{};
 
     for (final sale in sales) {
       for (final item in sale.items) {
-        final String productId =
-            item.productId;
+        final String productId = item.productId;
 
-        final String productName =
-            item.productName.trim().isEmpty
-                ? 'Unknown Product'
-                : item.productName;
+        final String productName = item.productName.trim().isEmpty
+            ? 'Unknown Product'
+            : item.productName;
 
-        final double itemRevenue =
-            item.quantity *
-                item.sellingRate;
+        final double itemRevenue = item.quantity * item.sellingRate;
 
-        final double cost =
-            item.quantity *
-                item.costPrice;
+        final double cost = item.quantity * item.costPrice;
 
         // Sale-level discount/tax is stored on SaleModel
         // rather than on individual SaleItemModel records.
         // Allocate that adjustment proportionally so the
         // product-wise profit reconciles with invoice-level
         // gross profit.
-        final double subtotal =
-            sale.subtotal;
+        final double subtotal = sale.subtotal;
 
-        final double saleAdjustment =
-            sale.total - subtotal;
+        final double saleAdjustment = sale.total - subtotal;
 
-        final double allocatedAdjustment =
-            subtotal > 0 &&
-                    subtotal.isFinite
-                ? saleAdjustment *
-                    (itemRevenue / subtotal)
-                : 0;
+        final double allocatedAdjustment = subtotal > 0 && subtotal.isFinite
+            ? saleAdjustment * (itemRevenue / subtotal)
+            : 0;
 
-        final double revenue =
-            itemRevenue +
-                allocatedAdjustment;
+        final double revenue = itemRevenue + allocatedAdjustment;
 
-        final double profit =
-            revenue - cost;
+        final double profit = revenue - cost;
 
         if (result.containsKey(productId)) {
-          final _ProductProfitData old =
-              result[productId]!;
+          final _ProductProfitData old = result[productId]!;
 
-          result[productId] =
-              _ProductProfitData(
+          result[productId] = _ProductProfitData(
             productId: productId,
             productName: productName,
-            quantity:
-                old.quantity + item.quantity,
-            revenue:
-                old.revenue + revenue,
-            cost:
-                old.cost + cost,
-            profit:
-                old.profit + profit,
+            quantity: old.quantity + item.quantity,
+            revenue: old.revenue + revenue,
+            cost: old.cost + cost,
+            profit: old.profit + profit,
           );
         } else {
-          result[productId] =
-              _ProductProfitData(
+          result[productId] = _ProductProfitData(
             productId: productId,
             productName: productName,
             quantity: item.quantity,
@@ -496,57 +380,39 @@ class _ProfitReportScreenState
   // CUSTOMER-WISE PROFIT
   // ===========================================================================
 
-  Map<String, _CustomerProfitData>
-      _customerProfitData(
-    List<SaleModel> sales,
-  ) {
-    final Map<String, _CustomerProfitData>
-        result =
+  Map<String, _CustomerProfitData> _customerProfitData(List<SaleModel> sales) {
+    final Map<String, _CustomerProfitData> result =
         <String, _CustomerProfitData>{};
 
     for (final sale in sales) {
       double saleCost = 0;
 
       for (final item in sale.items) {
-        saleCost +=
-            item.quantity *
-                item.costPrice;
+        saleCost += item.quantity * item.costPrice;
       }
 
-      final double profit =
-          sale.total - saleCost;
+      final double profit = sale.total - saleCost;
 
-      final String customerId =
-          sale.customerId.trim();
+      final String customerId = sale.customerId.trim();
 
-      final String customerName =
-          sale.customerName.trim().isEmpty
-              ? 'Walk-in Customer'
-              : sale.customerName;
+      final String customerName = sale.customerName.trim().isEmpty
+          ? 'Walk-in Customer'
+          : sale.customerName;
 
-      final String key = customerId.isEmpty
-          ? customerName
-          : customerId;
+      final String key = customerId.isEmpty ? customerName : customerId;
 
       if (result.containsKey(key)) {
-        final _CustomerProfitData old =
-            result[key]!;
+        final _CustomerProfitData old = result[key]!;
 
-        result[key] =
-            _CustomerProfitData(
+        result[key] = _CustomerProfitData(
           customerName: customerName,
-          sales:
-              old.sales + sale.total,
-          cost:
-              old.cost + saleCost,
-          profit:
-              old.profit + profit,
-          invoiceCount:
-              old.invoiceCount + 1,
+          sales: old.sales + sale.total,
+          cost: old.cost + saleCost,
+          profit: old.profit + profit,
+          invoiceCount: old.invoiceCount + 1,
         );
       } else {
-        result[key] =
-            _CustomerProfitData(
+        result[key] = _CustomerProfitData(
           customerName: customerName,
           sales: sale.total,
           cost: saleCost,
@@ -563,13 +429,11 @@ class _ProfitReportScreenState
   // MONTHLY PROFIT
   // ===========================================================================
 
-  Map<String, _MonthlyProfitData>
-      _monthlyProfitData(
+  Map<String, _MonthlyProfitData> _monthlyProfitData(
     List<SaleModel> sales,
     List<ExpenseModel> expenses,
   ) {
-    final Map<String, _MonthlyProfitData>
-        result =
+    final Map<String, _MonthlyProfitData> result =
         <String, _MonthlyProfitData>{};
 
     for (final sale in sales) {
@@ -579,33 +443,22 @@ class _ProfitReportScreenState
       double cost = 0;
 
       for (final item in sale.items) {
-        cost +=
-            item.quantity *
-                item.costPrice;
+        cost += item.quantity * item.costPrice;
       }
 
-      final double gross =
-          sale.total - cost;
+      final double gross = sale.total - cost;
 
       final _MonthlyProfitData old =
           result[key] ??
-              _MonthlyProfitData(
-                year: sale.date.year,
-                month: sale.date.month,
-              );
+          _MonthlyProfitData(year: sale.date.year, month: sale.date.month);
 
-      result[key] =
-          _MonthlyProfitData(
+      result[key] = _MonthlyProfitData(
         year: sale.date.year,
         month: sale.date.month,
-        sales:
-            old.sales + sale.total,
-        cost:
-            old.cost + cost,
-        grossProfit:
-            old.grossProfit + gross,
-        expenses:
-            old.expenses,
+        sales: old.sales + sale.total,
+        cost: old.cost + cost,
+        grossProfit: old.grossProfit + gross,
+        expenses: old.expenses,
       );
     }
 
@@ -615,22 +468,18 @@ class _ProfitReportScreenState
 
       final _MonthlyProfitData old =
           result[key] ??
-              _MonthlyProfitData(
-                year: expense.date.year,
-                month: expense.date.month,
-              );
-
-      result[key] =
           _MonthlyProfitData(
+            year: expense.date.year,
+            month: expense.date.month,
+          );
+
+      result[key] = _MonthlyProfitData(
         year: expense.date.year,
         month: expense.date.month,
         sales: old.sales,
         cost: old.cost,
-        grossProfit:
-            old.grossProfit,
-        expenses:
-            old.expenses +
-                expense.amount,
+        grossProfit: old.grossProfit,
+        expenses: old.expenses + expense.amount,
       );
     }
 
@@ -650,32 +499,19 @@ class _ProfitReportScreenState
   }
 
   String _number(double value) {
-    return NumberFormat(
-      '#,##0.##',
-      'en_IN',
-    ).format(value);
+    return NumberFormat('#,##0.##', 'en_IN').format(value);
   }
 
   String _date(DateTime date) {
-    return DateFormat(
-      'dd MMM yyyy',
-    ).format(date);
+    return DateFormat('dd MMM yyyy').format(date);
   }
 
-  String _monthName(
-    int year,
-    int month,
-  ) {
-    return DateFormat(
-      'MMM yyyy',
-    ).format(
-      DateTime(year, month),
-    );
+  String _monthName(int year, int month) {
+    return DateFormat('MMM yyyy').format(DateTime(year, month));
   }
 
   String _dateRangeText() {
-    if (_startDate == null ||
-        _endDate == null) {
+    if (_startDate == null || _endDate == null) {
       return 'Current Report Period';
     }
 
@@ -701,21 +537,22 @@ class _ProfitReportScreenState
       final double netProfit = grossProfit - expenseTotal;
 
       final List<_MonthlyProfitData> monthly =
-          _monthlyProfitData(sales, expenses).values.toList()
-            ..sort((a, b) => DateTime(a.year, a.month)
-                .compareTo(DateTime(b.year, b.month)));
-      final List<_ProductProfitData> products =
-          _productProfitData(sales).values.toList()
-            ..sort((a, b) => b.profit.compareTo(a.profit));
-      final List<_CustomerProfitData> customers =
-          _customerProfitData(sales).values.toList()
-            ..sort((a, b) => b.profit.compareTo(a.profit));
+          _monthlyProfitData(sales, expenses).values.toList()..sort(
+            (a, b) =>
+                DateTime(a.year, a.month).compareTo(DateTime(b.year, b.month)),
+          );
+      final List<_ProductProfitData> products = _productProfitData(
+        sales,
+      ).values.toList()..sort((a, b) => b.profit.compareTo(a.profit));
+      final List<_CustomerProfitData> customers = _customerProfitData(
+        sales,
+      ).values.toList()..sort((a, b) => b.profit.compareTo(a.profit));
 
       final pw.Document document = pw.Document();
       final String businessName =
           _business?.businessName.trim().isNotEmpty == true
-              ? _business!.businessName.trim()
-              : 'Business Management App';
+          ? _business!.businessName.trim()
+          : 'Business Management App';
 
       pw.Widget text(String value, {bool bold = false, double size = 9}) {
         return pw.Text(
@@ -767,60 +604,92 @@ class _ProfitReportScreenState
                 ['Gross Profit', 'Rs. ${_pdfNumber(grossProfit)}'],
                 ['Operating Expenses', 'Rs. ${_pdfNumber(expenseTotal)}'],
                 ['Net Profit', 'Rs. ${_pdfNumber(netProfit)}'],
-                ['Net Margin', '${_pdfNumber(_profitMargin(netProfit, salesTotal))}%'],
+                [
+                  'Net Margin',
+                  '${_pdfNumber(_profitMargin(netProfit, salesTotal))}%',
+                ],
               ],
             ),
             pw.SizedBox(height: 18),
             text('Monthly Profit', bold: true, size: 12),
             pw.SizedBox(height: 6),
             pw.TableHelper.fromTextArray(
-              headers: const ['Month', 'Sales', 'Cost', 'Gross Profit', 'Expenses', 'Net Profit'],
-              data: monthly.map((m) => [
-                _monthName(m.year, m.month),
-                'Rs. ${_pdfNumber(m.sales)}',
-                'Rs. ${_pdfNumber(m.cost)}',
-                'Rs. ${_pdfNumber(m.grossProfit)}',
-                'Rs. ${_pdfNumber(m.expenses)}',
-                'Rs. ${_pdfNumber(m.grossProfit - m.expenses)}',
-              ]).toList(),
+              headers: const [
+                'Month',
+                'Sales',
+                'Cost',
+                'Gross Profit',
+                'Expenses',
+                'Net Profit',
+              ],
+              data: monthly
+                  .map(
+                    (m) => [
+                      _monthName(m.year, m.month),
+                      'Rs. ${_pdfNumber(m.sales)}',
+                      'Rs. ${_pdfNumber(m.cost)}',
+                      'Rs. ${_pdfNumber(m.grossProfit)}',
+                      'Rs. ${_pdfNumber(m.expenses)}',
+                      'Rs. ${_pdfNumber(m.grossProfit - m.expenses)}',
+                    ],
+                  )
+                  .toList(),
             ),
             pw.SizedBox(height: 18),
             text('Product-wise Profit', bold: true, size: 12),
             pw.SizedBox(height: 6),
             pw.TableHelper.fromTextArray(
               headers: const ['Product', 'Qty', 'Revenue', 'Cost', 'Profit'],
-              data: products.map((p) => [
-                p.productName,
-                _pdfNumber(p.quantity),
-                'Rs. ${_pdfNumber(p.revenue)}',
-                'Rs. ${_pdfNumber(p.cost)}',
-                'Rs. ${_pdfNumber(p.profit)}',
-              ]).toList(),
+              data: products
+                  .map(
+                    (p) => [
+                      p.productName,
+                      _pdfNumber(p.quantity),
+                      'Rs. ${_pdfNumber(p.revenue)}',
+                      'Rs. ${_pdfNumber(p.cost)}',
+                      'Rs. ${_pdfNumber(p.profit)}',
+                    ],
+                  )
+                  .toList(),
             ),
             pw.SizedBox(height: 18),
             text('Customer-wise Profit', bold: true, size: 12),
             pw.SizedBox(height: 6),
             pw.TableHelper.fromTextArray(
-              headers: const ['Customer', 'Invoices', 'Sales', 'Cost', 'Profit'],
-              data: customers.map((c) => [
-                c.customerName,
-                c.invoiceCount.toString(),
-                'Rs. ${_pdfNumber(c.sales)}',
-                'Rs. ${_pdfNumber(c.cost)}',
-                'Rs. ${_pdfNumber(c.profit)}',
-              ]).toList(),
+              headers: const [
+                'Customer',
+                'Invoices',
+                'Sales',
+                'Cost',
+                'Profit',
+              ],
+              data: customers
+                  .map(
+                    (c) => [
+                      c.customerName,
+                      c.invoiceCount.toString(),
+                      'Rs. ${_pdfNumber(c.sales)}',
+                      'Rs. ${_pdfNumber(c.cost)}',
+                      'Rs. ${_pdfNumber(c.profit)}',
+                    ],
+                  )
+                  .toList(),
             ),
             pw.SizedBox(height: 18),
             text('Expense Impact', bold: true, size: 12),
             pw.SizedBox(height: 6),
             pw.TableHelper.fromTextArray(
               headers: const ['Date', 'Category', 'Amount', 'Payment'],
-              data: expenses.map((e) => [
-                _date(e.date),
-                e.category,
-                'Rs. ${_pdfNumber(e.amount)}',
-                e.paymentMethod,
-              ]).toList(),
+              data: expenses
+                  .map(
+                    (e) => [
+                      _date(e.date),
+                      e.category,
+                      'Rs. ${_pdfNumber(e.amount)}',
+                      e.paymentMethod,
+                    ],
+                  )
+                  .toList(),
             ),
           ],
         ),
@@ -905,103 +774,62 @@ class _ProfitReportScreenState
   }
 
   Widget _buildProfitReportBody(BuildContext context) {
-    final ThemeData theme =
-        Theme.of(context);
+    final ThemeData theme = Theme.of(context);
 
     if (_loading) {
-      return const Center(
-        child:
-            CircularProgressIndicator(),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
     if (_errorMessage != null) {
       return _buildErrorState(theme);
     }
 
-    final List<SaleModel> sales =
-        _filteredSales;
+    final List<SaleModel> sales = _filteredSales;
 
-    final List<ExpenseModel> expenses =
-        _filteredExpenses;
+    final List<ExpenseModel> expenses = _filteredExpenses;
 
     return RefreshIndicator(
       onRefresh: _refreshReport,
       child: LayoutBuilder(
-        builder: (
-          context,
-          constraints,
-        ) {
-          final bool isDesktop =
-              constraints.maxWidth >= 1000;
+        builder: (context, constraints) {
+          final bool isDesktop = constraints.maxWidth >= 1000;
 
           final bool isTablet =
-              constraints.maxWidth >= 650 &&
-                  constraints.maxWidth < 1000;
+              constraints.maxWidth >= 650 && constraints.maxWidth < 1000;
 
           return SingleChildScrollView(
-            physics:
-                const AlwaysScrollableScrollPhysics(),
-            padding:
-                EdgeInsets.symmetric(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.symmetric(
               horizontal: isDesktop
                   ? 28
                   : isTablet
-                      ? 22
-                      : 16,
+                  ? 22
+                  : 16,
               vertical: 20,
             ),
             child: Center(
               child: ConstrainedBox(
-                constraints:
-                    const BoxConstraints(
-                  maxWidth: 1250,
-                ),
+                constraints: const BoxConstraints(maxWidth: 1250),
                 child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildHeader(
-                      theme,
-                      isDesktop,
-                    ),
+                    _buildHeader(theme, isDesktop),
                     const SizedBox(height: 20),
                     _buildDateFilter(theme),
                     const SizedBox(height: 20),
-                    _buildSummary(
-                      theme,
-                      sales,
-                      expenses,
-                      isDesktop,
-                    ),
+                    _buildSummary(theme, sales, expenses, isDesktop),
                     const SizedBox(height: 20),
                     _buildSearch(theme),
                     const SizedBox(height: 20),
-                    _buildMonthlySection(
-                      theme,
-                      sales,
-                      expenses,
-                    ),
+                    _buildMonthlySection(theme, sales, expenses),
                     const SizedBox(height: 20),
-                    _buildProductProfitSection(
-                      theme,
-                      sales,
-                    ),
+                    _buildProductProfitSection(theme, sales),
                     const SizedBox(height: 20),
-                    _buildCustomerProfitSection(
-                      theme,
-                      sales,
-                    ),
+                    _buildCustomerProfitSection(theme, sales),
                     const SizedBox(height: 20),
-                    _buildSalesProfitSection(
-                      theme,
-                      sales,
-                    ),
+                    _buildSalesProfitSection(theme, sales),
                     const SizedBox(height: 20),
-                    _buildExpenseImpactSection(
-                      theme,
-                      expenses,
-                    ),
+                    _buildExpenseImpactSection(theme, expenses),
                   ],
                 ),
               ),
@@ -1016,43 +844,27 @@ class _ProfitReportScreenState
   // HEADER
   // ===========================================================================
 
-  Widget _buildHeader(
-    ThemeData theme,
-    bool isDesktop,
-  ) {
+  Widget _buildHeader(ThemeData theme, bool isDesktop) {
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.all(
-        isDesktop ? 26 : 20,
-      ),
+      padding: EdgeInsets.all(isDesktop ? 26 : 20),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          colors: [
-            AppColors.success,
-            AppColors.primary,
-          ],
+          colors: [AppColors.success, AppColors.primary],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius:
-            BorderRadius.all(
-          Radius.circular(22),
-        ),
+        borderRadius: BorderRadius.all(Radius.circular(22)),
       ),
       child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
             width: 54,
             height: 54,
             decoration: BoxDecoration(
-              color:
-                  Colors.white.withValues(
-                alpha: 0.15,
-              ),
-              borderRadius:
-                  BorderRadius.circular(16),
+              color: Colors.white.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(16),
             ),
             child: const Icon(
               Icons.trending_up_rounded,
@@ -1063,56 +875,41 @@ class _ProfitReportScreenState
           const SizedBox(width: 16),
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
                   'Profit Report',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 24,
-                    fontWeight:
-                        FontWeight.w800,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
                 const SizedBox(height: 5),
                 Text(
                   'Analyze sales profitability, product margins and operating expenses.',
                   style: TextStyle(
-                    color:
-                        Colors.white.withValues(
-                      alpha: 0.82,
-                    ),
+                    color: Colors.white.withValues(alpha: 0.82),
                     fontSize: 13,
                     height: 1.4,
                   ),
                 ),
                 const SizedBox(height: 10),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(
+                  padding: const EdgeInsets.symmetric(
                     horizontal: 11,
                     vertical: 6,
                   ),
-                  decoration:
-                      BoxDecoration(
-                    color:
-                        Colors.white.withValues(
-                      alpha: 0.14,
-                    ),
-                    borderRadius:
-                        BorderRadius.circular(
-                      30,
-                    ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(30),
                   ),
                   child: Text(
                     _dateRangeText(),
-                    style:
-                        const TextStyle(
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 12,
-                      fontWeight:
-                          FontWeight.w600,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
@@ -1122,26 +919,17 @@ class _ProfitReportScreenState
           if (isDesktop)
             IconButton(
               tooltip: 'Refresh',
-              onPressed:
-                  _refreshing
-                      ? null
-                      : _refreshReport,
+              onPressed: _refreshing ? null : _refreshReport,
               icon: _refreshing
                   ? const SizedBox(
                       width: 20,
                       height: 20,
-                      child:
-                          CircularProgressIndicator(
+                      child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color:
-                            Colors.white,
+                        color: Colors.white,
                       ),
                     )
-                  : const Icon(
-                      Icons.refresh_rounded,
-                      color:
-                          Colors.white,
-                    ),
+                  : const Icon(Icons.refresh_rounded, color: Colors.white),
             ),
         ],
       ),
@@ -1152,54 +940,29 @@ class _ProfitReportScreenState
   // DATE FILTER
   // ===========================================================================
 
-  Widget _buildDateFilter(
-    ThemeData theme,
-  ) {
-    final bool hasFilter =
-        _startDate != null &&
-            _endDate != null;
+  Widget _buildDateFilter(ThemeData theme) {
+    final bool hasFilter = _startDate != null && _endDate != null;
 
     return _ReportCard(
       child: Wrap(
         spacing: 10,
         runSpacing: 10,
-        crossAxisAlignment:
-            WrapCrossAlignment.center,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          const Icon(
-            Icons.date_range_rounded,
-            size: 21,
-          ),
+          const Icon(Icons.date_range_rounded, size: 21),
           Text(
             'Report Period',
-            style:
-                theme.textTheme.titleMedium
-                    ?.copyWith(
-              fontWeight:
-                  FontWeight.w700,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
             ),
           ),
-          ActionChip(
-            label: const Text('Today'),
-            onPressed: _setToday,
-          ),
-          ActionChip(
-            label: const Text('This Week'),
-            onPressed: _setThisWeek,
-          ),
-          ActionChip(
-            label: const Text('This Month'),
-            onPressed: _setThisMonth,
-          ),
-          ActionChip(
-            label: const Text('Last Month'),
-            onPressed: _setLastMonth,
-          ),
+          ActionChip(label: const Text('Today'), onPressed: _setToday),
+          ActionChip(label: const Text('This Week'), onPressed: _setThisWeek),
+          ActionChip(label: const Text('This Month'), onPressed: _setThisMonth),
+          ActionChip(label: const Text('Last Month'), onPressed: _setLastMonth),
           OutlinedButton.icon(
             onPressed: _selectDateRange,
-            icon: const Icon(
-              Icons.calendar_month_rounded,
-            ),
+            icon: const Icon(Icons.calendar_month_rounded),
             label: Text(
               hasFilter
                   ? '${_date(_startDate!)} - ${_date(_endDate!)}'
@@ -1209,9 +972,7 @@ class _ProfitReportScreenState
           if (hasFilter)
             TextButton.icon(
               onPressed: _clearDateFilter,
-              icon: const Icon(
-                Icons.clear_rounded,
-              ),
+              icon: const Icon(Icons.clear_rounded),
               label: const Text('Clear'),
             ),
         ],
@@ -1223,9 +984,7 @@ class _ProfitReportScreenState
   // SEARCH
   // ===========================================================================
 
-  Widget _buildSearch(
-    ThemeData theme,
-  ) {
+  Widget _buildSearch(ThemeData theme) {
     return _ReportCard(
       child: TextField(
         controller: _searchController,
@@ -1234,36 +993,22 @@ class _ProfitReportScreenState
             _searchQuery = value;
           });
         },
-        decoration:
-            InputDecoration(
-          hintText:
-              'Search customer, invoice or product...',
-          prefixIcon:
-              const Icon(
-            Icons.search_rounded,
-          ),
-          suffixIcon:
-              _searchQuery.isEmpty
-                  ? null
-                  : IconButton(
-                      tooltip: 'Clear',
-                      onPressed: () {
-                        _searchController.clear();
-                        setState(() {
-                          _searchQuery = '';
-                        });
-                      },
-                      icon: const Icon(
-                        Icons.clear_rounded,
-                      ),
-                    ),
-          border:
-              OutlineInputBorder(
-            borderRadius:
-                BorderRadius.circular(
-              14,
-            ),
-          ),
+        decoration: InputDecoration(
+          hintText: 'Search customer, invoice or product...',
+          prefixIcon: const Icon(Icons.search_rounded),
+          suffixIcon: _searchQuery.isEmpty
+              ? null
+              : IconButton(
+                  tooltip: 'Clear',
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() {
+                      _searchQuery = '';
+                    });
+                  },
+                  icon: const Icon(Icons.clear_rounded),
+                ),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
         ),
       ),
     );
@@ -1279,150 +1024,100 @@ class _ProfitReportScreenState
     List<ExpenseModel> expenses,
     bool isDesktop,
   ) {
-    final double salesAmount =
-        _totalSales(sales);
+    final double salesAmount = _totalSales(sales);
 
-    final double cost =
-        _totalCost(sales);
+    final double cost = _totalCost(sales);
 
-    final double gross =
-        _grossProfit(sales);
+    final double gross = _grossProfit(sales);
 
-    final double expenseAmount =
-        _totalExpenses(expenses);
+    final double expenseAmount = _totalExpenses(expenses);
 
-    final double net =
-        gross - expenseAmount;
+    final double net = gross - expenseAmount;
 
-    final double margin =
-        _profitMargin(
-      net,
-      salesAmount,
-    );
+    final double margin = _profitMargin(net, salesAmount);
 
     final List<_SummaryItem> items = [
       _SummaryItem(
         title: 'Total Sales',
         value: _currency(salesAmount),
-        subtitle:
-            '${sales.length} invoice${sales.length == 1 ? '' : 's'}',
-        icon:
-            Icons.point_of_sale_rounded,
-        color:
-            AppColors.primary,
+        subtitle: '${sales.length} invoice${sales.length == 1 ? '' : 's'}',
+        icon: Icons.point_of_sale_rounded,
+        color: AppColors.primary,
       ),
       _SummaryItem(
         title: 'Cost of Goods',
         value: _currency(cost),
-        subtitle:
-            'Historical sale cost',
-        icon:
-            Icons.inventory_2_rounded,
-        color:
-            AppColors.warning,
+        subtitle: 'Historical sale cost',
+        icon: Icons.inventory_2_rounded,
+        color: AppColors.warning,
       ),
       _SummaryItem(
         title: 'Gross Profit',
         value: _currency(gross),
         subtitle:
             '${_grossMargin(gross, salesAmount).toStringAsFixed(1)}% gross margin',
-        icon:
-            Icons.show_chart_rounded,
-        color:
-            AppColors.success,
+        icon: Icons.show_chart_rounded,
+        color: AppColors.success,
       ),
       _SummaryItem(
         title: 'Expenses',
-        value:
-            _currency(expenseAmount),
-        subtitle:
-            'Operating expenses',
-        icon:
-            Icons.receipt_long_rounded,
-        color:
-            AppColors.danger,
+        value: _currency(expenseAmount),
+        subtitle: 'Operating expenses',
+        icon: Icons.receipt_long_rounded,
+        color: AppColors.danger,
       ),
       _SummaryItem(
         title: 'Net Profit',
         value: _currency(net),
-        subtitle:
-            '${margin.toStringAsFixed(1)}% net margin',
-        icon:
-            Icons.trending_up_rounded,
-        color: net >= 0
-            ? AppColors.success
-            : AppColors.danger,
+        subtitle: '${margin.toStringAsFixed(1)}% net margin',
+        icon: Icons.trending_up_rounded,
+        color: net >= 0 ? AppColors.success : AppColors.danger,
       ),
       _SummaryItem(
         title: 'Profit / Invoice',
-        value: _currency(
-          sales.isEmpty
-              ? 0
-              : net / sales.length,
-        ),
-        subtitle:
-            'Average net profit',
-        icon:
-            Icons.analytics_rounded,
-        color:
-            AppColors.secondary,
+        value: _currency(sales.isEmpty ? 0 : net / sales.length),
+        subtitle: 'Average net profit',
+        icon: Icons.analytics_rounded,
+        color: AppColors.secondary,
       ),
     ];
 
     if (isDesktop) {
       return GridView.builder(
         shrinkWrap: true,
-        physics:
-            const NeverScrollableScrollPhysics(),
+        physics: const NeverScrollableScrollPhysics(),
         itemCount: items.length,
-        gridDelegate:
-            const SliverGridDelegateWithFixedCrossAxisCount(
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
           crossAxisSpacing: 14,
           mainAxisSpacing: 14,
-          childAspectRatio: 1.9,
+          mainAxisExtent: 180,
         ),
-        itemBuilder:
-            (context, index) {
-          return _SummaryCard(
-            item: items[index],
-          );
+        itemBuilder: (context, index) {
+          return _SummaryCard(item: items[index]);
         },
       );
     }
 
     return LayoutBuilder(
-      builder: (
-        context,
-        constraints,
-      ) {
-        final int columns =
-            constraints.maxWidth >= 650
-                ? 2
-                : 1;
+      builder: (context, constraints) {
+        final int columns = constraints.maxWidth >= 650 ? 2 : 1;
 
-        final double ratio =
-            columns == 2 ? 2.0 : 2.5;
+        // final double ratio =
+        //     columns == 2 ? 2.0 : 2.5;
 
         return GridView.builder(
           shrinkWrap: true,
-          physics:
-              const NeverScrollableScrollPhysics(),
+          physics: const NeverScrollableScrollPhysics(),
           itemCount: items.length,
-          gridDelegate:
-              SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount:
-                columns,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
-            childAspectRatio:
-                ratio,
+            mainAxisExtent: columns >= 3 ? 180 : 156,
           ),
-          itemBuilder:
-              (context, index) {
-            return _SummaryCard(
-              item: items[index],
-            );
+          itemBuilder: (context, index) {
+            return _SummaryCard(item: items[index]);
           },
         );
       },
@@ -1438,77 +1133,50 @@ class _ProfitReportScreenState
     List<SaleModel> sales,
     List<ExpenseModel> expenses,
   ) {
-    final Map<String, _MonthlyProfitData>
-        monthly =
-        _monthlyProfitData(
+    final Map<String, _MonthlyProfitData> monthly = _monthlyProfitData(
       sales,
       expenses,
     );
 
-    final List<_MonthlyProfitData>
-        values =
-        monthly.values.toList();
+    final List<_MonthlyProfitData> values = monthly.values.toList();
 
-    values.sort(
-      (a, b) {
-        final DateTime aDate =
-            DateTime(a.year, a.month);
+    values.sort((a, b) {
+      final DateTime aDate = DateTime(a.year, a.month);
 
-        final DateTime bDate =
-            DateTime(b.year, b.month);
+      final DateTime bDate = DateTime(b.year, b.month);
 
-        return bDate.compareTo(aDate);
-      },
-    );
+      return bDate.compareTo(aDate);
+    });
 
     return _ReportCard(
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _SectionHeader(
-            icon:
-                Icons.calendar_view_month_rounded,
-            title:
-                'Monthly Profit Overview',
-            subtitle:
-                'Sales, cost, gross profit and expenses',
+            icon: Icons.calendar_view_month_rounded,
+            title: 'Monthly Profit Overview',
+            subtitle: 'Sales, cost, gross profit and expenses',
           ),
           const SizedBox(height: 18),
           if (values.isEmpty)
             const _EmptyInline(
-              icon:
-                  Icons.bar_chart_rounded,
-              message:
-                  'No profit data available for the selected period.',
+              icon: Icons.bar_chart_rounded,
+              message: 'No profit data available for the selected period.',
             )
           else
-            ...values.take(12).map(
-              (item) {
-                final double net =
-                    item.grossProfit -
-                        item.expenses;
+            ...values.take(12).map((item) {
+              final double net = item.grossProfit - item.expenses;
 
-                return Padding(
-                  padding:
-                      const EdgeInsets.only(
-                    bottom: 12,
-                  ),
-                  child:
-                      _MonthlyProfitTile(
-                    data: item,
-                    month:
-                        _monthName(
-                      item.year,
-                      item.month,
-                    ),
-                    netProfit: net,
-                    currency:
-                        _currency,
-                  ),
-                );
-              },
-            ),
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _MonthlyProfitTile(
+                  data: item,
+                  month: _monthName(item.year, item.month),
+                  netProfit: net,
+                  currency: _currency,
+                ),
+              );
+            }),
         ],
       ),
     );
@@ -1518,167 +1186,73 @@ class _ProfitReportScreenState
   // PRODUCT PROFIT
   // ===========================================================================
 
-  Widget _buildProductProfitSection(
-    ThemeData theme,
-    List<SaleModel> sales,
-  ) {
-    final List<_ProductProfitData>
-        products =
-        _productProfitData(
-      sales,
-    ).values.toList();
+  Widget _buildProductProfitSection(ThemeData theme, List<SaleModel> sales) {
+    final List<_ProductProfitData> products = _productProfitData(sales).values
+        .toList();
 
-    products.sort(
-      (a, b) => b.profit.compareTo(
-        a.profit,
-      ),
-    );
+    products.sort((a, b) => b.profit.compareTo(a.profit));
 
     return _ReportCard(
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _SectionHeader(
-            icon:
-                Icons.inventory_2_rounded,
-            title:
-                'Product-wise Profit',
-            subtitle:
-                'Revenue, cost and profit by product',
+            icon: Icons.inventory_2_rounded,
+            title: 'Product-wise Profit',
+            subtitle: 'Revenue, cost and profit by product',
           ),
           const SizedBox(height: 18),
           if (products.isEmpty)
             const _EmptyInline(
-              icon:
-                  Icons.inventory_2_outlined,
-              message:
-                  'No product profit data available.',
+              icon: Icons.inventory_2_outlined,
+              message: 'No product profit data available.',
             )
           else
             LayoutBuilder(
-              builder: (
-                context,
-                constraints,
-              ) {
-                if (constraints.maxWidth <
-                    650) {
+              builder: (context, constraints) {
+                if (constraints.maxWidth < 650) {
                   return Column(
-                    children:
-                        products.take(15).map(
-                      (product) {
-                        return Padding(
-                          padding:
-                              const EdgeInsets
-                                  .only(
-                            bottom: 10,
-                          ),
-                          child:
-                              _ProductProfitTile(
-                            data: product,
-                            currency:
-                                _currency,
-                            number:
-                                _number,
-                          ),
-                        );
-                      },
-                    ).toList(),
+                    children: products.take(15).map((product) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: _ProductProfitTile(
+                          data: product,
+                          currency: _currency,
+                          number: _number,
+                        ),
+                      );
+                    }).toList(),
                   );
                 }
 
                 return SingleChildScrollView(
-                  scrollDirection:
-                      Axis.horizontal,
+                  scrollDirection: Axis.horizontal,
                   child: DataTable(
                     columnSpacing: 28,
                     columns: const [
-                      DataColumn(
-                        label:
-                            Text('Product'),
-                      ),
-                      DataColumn(
-                        label:
-                            Text('Quantity'),
-                      ),
-                      DataColumn(
-                        label:
-                            Text('Revenue'),
-                      ),
-                      DataColumn(
-                        label:
-                            Text('Cost'),
-                      ),
-                      DataColumn(
-                        label:
-                            Text('Profit'),
-                      ),
-                      DataColumn(
-                        label:
-                            Text('Margin'),
-                      ),
+                      DataColumn(label: Text('Product')),
+                      DataColumn(label: Text('Quantity')),
+                      DataColumn(label: Text('Revenue')),
+                      DataColumn(label: Text('Cost')),
+                      DataColumn(label: Text('Profit')),
+                      DataColumn(label: Text('Margin')),
                     ],
-                    rows: products
-                        .take(20)
-                        .map(
-                      (product) {
-                        final double margin =
-                            product.revenue <=
-                                    0
-                                ? 0
-                                : (product.profit /
-                                        product.revenue) *
-                                    100;
+                    rows: products.take(20).map((product) {
+                      final double margin = product.revenue <= 0
+                          ? 0
+                          : (product.profit / product.revenue) * 100;
 
-                        return DataRow(
-                          cells: [
-                            DataCell(
-                              Text(
-                                product
-                                    .productName,
-                              ),
-                            ),
-                            DataCell(
-                              Text(
-                                _number(
-                                  product
-                                      .quantity,
-                                ),
-                              ),
-                            ),
-                            DataCell(
-                              Text(
-                                _currency(
-                                  product
-                                      .revenue,
-                                ),
-                              ),
-                            ),
-                            DataCell(
-                              Text(
-                                _currency(
-                                  product
-                                      .cost,
-                                ),
-                              ),
-                            ),
-                            DataCell(
-                              Text(
-                                _currency(
-                                  product
-                                      .profit,
-                                ),
-                              ),
-                            ),
-                            DataCell(
-                              Text(
-                                '${margin.toStringAsFixed(1)}%',
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    ).toList(),
+                      return DataRow(
+                        cells: [
+                          DataCell(Text(product.productName)),
+                          DataCell(Text(_number(product.quantity))),
+                          DataCell(Text(_currency(product.revenue))),
+                          DataCell(Text(_currency(product.cost))),
+                          DataCell(Text(_currency(product.profit))),
+                          DataCell(Text('${margin.toStringAsFixed(1)}%')),
+                        ],
+                      );
+                    }).toList(),
                   ),
                 );
               },
@@ -1692,68 +1266,43 @@ class _ProfitReportScreenState
   // CUSTOMER PROFIT
   // ===========================================================================
 
-  Widget _buildCustomerProfitSection(
-    ThemeData theme,
-    List<SaleModel> sales,
-  ) {
-    final List<_CustomerProfitData>
-        customers =
-        _customerProfitData(
-      sales,
-    ).values.toList();
+  Widget _buildCustomerProfitSection(ThemeData theme, List<SaleModel> sales) {
+    final List<_CustomerProfitData> customers = _customerProfitData(sales)
+        .values
+        .toList();
 
-    customers.sort(
-      (a, b) => b.profit.compareTo(
-        a.profit,
-      ),
-    );
+    customers.sort((a, b) => b.profit.compareTo(a.profit));
 
     return _ReportCard(
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _SectionHeader(
-            icon:
-                Icons.people_alt_rounded,
-            title:
-                'Customer-wise Profit',
-            subtitle:
-                'Profit contribution by customer',
+            icon: Icons.people_alt_rounded,
+            title: 'Customer-wise Profit',
+            subtitle: 'Profit contribution by customer',
           ),
           const SizedBox(height: 18),
           if (customers.isEmpty)
             const _EmptyInline(
-              icon:
-                  Icons.people_outline_rounded,
-              message:
-                  'No customer profit data available.',
+              icon: Icons.people_outline_rounded,
+              message: 'No customer profit data available.',
             )
           else
-            ...customers.take(15).map(
-              (customer) {
-                final double margin =
-                    customer.sales <= 0
-                        ? 0
-                        : (customer.profit /
-                                customer.sales) *
-                            100;
+            ...customers.take(15).map((customer) {
+              final double margin = customer.sales <= 0
+                  ? 0
+                  : (customer.profit / customer.sales) * 100;
 
-                return Padding(
-                  padding:
-                      const EdgeInsets.only(
-                    bottom: 10,
-                  ),
-                  child:
-                      _CustomerProfitTile(
-                    data: customer,
-                    margin: margin,
-                    currency:
-                        _currency,
-                  ),
-                );
-              },
-            ),
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _CustomerProfitTile(
+                  data: customer,
+                  margin: margin,
+                  currency: _currency,
+                ),
+              );
+            }),
         ],
       ),
     );
@@ -1763,71 +1312,49 @@ class _ProfitReportScreenState
   // SALES PROFIT
   // ===========================================================================
 
-  Widget _buildSalesProfitSection(
-    ThemeData theme,
-    List<SaleModel> sales,
-  ) {
+  Widget _buildSalesProfitSection(ThemeData theme, List<SaleModel> sales) {
     return _ReportCard(
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _SectionHeader(
-            icon:
-                Icons.receipt_long_rounded,
-            title:
-                'Sale-wise Profit',
+            icon: Icons.receipt_long_rounded,
+            title: 'Sale-wise Profit',
             subtitle:
                 '${sales.length} matching sale${sales.length == 1 ? '' : 's'}',
           ),
           const SizedBox(height: 18),
           if (sales.isEmpty)
             const _EmptyInline(
-              icon:
-                  Icons.receipt_long_outlined,
-              message:
-                  'No sales found for the selected filters.',
+              icon: Icons.receipt_long_outlined,
+              message: 'No sales found for the selected filters.',
             )
           else
-            ...sales.take(50).map(
-              (sale) {
-                double cost = 0;
+            ...sales.take(50).map((sale) {
+              double cost = 0;
 
-                for (final item
-                    in sale.items) {
-                  cost +=
-                      item.quantity *
-                          item.costPrice;
-                }
+              for (final item in sale.items) {
+                cost += item.quantity * item.costPrice;
+              }
 
-                final double profit =
-                    sale.total - cost;
+              final double profit = sale.total - cost;
 
-                final double margin =
-                    sale.total <= 0
-                        ? 0
-                        : (profit /
-                                sale.total) *
-                            100;
+              final double margin = sale.total <= 0
+                  ? 0
+                  : (profit / sale.total) * 100;
 
-                return Padding(
-                  padding:
-                      const EdgeInsets.only(
-                    bottom: 10,
-                  ),
-                  child:
-                      _SaleProfitTile(
-                    sale: sale,
-                    cost: cost,
-                    profit: profit,
-                    margin: margin,
-                    currency:
-                        _currency,
-                    date: _date,
-                  ),
-                );
-              },
-            ),
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _SaleProfitTile(
+                  sale: sale,
+                  cost: cost,
+                  profit: profit,
+                  margin: margin,
+                  currency: _currency,
+                  date: _date,
+                ),
+              );
+            }),
         ],
       ),
     );
@@ -1841,76 +1368,49 @@ class _ProfitReportScreenState
     ThemeData theme,
     List<ExpenseModel> expenses,
   ) {
-    final Map<String, double>
-        categoryTotals =
-        <String, double>{};
+    final Map<String, double> categoryTotals = <String, double>{};
 
     for (final expense in expenses) {
-      final String category =
-          expense.category.trim().isEmpty
-              ? 'Other'
-              : expense.category.trim();
+      final String category = expense.category.trim().isEmpty
+          ? 'Other'
+          : expense.category.trim();
 
       categoryTotals[category] =
-          (categoryTotals[category] ?? 0) +
-              expense.amount;
+          (categoryTotals[category] ?? 0) + expense.amount;
     }
 
-    final List<MapEntry<String, double>>
-        categories =
-        categoryTotals.entries.toList();
+    final List<MapEntry<String, double>> categories = categoryTotals.entries
+        .toList();
 
-    categories.sort(
-      (a, b) => b.value.compareTo(
-        a.value,
-      ),
-    );
+    categories.sort((a, b) => b.value.compareTo(a.value));
 
     return _ReportCard(
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _SectionHeader(
-            icon:
-                Icons.account_balance_wallet_rounded,
-            title:
-                'Expense Impact',
-            subtitle:
-                'Operating expenses reducing net profit',
+            icon: Icons.account_balance_wallet_rounded,
+            title: 'Expense Impact',
+            subtitle: 'Operating expenses reducing net profit',
           ),
           const SizedBox(height: 18),
           if (categories.isEmpty)
             const _EmptyInline(
-              icon:
-                  Icons.receipt_long_outlined,
-              message:
-                  'No expenses found for the selected period.',
+              icon: Icons.receipt_long_outlined,
+              message: 'No expenses found for the selected period.',
             )
           else
-            ...categories.map(
-              (entry) {
-                return Padding(
-                  padding:
-                      const EdgeInsets.only(
-                    bottom: 12,
-                  ),
-                  child:
-                      _ExpenseCategoryTile(
-                    category:
-                        entry.key,
-                    amount:
-                        entry.value,
-                    total:
-                        _totalExpenses(
-                      expenses,
-                    ),
-                    currency:
-                        _currency,
-                  ),
-                );
-              },
-            ),
+            ...categories.map((entry) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _ExpenseCategoryTile(
+                  category: entry.key,
+                  amount: entry.value,
+                  total: _totalExpenses(expenses),
+                  currency: _currency,
+                ),
+              );
+            }),
         ],
       ),
     );
@@ -1920,62 +1420,40 @@ class _ProfitReportScreenState
   // ERROR STATE
   // ===========================================================================
 
-  Widget _buildErrorState(
-    ThemeData theme,
-  ) {
+  Widget _buildErrorState(ThemeData theme) {
     return Center(
       child: Padding(
-        padding:
-            const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(24),
         child: _ReportCard(
           child: Column(
-            mainAxisSize:
-                MainAxisSize.min,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                Icons
-                    .error_outline_rounded,
+                Icons.error_outline_rounded,
                 size: 52,
-                color:
-                    AppColors.danger,
+                color: AppColors.danger,
               ),
               const SizedBox(height: 14),
               Text(
                 'Unable to Load Profit Report',
-                textAlign:
-                    TextAlign.center,
-                style: theme
-                    .textTheme
-                    .titleLarge
-                    ?.copyWith(
-                  fontWeight:
-                      FontWeight.w800,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
                 ),
               ),
               const SizedBox(height: 8),
               Text(
-                _errorMessage ??
-                    'Something went wrong.',
-                textAlign:
-                    TextAlign.center,
-                style: theme
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(
-                  color: theme
-                      .colorScheme
-                      .onSurfaceVariant,
+                _errorMessage ?? 'Something went wrong.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
               const SizedBox(height: 18),
               FilledButton.icon(
-                onPressed:
-                    _refreshReport,
-                icon: const Icon(
-                  Icons.refresh_rounded,
-                ),
-                label:
-                    const Text('Retry'),
+                onPressed: _refreshReport,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Retry'),
               ),
             ],
           ),
@@ -2076,39 +1554,26 @@ class _MonthlyProfitData {
 class _ReportCard extends StatelessWidget {
   final Widget child;
 
-  const _ReportCard({
-    required this.child,
-  });
+  const _ReportCard({required this.child});
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     return Container(
       width: double.infinity,
-      padding:
-          const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color:
-            theme.colorScheme.surface,
-        borderRadius:
-            BorderRadius.circular(20),
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: theme
-              .colorScheme
-              .outlineVariant
-              .withValues(alpha: 0.55),
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.55),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black
-                .withValues(alpha: 0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 18,
-            offset:
-                const Offset(0, 6),
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -2121,8 +1586,7 @@ class _ReportCard extends StatelessWidget {
 // SECTION HEADER
 // ============================================================================
 
-class _SectionHeader
-    extends StatelessWidget {
+class _SectionHeader extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
@@ -2134,59 +1598,37 @@ class _SectionHeader
   });
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     return Row(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
           width: 42,
           height: 42,
           decoration: BoxDecoration(
-            color: theme
-                .colorScheme
-                .primary
-                .withValues(alpha: 0.10),
-            borderRadius:
-                BorderRadius.circular(13),
+            color: theme.colorScheme.primary.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(13),
           ),
-          child: Icon(
-            icon,
-            color:
-                theme.colorScheme.primary,
-          ),
+          child: Icon(icon, color: theme.colorScheme.primary),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 title,
-                style: theme
-                    .textTheme
-                    .titleLarge
-                    ?.copyWith(
-                  fontWeight:
-                      FontWeight.w800,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
                 ),
               ),
               const SizedBox(height: 3),
               Text(
                 subtitle,
-                style: theme
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(
-                  color: theme
-                      .colorScheme
-                      .onSurfaceVariant,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
             ],
@@ -2201,110 +1643,65 @@ class _SectionHeader
 // SUMMARY CARD
 // ============================================================================
 
-class _SummaryCard
-    extends StatelessWidget {
+class _SummaryCard extends StatelessWidget {
   final _SummaryItem item;
 
-  const _SummaryCard({
-    required this.item,
-  });
+  const _SummaryCard({required this.item});
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     return Container(
-      padding:
-          const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color:
-            theme.colorScheme.surface,
-        borderRadius:
-            BorderRadius.circular(18),
-        border: Border.all(
-          color:
-              item.color.withValues(
-            alpha: 0.18,
-          ),
-        ),
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: item.color.withValues(alpha: 0.18)),
       ),
       child: Row(
         children: [
           Container(
             width: 46,
             height: 46,
-            decoration:
-                BoxDecoration(
-              color:
-                  item.color.withValues(
-                alpha: 0.11,
-              ),
-              borderRadius:
-                  BorderRadius.circular(
-                14,
-              ),
+            decoration: BoxDecoration(
+              color: item.color.withValues(alpha: 0.11),
+              borderRadius: BorderRadius.circular(14),
             ),
-            child: Icon(
-              item.icon,
-              color: item.color,
-              size: 23,
-            ),
+            child: Icon(item.icon, color: item.color, size: 23),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              mainAxisAlignment:
-                  MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
                   item.title,
                   maxLines: 1,
-                  overflow:
-                      TextOverflow.ellipsis,
-                  style: theme
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(
-                    fontWeight:
-                        FontWeight.w600,
-                    color: theme
-                        .colorScheme
-                        .onSurfaceVariant,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
                 const SizedBox(height: 3),
                 Text(
                   item.value,
                   maxLines: 1,
-                  overflow:
-                      TextOverflow.ellipsis,
-                  style: theme
-                      .textTheme
-                      .titleMedium
-                      ?.copyWith(
-                    fontWeight:
-                        FontWeight.w800,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   item.subtitle,
                   maxLines: 1,
-                  overflow:
-                      TextOverflow.ellipsis,
-                  style: theme
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
                     fontSize: 10,
-                    color: theme
-                        .colorScheme
-                        .onSurfaceVariant,
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],
@@ -2320,8 +1717,7 @@ class _SummaryCard
 // MONTHLY TILE
 // ============================================================================
 
-class _MonthlyProfitTile
-    extends StatelessWidget {
+class _MonthlyProfitTile extends StatelessWidget {
   final _MonthlyProfitData data;
   final String month;
   final double netProfit;
@@ -2335,52 +1731,35 @@ class _MonthlyProfitTile
   });
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     return Container(
-      padding:
-          const EdgeInsets.all(15),
+      padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: theme
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(alpha: 0.35),
-        borderRadius:
-            BorderRadius.circular(15),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(
+          alpha: 0.35,
+        ),
+        borderRadius: BorderRadius.circular(15),
       ),
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Expanded(
                 child: Text(
                   month,
-                  style: theme
-                      .textTheme
-                      .titleMedium
-                      ?.copyWith(
-                    fontWeight:
-                        FontWeight.w800,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
               Text(
                 currency(netProfit),
-                style: theme
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(
-                  fontWeight:
-                      FontWeight.w800,
-                  color: netProfit >= 0
-                      ? AppColors.success
-                      : AppColors.danger,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: netProfit >= 0 ? AppColors.success : AppColors.danger,
                 ),
               ),
             ],
@@ -2390,30 +1769,10 @@ class _MonthlyProfitTile
             spacing: 20,
             runSpacing: 8,
             children: [
-              _MiniMetric(
-                label: 'Sales',
-                value:
-                    currency(data.sales),
-              ),
-              _MiniMetric(
-                label: 'Cost',
-                value:
-                    currency(data.cost),
-              ),
-              _MiniMetric(
-                label: 'Gross',
-                value:
-                    currency(
-                  data.grossProfit,
-                ),
-              ),
-              _MiniMetric(
-                label: 'Expenses',
-                value:
-                    currency(
-                  data.expenses,
-                ),
-              ),
+              _MiniMetric(label: 'Sales', value: currency(data.sales)),
+              _MiniMetric(label: 'Cost', value: currency(data.cost)),
+              _MiniMetric(label: 'Gross', value: currency(data.grossProfit)),
+              _MiniMetric(label: 'Expenses', value: currency(data.expenses)),
             ],
           ),
         ],
@@ -2426,8 +1785,7 @@ class _MonthlyProfitTile
 // PRODUCT TILE
 // ============================================================================
 
-class _ProductProfitTile
-    extends StatelessWidget {
+class _ProductProfitTile extends StatelessWidget {
   final _ProductProfitData data;
   final String Function(double) currency;
   final String Function(double) number;
@@ -2439,33 +1797,23 @@ class _ProductProfitTile
   });
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
-    final double margin =
-        data.revenue <= 0
-            ? 0
-            : (data.profit /
-                    data.revenue) *
-                100;
+    final double margin = data.revenue <= 0
+        ? 0
+        : (data.profit / data.revenue) * 100;
 
     return Container(
-      padding:
-          const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: theme
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(alpha: 0.35),
-        borderRadius:
-            BorderRadius.circular(15),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(
+          alpha: 0.35,
+        ),
+        borderRadius: BorderRadius.circular(15),
       ),
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
@@ -2473,26 +1821,17 @@ class _ProductProfitTile
                 child: Text(
                   data.productName,
                   maxLines: 2,
-                  overflow:
-                      TextOverflow.ellipsis,
-                  style: theme
-                      .textTheme
-                      .titleSmall
-                      ?.copyWith(
-                    fontWeight:
-                        FontWeight.w800,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
               const SizedBox(width: 10),
               Text(
                 currency(data.profit),
-                style: theme
-                    .textTheme
-                    .titleSmall
-                    ?.copyWith(
-                  fontWeight:
-                      FontWeight.w800,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
                   color: data.profit >= 0
                       ? AppColors.success
                       : AppColors.danger,
@@ -2505,25 +1844,12 @@ class _ProductProfitTile
             spacing: 16,
             runSpacing: 7,
             children: [
-              _MiniMetric(
-                label: 'Qty',
-                value:
-                    number(data.quantity),
-              ),
-              _MiniMetric(
-                label: 'Revenue',
-                value:
-                    currency(data.revenue),
-              ),
-              _MiniMetric(
-                label: 'Cost',
-                value:
-                    currency(data.cost),
-              ),
+              _MiniMetric(label: 'Qty', value: number(data.quantity)),
+              _MiniMetric(label: 'Revenue', value: currency(data.revenue)),
+              _MiniMetric(label: 'Cost', value: currency(data.cost)),
               _MiniMetric(
                 label: 'Margin',
-                value:
-                    '${margin.toStringAsFixed(1)}%',
+                value: '${margin.toStringAsFixed(1)}%',
               ),
             ],
           ),
@@ -2537,8 +1863,7 @@ class _ProductProfitTile
 // CUSTOMER TILE
 // ============================================================================
 
-class _CustomerProfitTile
-    extends StatelessWidget {
+class _CustomerProfitTile extends StatelessWidget {
   final _CustomerProfitData data;
   final double margin;
   final String Function(double) currency;
@@ -2550,74 +1875,46 @@ class _CustomerProfitTile
   });
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     return Container(
-      padding:
-          const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: theme
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(alpha: 0.35),
-        borderRadius:
-            BorderRadius.circular(15),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(
+          alpha: 0.35,
+        ),
+        borderRadius: BorderRadius.circular(15),
       ),
       child: Row(
         children: [
           Container(
             width: 42,
             height: 42,
-            decoration:
-                BoxDecoration(
-              color: theme
-                  .colorScheme
-                  .primary
-                  .withValues(alpha: 0.10),
-              borderRadius:
-                  BorderRadius.circular(
-                13,
-              ),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primary.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(13),
             ),
-            child: Icon(
-              Icons.person_rounded,
-              color:
-                  theme.colorScheme.primary,
-            ),
+            child: Icon(Icons.person_rounded, color: theme.colorScheme.primary),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   data.customerName,
                   maxLines: 1,
-                  overflow:
-                      TextOverflow.ellipsis,
-                  style: theme
-                      .textTheme
-                      .titleSmall
-                      ?.copyWith(
-                    fontWeight:
-                        FontWeight.w800,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   '${data.invoiceCount} invoice${data.invoiceCount == 1 ? '' : 's'} • Margin ${margin.toStringAsFixed(1)}%',
-                  style: theme
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(
-                    color: theme
-                        .colorScheme
-                        .onSurfaceVariant,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],
@@ -2626,15 +1923,9 @@ class _CustomerProfitTile
           const SizedBox(width: 12),
           Text(
             currency(data.profit),
-            style: theme
-                .textTheme
-                .titleSmall
-                ?.copyWith(
-              fontWeight:
-                  FontWeight.w800,
-              color: data.profit >= 0
-                  ? AppColors.success
-                  : AppColors.danger,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: data.profit >= 0 ? AppColors.success : AppColors.danger,
             ),
           ),
         ],
@@ -2647,8 +1938,7 @@ class _CustomerProfitTile
 // SALE TILE
 // ============================================================================
 
-class _SaleProfitTile
-    extends StatelessWidget {
+class _SaleProfitTile extends StatelessWidget {
   final SaleModel sale;
   final double cost;
   final double profit;
@@ -2666,56 +1956,37 @@ class _SaleProfitTile
   });
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     return Container(
-      padding:
-          const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: theme
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(alpha: 0.35),
-        borderRadius:
-            BorderRadius.circular(15),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(
+          alpha: 0.35,
+        ),
+        borderRadius: BorderRadius.circular(15),
       ),
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Expanded(
                 child: Text(
-                  sale.invoiceNumber
-                          .trim()
-                          .isEmpty
+                  sale.invoiceNumber.trim().isEmpty
                       ? 'Sale'
                       : sale.invoiceNumber,
-                  style: theme
-                      .textTheme
-                      .titleSmall
-                      ?.copyWith(
-                    fontWeight:
-                        FontWeight.w800,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
               Text(
                 currency(profit),
-                style: theme
-                    .textTheme
-                    .titleSmall
-                    ?.copyWith(
-                  fontWeight:
-                      FontWeight.w800,
-                  color: profit >= 0
-                      ? AppColors.success
-                      : AppColors.danger,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: profit >= 0 ? AppColors.success : AppColors.danger,
                 ),
               ),
             ],
@@ -2726,26 +1997,16 @@ class _SaleProfitTile
                 ? 'Walk-in Customer'
                 : sale.customerName,
             maxLines: 1,
-            overflow:
-                TextOverflow.ellipsis,
-            style: theme
-                .textTheme
-                .bodyMedium
-                ?.copyWith(
-              fontWeight:
-                  FontWeight.w600,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 4),
           Text(
             date(sale.date),
-            style: theme
-                .textTheme
-                .bodySmall
-                ?.copyWith(
-              color: theme
-                  .colorScheme
-                  .onSurfaceVariant,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: 12),
@@ -2753,20 +2014,11 @@ class _SaleProfitTile
             spacing: 18,
             runSpacing: 8,
             children: [
-              _MiniMetric(
-                label: 'Sales',
-                value:
-                    currency(sale.total),
-              ),
-              _MiniMetric(
-                label: 'Cost',
-                value:
-                    currency(cost),
-              ),
+              _MiniMetric(label: 'Sales', value: currency(sale.total)),
+              _MiniMetric(label: 'Cost', value: currency(cost)),
               _MiniMetric(
                 label: 'Margin',
-                value:
-                    '${margin.toStringAsFixed(1)}%',
+                value: '${margin.toStringAsFixed(1)}%',
               ),
             ],
           ),
@@ -2780,8 +2032,7 @@ class _SaleProfitTile
 // EXPENSE TILE
 // ============================================================================
 
-class _ExpenseCategoryTile
-    extends StatelessWidget {
+class _ExpenseCategoryTile extends StatelessWidget {
   final String category;
   final double amount;
   final double total;
@@ -2795,27 +2046,18 @@ class _ExpenseCategoryTile
   });
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
-    final double percentage =
-        total <= 0
-            ? 0
-            : (amount / total) * 100;
+    final double percentage = total <= 0 ? 0 : (amount / total) * 100;
 
     return Container(
-      padding:
-          const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: theme
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(alpha: 0.35),
-        borderRadius:
-            BorderRadius.circular(15),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(
+          alpha: 0.35,
+        ),
+        borderRadius: BorderRadius.circular(15),
       ),
       child: Column(
         children: [
@@ -2824,66 +2066,38 @@ class _ExpenseCategoryTile
               Expanded(
                 child: Text(
                   category,
-                  style: theme
-                      .textTheme
-                      .titleSmall
-                      ?.copyWith(
-                    fontWeight:
-                        FontWeight.w700,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
               Text(
                 currency(amount),
-                style: theme
-                    .textTheme
-                    .titleSmall
-                    ?.copyWith(
-                  fontWeight:
-                      FontWeight.w800,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 9),
           ClipRRect(
-            borderRadius:
-                BorderRadius.circular(
-              20,
-            ),
-            child:
-                LinearProgressIndicator(
-              value:
-                  percentage.clamp(
-                0,
-                100,
-              ) /
-                      100,
+            borderRadius: BorderRadius.circular(20),
+            child: LinearProgressIndicator(
+              value: percentage.clamp(0, 100) / 100,
               minHeight: 7,
-              backgroundColor:
-                  theme
-                      .colorScheme
-                      .outlineVariant
-                      .withValues(
-                    alpha: 0.35,
-                  ),
-              color:
-                  AppColors.danger,
+              backgroundColor: theme.colorScheme.outlineVariant.withValues(
+                alpha: 0.35,
+              ),
+              color: AppColors.danger,
             ),
           ),
           const SizedBox(height: 6),
           Align(
-            alignment:
-                Alignment.centerRight,
+            alignment: Alignment.centerRight,
             child: Text(
               '${percentage.toStringAsFixed(1)}% of total expenses',
-              style: theme
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(
-                color: theme
-                    .colorScheme
-                    .onSurfaceVariant,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ),
@@ -2897,46 +2111,29 @@ class _ExpenseCategoryTile
 // MINI METRIC
 // ============================================================================
 
-class _MiniMetric
-    extends StatelessWidget {
+class _MiniMetric extends StatelessWidget {
   final String label;
   final String value;
 
-  const _MiniMetric({
-    required this.label,
-    required this.value,
-  });
+  const _MiniMetric({required this.label, required this.value});
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     return Row(
-      mainAxisSize:
-          MainAxisSize.min,
+      mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           '$label: ',
-          style: theme
-              .textTheme
-              .bodySmall
-              ?.copyWith(
-            color: theme
-                .colorScheme
-                .onSurfaceVariant,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
         Text(
           value,
-          style: theme
-              .textTheme
-              .bodySmall
-              ?.copyWith(
-            fontWeight:
-                FontWeight.w700,
+          style: theme.textTheme.bodySmall?.copyWith(
+            fontWeight: FontWeight.w700,
           ),
         ),
       ],
@@ -2948,59 +2145,34 @@ class _MiniMetric
 // EMPTY INLINE
 // ============================================================================
 
-class _EmptyInline
-    extends StatelessWidget {
+class _EmptyInline extends StatelessWidget {
   final IconData icon;
   final String message;
 
-  const _EmptyInline({
-    required this.icon,
-    required this.message,
-  });
+  const _EmptyInline({required this.icon, required this.message});
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     return Container(
       width: double.infinity,
-      padding:
-          const EdgeInsets.symmetric(
-        horizontal: 18,
-        vertical: 24,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
       decoration: BoxDecoration(
-        color: theme
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(alpha: 0.25),
-        borderRadius:
-            BorderRadius.circular(15),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(
+          alpha: 0.25,
+        ),
+        borderRadius: BorderRadius.circular(15),
       ),
       child: Column(
         children: [
-          Icon(
-            icon,
-            size: 38,
-            color: theme
-                .colorScheme
-                .onSurfaceVariant,
-          ),
+          Icon(icon, size: 38, color: theme.colorScheme.onSurfaceVariant),
           const SizedBox(height: 9),
           Text(
             message,
-            textAlign:
-                TextAlign.center,
-            style: theme
-                .textTheme
-                .bodyMedium
-                ?.copyWith(
-              color: theme
-                  .colorScheme
-                  .onSurfaceVariant,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
         ],

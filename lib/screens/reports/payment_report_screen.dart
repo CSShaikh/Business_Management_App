@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import '../../core/widgets/app_date_picker.dart';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -134,8 +135,10 @@ class _PaymentReportScreenState
     final DateTime now = DateTime.now();
 
     final DateTimeRange? selected =
-        await showDateRangePicker(
+        await AppDatePicker.showDateRangePicker(
       context: context,
+      
+      initialEntryMode: DatePickerEntryMode.calendar,
       firstDate: DateTime(2020),
       lastDate: DateTime(
         now.year + 2,
@@ -977,8 +980,8 @@ class _PaymentReportScreenState
             isDesktop ? 4 : 2,
         crossAxisSpacing: 14,
         mainAxisSpacing: 14,
-        childAspectRatio:
-            isDesktop ? 1.85 : 1.48,
+        mainAxisExtent:
+            isDesktop ? 180 : 156,
       ),
       itemBuilder: (
         context,

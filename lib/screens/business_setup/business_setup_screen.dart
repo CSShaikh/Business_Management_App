@@ -6,39 +6,28 @@ import '../../repositories/business_repository.dart';
 import '../dashboard/dashboard_screen.dart';
 
 class BusinessSetupScreen extends StatefulWidget {
-  const BusinessSetupScreen({
-    super.key,
-  });
+  const BusinessSetupScreen({super.key});
 
   @override
-  State<BusinessSetupScreen> createState() =>
-      _BusinessSetupScreenState();
+  State<BusinessSetupScreen> createState() => _BusinessSetupScreenState();
 }
 
 class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
-  final GlobalKey<FormState> _formKey =
-      GlobalKey<FormState>();
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
 
-  final BusinessRepository _businessRepository =
-      BusinessRepository();
+  final BusinessRepository _businessRepository = BusinessRepository();
 
-  final TextEditingController _businessNameController =
-      TextEditingController();
+  final TextEditingController _businessNameController = TextEditingController();
 
-  final TextEditingController _mobileController =
-      TextEditingController();
+  final TextEditingController _mobileController = TextEditingController();
 
-  final TextEditingController _ownerNameController =
-      TextEditingController();
+  final TextEditingController _ownerNameController = TextEditingController();
 
-  final TextEditingController _emailController =
-      TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
 
-  final TextEditingController _addressController =
-      TextEditingController();
+  final TextEditingController _addressController = TextEditingController();
 
-  final TextEditingController _gstController =
-      TextEditingController();
+  final TextEditingController _gstController = TextEditingController();
 
   String _businessType = 'Spices & Food';
 
@@ -61,23 +50,18 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
   }
 
   void _loadCurrentUserData() {
-    final User? user =
-        FirebaseAuth.instance.currentUser;
+    final User? user = FirebaseAuth.instance.currentUser;
 
     if (user == null) {
       return;
     }
 
-    final String? displayName =
-        user.displayName;
+    final String? displayName = user.displayName;
 
-    final String email =
-        user.email ?? '';
+    final String email = user.email ?? '';
 
-    if (displayName != null &&
-        displayName.trim().isNotEmpty) {
-      _businessNameController.text =
-          displayName.trim();
+    if (displayName != null && displayName.trim().isNotEmpty) {
+      _businessNameController.text = displayName.trim();
     }
 
     if (email.isNotEmpty) {
@@ -112,8 +96,7 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
       return;
     }
 
-    final User? user =
-        FirebaseAuth.instance.currentUser;
+    final User? user = FirebaseAuth.instance.currentUser;
 
     if (user == null) {
       _showMessage(
@@ -132,23 +115,17 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
       // Check whether a business already exists for this account.
       // -----------------------------------------------------------------------
 
-      final BusinessModel? existingBusiness =
-          await _businessRepository.getBusinessForOwner(
-        user.uid,
-      );
+      final BusinessModel? existingBusiness = await _businessRepository
+          .getBusinessForOwner(user.uid);
 
       if (!mounted) {
         return;
       }
 
       if (existingBusiness != null) {
-        _showMessage(
-          'Business profile already exists.',
-        );
+        _showMessage('Business profile already exists.');
 
-        await Future.delayed(
-          const Duration(milliseconds: 500),
-        );
+        await Future.delayed(const Duration(milliseconds: 500));
 
         if (!mounted) {
           return;
@@ -157,9 +134,7 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
         // The user already has a business, so continue to Dashboard.
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(
-            builder: (_) => const DashboardScreen(),
-          ),
+          MaterialPageRoute(builder: (_) => const DashboardScreen()),
           (route) => false,
         );
 
@@ -174,24 +149,16 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
 
       final DateTime now = DateTime.now();
 
-      final BusinessModel business =
-          BusinessModel(
+      final BusinessModel business = BusinessModel(
         id: '',
         ownerId: user.uid,
-        businessName:
-            _businessNameController.text.trim(),
-        mobile:
-            _mobileController.text.trim(),
-        email:
-            _emailController.text.trim(),
-        address:
-            _addressController.text.trim(),
-        gstNumber:
-            _gstController.text.trim(),
-        ownerName:
-            _ownerNameController.text.trim(),
-        businessType:
-            _businessType,
+        businessName: _businessNameController.text.trim(),
+        mobile: _mobileController.text.trim(),
+        email: _emailController.text.trim(),
+        address: _addressController.text.trim(),
+        gstNumber: _gstController.text.trim(),
+        ownerName: _ownerNameController.text.trim(),
+        businessType: _businessType,
         createdAt: now,
         updatedAt: now,
       );
@@ -200,8 +167,7 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
       // Save business.
       // -----------------------------------------------------------------------
 
-      final String savedBusinessId =
-          await _businessRepository.createBusiness(
+      final String savedBusinessId = await _businessRepository.createBusiness(
         business,
       );
 
@@ -210,10 +176,7 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
       }
 
       if (savedBusinessId.trim().isEmpty) {
-        _showMessage(
-          'Business was not created correctly.',
-          isError: true,
-        );
+        _showMessage('Business was not created correctly.', isError: true);
         return;
       }
 
@@ -221,14 +184,10 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
       // Success message.
       // -----------------------------------------------------------------------
 
-      _showMessage(
-        'Business profile saved successfully.',
-      );
+      _showMessage('Business profile saved successfully.');
 
       // Give the success message a short time to appear.
-      await Future.delayed(
-        const Duration(milliseconds: 500),
-      );
+      await Future.delayed(const Duration(milliseconds: 500));
 
       if (!mounted) {
         return;
@@ -245,9 +204,7 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
 
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(
-          builder: (_) => const DashboardScreen(),
-        ),
+        MaterialPageRoute(builder: (_) => const DashboardScreen()),
         (route) => false,
       );
     } on FirebaseException catch (e) {
@@ -255,19 +212,13 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
         return;
       }
 
-      _showMessage(
-        _getFirebaseErrorMessage(e),
-        isError: true,
-      );
+      _showMessage(_getFirebaseErrorMessage(e), isError: true);
     } catch (error) {
       if (!mounted) {
         return;
       }
 
-      _showMessage(
-        _getBusinessErrorMessage(error),
-        isError: true,
-      );
+      _showMessage(_getBusinessErrorMessage(error), isError: true);
     } finally {
       if (mounted) {
         setState(() {
@@ -281,9 +232,7 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
   // FIREBASE ERROR MESSAGE
   // ===========================================================================
 
-  String _getFirebaseErrorMessage(
-    FirebaseException error,
-  ) {
+  String _getFirebaseErrorMessage(FirebaseException error) {
     switch (error.code) {
       case 'permission-denied':
         return 'You do not have permission to save this business.';
@@ -301,8 +250,7 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
         return 'Business profile already exists.';
 
       default:
-        return error.message ??
-            'Could not save business profile.';
+        return error.message ?? 'Could not save business profile.';
     }
   }
 
@@ -310,11 +258,8 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
   // GENERAL ERROR MESSAGE
   // ===========================================================================
 
-  String _getBusinessErrorMessage(
-    Object error,
-  ) {
-    final String message =
-        error.toString().toLowerCase();
+  String _getBusinessErrorMessage(Object error) {
+    final String message = error.toString().toLowerCase();
 
     if (message.contains('permission-denied')) {
       return 'You do not have permission to save this business.';
@@ -339,10 +284,7 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
   // MESSAGE
   // ===========================================================================
 
-  void _showMessage(
-    String message, {
-    bool isError = false,
-  }) {
+  void _showMessage(String message, {bool isError = false}) {
     if (!mounted) {
       return;
     }
@@ -353,9 +295,7 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
         SnackBar(
           content: Text(message),
           behavior: SnackBarBehavior.floating,
-          backgroundColor: isError
-              ? Theme.of(context).colorScheme.error
-              : null,
+          backgroundColor: isError ? Theme.of(context).colorScheme.error : null,
         ),
       );
   }
@@ -366,114 +306,71 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme =
-        Theme.of(context);
+    final ThemeData theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Business Setup',
-        ),
-      ),
+      appBar: AppBar(title: const Text('Business Setup')),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding:
-                const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(24),
             child: ConstrainedBox(
-              constraints:
-                  const BoxConstraints(
-                maxWidth: 650,
-              ),
+              constraints: const BoxConstraints(maxWidth: 650),
               child: Form(
                 key: _formKey,
                 child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.stretch,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const SizedBox(
-                      height: 12,
-                    ),
+                    const SizedBox(height: 12),
 
                     // -----------------------------------------------------------------
                     // ICON
                     // -----------------------------------------------------------------
-
                     Icon(
                       Icons.storefront_rounded,
                       size: 54,
-                      color:
-                          theme.colorScheme.primary,
+                      color: theme.colorScheme.primary,
                     ),
 
-                    const SizedBox(
-                      height: 18,
-                    ),
+                    const SizedBox(height: 18),
 
                     // -----------------------------------------------------------------
                     // TITLE
                     // -----------------------------------------------------------------
-
                     Text(
                       'Set up your business',
-                      textAlign:
-                          TextAlign.center,
-                      style: theme
-                          .textTheme
-                          .headlineSmall
-                          ?.copyWith(
-                        fontWeight:
-                            FontWeight.bold,
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
 
-                    const SizedBox(
-                      height: 8,
-                    ),
+                    const SizedBox(height: 8),
 
                     Text(
                       'Enter your business details to get started.',
-                      textAlign:
-                          TextAlign.center,
-                      style: theme
-                          .textTheme
-                          .bodyMedium
-                          ?.copyWith(
-                        color: theme
-                            .colorScheme
-                            .onSurfaceVariant,
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
 
-                    const SizedBox(
-                      height: 32,
-                    ),
+                    const SizedBox(height: 32),
 
                     // -----------------------------------------------------------------
                     // BUSINESS NAME
                     // -----------------------------------------------------------------
-
                     TextFormField(
-                      controller:
-                          _businessNameController,
-                      textInputAction:
-                          TextInputAction.next,
+                      controller: _businessNameController,
+                      textInputAction: TextInputAction.next,
                       enabled: !_isLoading,
-                      decoration:
-                          const InputDecoration(
-                        labelText:
-                            'Business Name *',
-                        hintText:
-                            'Enter business name',
-                        prefixIcon: Icon(
-                          Icons
-                              .business_outlined,
-                        ),
+                      decoration: const InputDecoration(
+                        labelText: 'Business Name *',
+                        hintText: 'Enter business name',
+                        prefixIcon: Icon(Icons.business_outlined),
                       ),
                       validator: (value) {
-                        if ((value ?? '')
-                            .trim()
-                            .isEmpty) {
+                        if ((value ?? '').trim().isEmpty) {
                           return 'Business name is required';
                         }
 
@@ -481,69 +378,45 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
                       },
                     ),
 
-                    const SizedBox(
-                      height: 18,
-                    ),
+                    const SizedBox(height: 18),
 
                     // -----------------------------------------------------------------
                     // OWNER NAME
                     // -----------------------------------------------------------------
-
                     TextFormField(
-                      controller:
-                          _ownerNameController,
-                      textInputAction:
-                          TextInputAction.next,
+                      controller: _ownerNameController,
+                      textInputAction: TextInputAction.next,
                       enabled: !_isLoading,
-                      decoration:
-                          const InputDecoration(
-                        labelText:
-                            'Owner Name',
-                        hintText:
-                            'Enter owner name',
-                        prefixIcon: Icon(
-                          Icons
-                              .person_outline,
-                        ),
+                      decoration: const InputDecoration(
+                        labelText: 'Owner Name',
+                        hintText: 'Enter owner name',
+                        prefixIcon: Icon(Icons.person_outline),
                       ),
                     ),
 
-                    const SizedBox(
-                      height: 18,
-                    ),
+                    const SizedBox(height: 18),
 
                     // -----------------------------------------------------------------
                     // MOBILE
                     // -----------------------------------------------------------------
-
                     TextFormField(
-                      controller:
-                          _mobileController,
-                      keyboardType:
-                          TextInputType.phone,
-                      textInputAction:
-                          TextInputAction.next,
+                      controller: _mobileController,
+                      keyboardType: TextInputType.phone,
+                      textInputAction: TextInputAction.next,
                       enabled: !_isLoading,
-                      decoration:
-                          const InputDecoration(
-                        labelText:
-                            'Mobile Number *',
-                        hintText:
-                            'Enter mobile number',
-                        prefixIcon: Icon(
-                          Icons.phone_outlined,
-                        ),
+                      decoration: const InputDecoration(
+                        labelText: 'Mobile Number *',
+                        hintText: 'Enter mobile number',
+                        prefixIcon: Icon(Icons.phone_outlined),
                       ),
                       validator: (value) {
-                        final String mobile =
-                            value?.trim() ?? '';
+                        final String mobile = value?.trim() ?? '';
 
                         if (mobile.isEmpty) {
                           return 'Mobile number is required';
                         }
 
-                        if (mobile.length <
-                            10) {
+                        if (mobile.length < 10) {
                           return 'Enter a valid mobile number';
                         }
 
@@ -551,93 +424,61 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
                       },
                     ),
 
-                    const SizedBox(
-                      height: 18,
-                    ),
+                    const SizedBox(height: 18),
 
                     // -----------------------------------------------------------------
                     // BUSINESS TYPE
                     // -----------------------------------------------------------------
-
-                    DropdownButtonFormField<
-                        String>(
-                      initialValue:
-                          _businessType,
-                      decoration:
-                          const InputDecoration(
-                        labelText:
-                            'Business Type',
-                        prefixIcon: Icon(
-                          Icons
-                              .category_outlined,
-                        ),
+                    DropdownButtonFormField<String>(
+                      initialValue: _businessType,
+                      decoration: const InputDecoration(
+                        labelText: 'Business Type',
+                        prefixIcon: Icon(Icons.category_outlined),
                       ),
-                      items:
-                          _businessTypes
-                              .map(
-                        (
-                          String type,
-                        ) =>
-                            DropdownMenuItem<
-                                String>(
-                          value: type,
-                          child: Text(type),
-                        ),
-                      ).toList(),
+                      items: _businessTypes
+                          .map(
+                            (String type) => DropdownMenuItem<String>(
+                              value: type,
+                              child: Text(type),
+                            ),
+                          )
+                          .toList(),
                       onChanged: _isLoading
                           ? null
-                          : (
-                              String? value,
-                            ) {
-                              if (value ==
-                                  null) {
+                          : (String? value) {
+                              if (value == null) {
                                 return;
                               }
 
                               setState(() {
-                                _businessType =
-                                    value;
+                                _businessType = value;
                               });
                             },
                     ),
 
-                    const SizedBox(
-                      height: 18,
-                    ),
+                    const SizedBox(height: 18),
 
                     // -----------------------------------------------------------------
                     // EMAIL
                     // -----------------------------------------------------------------
-
                     TextFormField(
-                      controller:
-                          _emailController,
-                      keyboardType:
-                          TextInputType
-                              .emailAddress,
-                      textInputAction:
-                          TextInputAction.next,
+                      controller: _emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      textInputAction: TextInputAction.next,
                       enabled: !_isLoading,
-                      decoration:
-                          const InputDecoration(
-                        labelText:
-                            'Business Email',
-                        hintText:
-                            'Optional email',
-                        prefixIcon: Icon(
-                          Icons.email_outlined,
-                        ),
+                      decoration: const InputDecoration(
+                        labelText: 'Business Email',
+                        hintText: 'Optional email',
+                        prefixIcon: Icon(Icons.email_outlined),
                       ),
                       validator: (value) {
-                        final String email =
-                            value?.trim() ?? '';
+                        final String email = value?.trim() ?? '';
 
                         if (email.isEmpty) {
                           return null;
                         }
 
-                        final bool validEmail =
-                            RegExp(
+                        final bool validEmail = RegExp(
                           r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
                         ).hasMatch(email);
 
@@ -649,124 +490,76 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
                       },
                     ),
 
-                    const SizedBox(
-                      height: 18,
-                    ),
+                    const SizedBox(height: 18),
 
                     // -----------------------------------------------------------------
                     // GST
                     // -----------------------------------------------------------------
-
                     TextFormField(
-                      controller:
-                          _gstController,
-                      textInputAction:
-                          TextInputAction.next,
-                      textCapitalization:
-                          TextCapitalization
-                              .characters,
+                      controller: _gstController,
+                      textInputAction: TextInputAction.next,
+                      textCapitalization: TextCapitalization.characters,
                       enabled: !_isLoading,
-                      decoration:
-                          const InputDecoration(
-                        labelText:
-                            'GST Number',
-                        hintText:
-                            'Optional GST number',
-                        prefixIcon: Icon(
-                          Icons
-                              .receipt_long_outlined,
-                        ),
+                      decoration: const InputDecoration(
+                        labelText: 'GST Number',
+                        hintText: 'Optional GST number',
+                        prefixIcon: Icon(Icons.receipt_long_outlined),
                       ),
                     ),
 
-                    const SizedBox(
-                      height: 18,
-                    ),
+                    const SizedBox(height: 18),
 
                     // -----------------------------------------------------------------
                     // ADDRESS
                     // -----------------------------------------------------------------
-
                     TextFormField(
-                      controller:
-                          _addressController,
+                      controller: _addressController,
                       maxLines: 3,
-                      textInputAction:
-                          TextInputAction.newline,
+                      textInputAction: TextInputAction.newline,
                       enabled: !_isLoading,
-                      decoration:
-                          const InputDecoration(
-                        labelText:
-                            'Business Address',
-                        hintText:
-                            'Enter complete address',
-                        prefixIcon: Icon(
-                          Icons
-                              .location_on_outlined,
-                        ),
-                        alignLabelWithHint:
-                            true,
+                      decoration: const InputDecoration(
+                        labelText: 'Business Address',
+                        hintText: 'Enter complete address',
+                        prefixIcon: Icon(Icons.location_on_outlined),
+                        alignLabelWithHint: true,
                       ),
                     ),
 
-                    const SizedBox(
-                      height: 30,
-                    ),
+                    const SizedBox(height: 30),
 
                     // -----------------------------------------------------------------
                     // SAVE BUTTON
                     // -----------------------------------------------------------------
-
                     SizedBox(
                       height: 54,
-                      child:
-                          FilledButton.icon(
-                        onPressed:
-                            _isLoading
-                                ? null
-                                : _saveBusiness,
+                      child: FilledButton.icon(
+                        onPressed: _isLoading ? null : _saveBusiness,
                         icon: _isLoading
                             ? const SizedBox(
                                 width: 20,
                                 height: 20,
-                                child:
-                                    CircularProgressIndicator(
+                                child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  color:
-                                      Colors.white,
+                                  color: Colors.white,
                                 ),
                               )
-                            : const Icon(
-                                Icons
-                                    .check_rounded,
-                              ),
+                            : const Icon(Icons.check_rounded),
                         label: Text(
-                          _isLoading
-                              ? 'Saving...'
-                              : 'Save & Continue',
+                          _isLoading ? 'Saving...' : 'Save & Continue',
                         ),
                       ),
                     ),
 
-                    const SizedBox(
-                      height: 16,
-                    ),
+                    const SizedBox(height: 16),
 
                     // -----------------------------------------------------------------
                     // REQUIRED NOTE
                     // -----------------------------------------------------------------
-
                     Text(
                       '* Required fields',
-                      textAlign:
-                          TextAlign.center,
-                      style: theme
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(
-                        color: theme
-                            .colorScheme
-                            .onSurfaceVariant,
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],

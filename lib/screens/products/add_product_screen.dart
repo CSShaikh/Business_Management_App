@@ -477,7 +477,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
     final bool isEdit = widget.isEditMode;
 
     return Scaffold(
-      backgroundColor: AppColors.lightBackground,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(
           isEdit ? 'Edit Product' : 'Add Product',
@@ -550,10 +550,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.lightCard,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: AppColors.lightBorder,
+          color: Theme.of(context).colorScheme.outlineVariant,
         ),
       ),
       child: Row(

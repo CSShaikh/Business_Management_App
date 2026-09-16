@@ -1,66 +1,54 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
-import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/app_number_format.dart';
 import '../../models/business_model.dart';
 import '../../models/expense_model.dart';
 import '../../models/payment_model.dart';
 import '../../models/product_model.dart';
 import '../../models/purchase_model.dart';
 import '../../models/sale_model.dart';
+import '../../models/supplier_payment_model.dart';
 import '../../repositories/business_repository.dart';
 import '../../repositories/expense_repository.dart';
 import '../../repositories/payment_repository.dart';
 import '../../repositories/product_repository.dart';
 import '../../repositories/purchase_repository.dart';
 import '../../repositories/sale_repository.dart';
+import '../../repositories/supplier_payment_repository.dart';
 import '../../services/ledger/ledger_service.dart';
 import '../../services/ledger/supplier_ledger_service.dart';
 
 class DashboardHomeScreen extends StatefulWidget {
-  const DashboardHomeScreen({
-    super.key,
-  });
+  const DashboardHomeScreen({super.key});
 
   @override
-  State<DashboardHomeScreen> createState() =>
-      _DashboardHomeScreenState();
+  State<DashboardHomeScreen> createState() => _DashboardHomeScreenState();
 }
 
-class _DashboardHomeScreenState
-    extends State<DashboardHomeScreen> {
-  final BusinessRepository _businessRepository =
-      BusinessRepository();
+class _DashboardHomeScreenState extends State<DashboardHomeScreen> {
+  final BusinessRepository _businessRepository = BusinessRepository();
 
-  final SaleRepository _saleRepository =
-      SaleRepository();
+  final SaleRepository _saleRepository = SaleRepository();
 
-  final PurchaseRepository _purchaseRepository =
-      PurchaseRepository();
+  final PurchaseRepository _purchaseRepository = PurchaseRepository();
 
-  final LedgerService _ledgerService =
-      LedgerService();
+  final LedgerService _ledgerService = LedgerService();
 
-  final SupplierLedgerService _supplierLedgerService =
-      SupplierLedgerService();
+  final SupplierLedgerService _supplierLedgerService = SupplierLedgerService();
 
-  final ExpenseRepository _expenseRepository =
-      ExpenseRepository();
+  final ExpenseRepository _expenseRepository = ExpenseRepository();
 
-  final PaymentRepository _paymentRepository =
-      PaymentRepository();
+  final PaymentRepository _paymentRepository = PaymentRepository();
 
-  final ProductRepository _productRepository =
-      ProductRepository();
+  final SupplierPaymentRepository _supplierPaymentRepository =
+      SupplierPaymentRepository();
 
-  final NumberFormat _currencyFormat =
-      NumberFormat.currency(
-    locale: 'en_IN',
-    symbol: '₹',
-    decimalDigits: 0,
-  );
+  final ProductRepository _productRepository = ProductRepository();
 
   BusinessModel? _business;
 
@@ -84,21 +72,203 @@ class _DashboardHomeScreenState
   int _lowStockProducts = 0;
 
   List<SaleModel> _recentSales = <SaleModel>[];
-  List<PurchaseModel> _recentPurchases =
-      <PurchaseModel>[];
-  List<PaymentModel> _recentPayments =
-      <PaymentModel>[];
-  List<ExpenseModel> _recentExpenses =
-      <ExpenseModel>[];
+  List<PurchaseModel> _recentPurchases = <PurchaseModel>[];
+  List<PaymentModel> _recentPayments = <PaymentModel>[];
+  List<ExpenseModel> _recentExpenses = <ExpenseModel>[];
 
   List<SaleModel> _chartSales = <SaleModel>[];
-  List<PurchaseModel> _chartPurchases =
-      <PurchaseModel>[];
+  List<PurchaseModel> _chartPurchases = <PurchaseModel>[];
+
+  StreamSubscription<List<SaleModel>>? _salesSubscription;
+  StreamSubscription<List<PurchaseModel>>? _purchasesSubscription;
+  StreamSubscription<List<ExpenseModel>>? _expensesSubscription;
+  StreamSubscription<List<PaymentModel>>? _paymentsSubscription;
+  StreamSubscription<List<SupplierPaymentModel>>? _supplierPaymentsSubscription;
+  StreamSubscription<List<ProductModel>>? _productsSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadDashboard();
+  }
+
+  @override
+  void dispose() {
+    _salesSubscription?.cancel();
+    _purchasesSubscription?.cancel();
+    _expensesSubscription?.cancel();
+    _paymentsSubscription?.cancel();
+    _supplierPaymentsSubscription?.cancel();
+    _productsSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _watchDashboardData(String businessId) {
+    _salesSubscription?.cancel();
+    _purchasesSubscription?.cancel();
+    _expensesSubscription?.cancel();
+    _paymentsSubscription?.cancel();
+    _supplierPaymentsSubscription?.cancel();
+    _productsSubscription?.cancel();
+
+    _salesSubscription = _saleRepository
+        .watchSales(businessId: businessId)
+        .listen((sales) => _applyLiveDashboardData(sales: sales));
+
+    _purchasesSubscription = _purchaseRepository
+        .watchPurchases(businessId: businessId)
+        .listen((purchases) => _applyLiveDashboardData(purchases: purchases));
+
+    _expensesSubscription = _expenseRepository
+        .watchExpenses(businessId: businessId)
+        .listen((expenses) => _applyLiveDashboardData(expenses: expenses));
+
+    _paymentsSubscription = _paymentRepository
+        .watchPayments(businessId: businessId)
+        .listen((payments) => _applyLiveDashboardData(payments: payments));
+
+    _supplierPaymentsSubscription = _supplierPaymentRepository
+        .watchPayments(businessId: businessId)
+        .listen(
+          (payments) => _applyLiveDashboardData(supplierPayments: payments),
+        );
+
+    _productsSubscription = _productRepository
+        .watchProducts(businessId)
+        .listen((products) => _applyLiveDashboardData(products: products));
+  }
+
+  List<SaleModel>? _liveSales;
+  List<PurchaseModel>? _livePurchases;
+  List<ExpenseModel>? _liveExpenses;
+  List<PaymentModel>? _livePayments;
+  List<SupplierPaymentModel>? _liveSupplierPayments;
+  List<ProductModel>? _liveProducts;
+
+  void _applyLiveDashboardData({
+    List<SaleModel>? sales,
+    List<PurchaseModel>? purchases,
+    List<ExpenseModel>? expenses,
+    List<PaymentModel>? payments,
+    List<SupplierPaymentModel>? supplierPayments,
+    List<ProductModel>? products,
+  }) {
+    _liveSales = sales ?? _liveSales;
+    _livePurchases = purchases ?? _livePurchases;
+    _liveExpenses = expenses ?? _liveExpenses;
+    _livePayments = payments ?? _livePayments;
+    _liveSupplierPayments = supplierPayments ?? _liveSupplierPayments;
+    _liveProducts = products ?? _liveProducts;
+
+    final List<SaleModel>? liveSales = _liveSales;
+    final List<PurchaseModel>? livePurchases = _livePurchases;
+    final List<ExpenseModel>? liveExpenses = _liveExpenses;
+    final List<PaymentModel>? livePayments = _livePayments;
+    final List<SupplierPaymentModel>? liveSupplierPayments =
+        _liveSupplierPayments;
+    final List<ProductModel>? liveProducts = _liveProducts;
+
+    if (!mounted ||
+        liveSales == null ||
+        livePurchases == null ||
+        liveExpenses == null ||
+        livePayments == null ||
+        liveSupplierPayments == null ||
+        liveProducts == null) {
+      return;
+    }
+
+    final DateTime now = DateTime.now();
+    bool sameDay(DateTime date) =>
+        date.year == now.year && date.month == now.month && date.day == now.day;
+
+    final double todaySales = liveSales
+        .where((s) => sameDay(s.date))
+        .fold<double>(0.0, (double sum, s) => sum + s.total);
+    final double todayPurchase = livePurchases
+        .where((p) => sameDay(p.date))
+        .fold<double>(0.0, (double sum, p) => sum + p.total);
+
+    final double totalSales = liveSales.fold<double>(
+      0.0,
+      (double sum, s) => sum + s.total,
+    );
+    final double totalPurchase = livePurchases.fold<double>(
+      0.0,
+      (double sum, p) => sum + p.total,
+    );
+    final double totalExpenses = liveExpenses.fold<double>(
+      0.0,
+      (double sum, e) => sum + e.amount,
+    );
+
+    final double totalReceived =
+        liveSales.fold<double>(0.0, (double sum, s) => sum + s.paidAmount) +
+        livePayments.fold<double>(0.0, (double sum, p) => sum + p.amount);
+
+    final double totalOutstanding =
+        liveSales.fold<double>(
+          0.0,
+          (double sum, s) =>
+              sum +
+              (s.total - s.paidAmount).clamp(0, double.infinity).toDouble(),
+        ) -
+        livePayments.fold<double>(0.0, (double sum, p) => sum + p.amount);
+
+    final double supplierOutstanding =
+        livePurchases.fold<double>(
+          0.0,
+          (double sum, p) =>
+              sum +
+              (p.total - p.paidAmount).clamp(0, double.infinity).toDouble(),
+        ) -
+        liveSupplierPayments.fold<double>(
+          0.0,
+          (double sum, p) => sum + p.amount,
+        );
+
+    final List<SaleModel> sortedSales = List<SaleModel>.from(liveSales)
+      ..sort((a, b) => b.date.compareTo(a.date));
+    final List<PurchaseModel> sortedPurchases = List<PurchaseModel>.from(
+      livePurchases,
+    )..sort((a, b) => b.date.compareTo(a.date));
+
+    final List<PaymentModel> sortedPayments = List<PaymentModel>.from(
+      livePayments,
+    )..sort((a, b) => b.date.compareTo(a.date));
+    final List<ExpenseModel> sortedExpenses = List<ExpenseModel>.from(
+      liveExpenses,
+    )..sort((a, b) => b.date.compareTo(a.date));
+
+    setState(() {
+      _todaySales = todaySales;
+      _todayPurchase = todayPurchase;
+      _todayProfit = _calculateProfit(
+        liveSales.where((s) => sameDay(s.date)).toList(),
+      );
+      _totalSales = totalSales;
+      _totalPurchase = totalPurchase;
+      _totalExpenses = totalExpenses;
+      _totalReceived = totalReceived;
+      _totalOutstanding = totalOutstanding.clamp(0, double.infinity).toDouble();
+      _supplierOutstanding = supplierOutstanding
+          .clamp(0, double.infinity)
+          .toDouble();
+      _stockValue = _calculateStockValue(liveProducts);
+      _totalProfit = _calculateProfit(liveSales);
+      _totalProducts = liveProducts.length;
+      _lowStockProducts = liveProducts
+          .where((p) => p.currentStock <= p.minimumStock)
+          .length;
+      _recentSales = sortedSales.take(5).toList();
+      _recentPurchases = sortedPurchases.take(5).toList();
+      _recentPayments = sortedPayments.take(5).toList();
+      _recentExpenses = sortedExpenses.take(5).toList();
+      _chartSales = sortedSales;
+      _chartPurchases = sortedPurchases;
+      _loading = false;
+      _errorMessage = null;
+    });
   }
 
   Future<void> _loadDashboard() async {
@@ -110,171 +280,107 @@ class _DashboardHomeScreenState
     }
 
     try {
-      final BusinessModel? business =
-          await _businessRepository
-              .getBusinessForCurrentUser();
+      final BusinessModel? business = await _businessRepository
+          .getBusinessForCurrentUser();
 
       if (business == null) {
-        throw Exception(
-          'Business profile not found.',
-        );
+        throw Exception('Business profile not found.');
       }
 
-      final String businessId =
-          business.id.trim();
+      final String businessId = business.id.trim();
 
       if (businessId.isEmpty) {
-        throw Exception(
-          'Business ID is missing.',
-        );
+        throw Exception('Business ID is missing.');
       }
 
-      final results =
-          await Future.wait<dynamic>([
-        _saleRepository.getTodaySalesTotal(
-          businessId: businessId,
-        ),
-        _purchaseRepository
-            .getTodayPurchasesTotal(
-          businessId: businessId,
-        ),
-        _saleRepository.getTotalSales(
-          businessId: businessId,
-        ),
-        _purchaseRepository.getTotalPurchases(
-          businessId: businessId,
-        ),
-        _expenseRepository.getTotalExpenses(
-          businessId: businessId,
-        ),
-        _saleRepository.getTotalPaid(
-          businessId: businessId,
-        ),
-        _ledgerService.getTotalReceivable(
-          businessId: businessId,
-        ),
-        _supplierLedgerService.getTotalPayable(
-          businessId: businessId,
-        ),
-        _productRepository.getProducts(
-          businessId,
-        ),
-        _productRepository.getLowStockProducts(
-          businessId,
-        ),
-        _saleRepository.getTodaySales(
-          businessId: businessId,
-        ),
-        _saleRepository.getSales(
-          businessId: businessId,
-        ),
-        _purchaseRepository.getPurchases(
-          businessId: businessId,
-        ),
-        _paymentRepository.getPayments(
-          businessId: businessId,
-        ),
-        _expenseRepository.getExpenses(
-          businessId: businessId,
-        ),
+      _watchDashboardData(businessId);
+
+      final results = await Future.wait<dynamic>([
+        _saleRepository.getTodaySalesTotal(businessId: businessId),
+        _purchaseRepository.getTodayPurchasesTotal(businessId: businessId),
+        _saleRepository.getTotalSales(businessId: businessId),
+        _purchaseRepository.getTotalPurchases(businessId: businessId),
+        _expenseRepository.getTotalExpenses(businessId: businessId),
+        _saleRepository.getTotalPaid(businessId: businessId),
+        _ledgerService.getTotalReceivable(businessId: businessId),
+        _supplierLedgerService.getTotalPayable(businessId: businessId),
+        _productRepository.getProducts(businessId),
+        _productRepository.getLowStockProducts(businessId),
+        _saleRepository.getTodaySales(businessId: businessId),
+        _saleRepository.getSales(businessId: businessId),
+        _purchaseRepository.getPurchases(businessId: businessId),
+        _paymentRepository.getPayments(businessId: businessId),
+        _expenseRepository.getExpenses(businessId: businessId),
       ]);
 
-      final double todaySales =
-          _safeDouble(results[0]);
+      final double todaySales = _safeDouble(results[0]);
 
-      final double todayPurchase =
-          _safeDouble(results[1]);
+      final double todayPurchase = _safeDouble(results[1]);
 
-      final double totalSales =
-          _safeDouble(results[2]);
+      final double totalSales = _safeDouble(results[2]);
 
-      final double totalPurchase =
-          _safeDouble(results[3]);
+      final double totalPurchase = _safeDouble(results[3]);
 
-      final double totalExpenses =
-          _safeDouble(results[4]);
+      final double totalExpenses = _safeDouble(results[4]);
 
-      final double saleReceived =
-          _safeDouble(results[5]);
+      final double saleReceived = _safeDouble(results[5]);
 
-      final double totalOutstanding =
-          _safeDouble(results[6]);
+      final double totalOutstanding = _safeDouble(results[6]);
 
-      final double supplierOutstanding =
-          _safeDouble(results[7]);
+      final double supplierOutstanding = _safeDouble(results[7]);
 
-      final List<ProductModel> products =
-          List<ProductModel>.from(
+      final List<ProductModel> products = List<ProductModel>.from(
         results[8] as List,
       );
 
-      final List<ProductModel> lowStock =
-          List<ProductModel>.from(
+      final List<ProductModel> lowStock = List<ProductModel>.from(
         results[9] as List,
       );
 
-      final List<SaleModel> todaySalesList =
-          List<SaleModel>.from(
+      final List<SaleModel> todaySalesList = List<SaleModel>.from(
         results[10] as List,
       );
 
-      final List<SaleModel> allSales =
-          List<SaleModel>.from(
+      final List<SaleModel> allSales = List<SaleModel>.from(
         results[11] as List,
       );
 
-      final List<PurchaseModel> allPurchases =
-          List<PurchaseModel>.from(
+      final List<PurchaseModel> allPurchases = List<PurchaseModel>.from(
         results[12] as List,
       );
 
-      final List<PaymentModel> allPayments =
-          List<PaymentModel>.from(
+      final List<PaymentModel> allPayments = List<PaymentModel>.from(
         results[13] as List,
       );
 
-      final double separateCustomerPayments =
-          allPayments.fold<double>(
+      final double separateCustomerPayments = allPayments.fold<double>(
         0,
-        (total, payment) => total +
-            (payment.amount.isFinite &&
-                    payment.amount > 0
+        (total, payment) =>
+            total +
+            (payment.amount.isFinite && payment.amount > 0
                 ? payment.amount
                 : 0),
       );
 
-      final double totalReceived =
-          saleReceived + separateCustomerPayments;
+      final double totalReceived = saleReceived + separateCustomerPayments;
 
-      final List<ExpenseModel> allExpenses =
-          List<ExpenseModel>.from(
+      final List<ExpenseModel> allExpenses = List<ExpenseModel>.from(
         results[14] as List,
       );
 
-      final double todayProfit =
-          _calculateProfit(todaySalesList);
+      final double todayProfit = _calculateProfit(todaySalesList);
 
-      final double totalProfit =
-          _calculateProfit(allSales);
+      final double totalProfit = _calculateProfit(allSales);
 
-      final double stockValue =
-          _calculateStockValue(products);
+      final double stockValue = _calculateStockValue(products);
 
-      allSales.sort(
-        (a, b) => b.date.compareTo(a.date),
-      );
+      allSales.sort((a, b) => b.date.compareTo(a.date));
 
-      allPurchases.sort(
-        (a, b) => b.date.compareTo(a.date),
-      );
+      allPurchases.sort((a, b) => b.date.compareTo(a.date));
 
-      allPayments.sort(
-        (a, b) => b.date.compareTo(a.date),
-      );
+      allPayments.sort((a, b) => b.date.compareTo(a.date));
 
-      allExpenses.sort(
-        (a, b) => b.date.compareTo(a.date),
-      );
+      allExpenses.sort((a, b) => b.date.compareTo(a.date));
 
       if (!mounted) {
         return;
@@ -291,10 +397,8 @@ class _DashboardHomeScreenState
         _totalPurchase = totalPurchase;
         _totalExpenses = totalExpenses;
         _totalReceived = totalReceived;
-        _totalOutstanding =
-            totalOutstanding;
-        _supplierOutstanding =
-            supplierOutstanding;
+        _totalOutstanding = totalOutstanding;
+        _supplierOutstanding = supplierOutstanding;
 
         _stockValue = stockValue;
         _totalProfit = totalProfit;
@@ -302,29 +406,17 @@ class _DashboardHomeScreenState
         _totalProducts = products.length;
         _lowStockProducts = lowStock.length;
 
-        _recentSales = allSales
-            .take(5)
-            .toList();
+        _recentSales = allSales.take(5).toList();
 
-        _recentPurchases = allPurchases
-            .take(5)
-            .toList();
+        _recentPurchases = allPurchases.take(5).toList();
 
-        _recentPayments = allPayments
-            .take(5)
-            .toList();
+        _recentPayments = allPayments.take(5).toList();
 
-        _recentExpenses = allExpenses
-            .take(5)
-            .toList();
+        _recentExpenses = allExpenses.take(5).toList();
 
-        _chartSales =
-            List<SaleModel>.from(allSales);
+        _chartSales = List<SaleModel>.from(allSales);
 
-        _chartPurchases =
-            List<PurchaseModel>.from(
-          allPurchases,
-        );
+        _chartPurchases = List<PurchaseModel>.from(allPurchases);
 
         _loading = false;
         _errorMessage = null;
@@ -336,16 +428,14 @@ class _DashboardHomeScreenState
 
       setState(() {
         _loading = false;
-        _errorMessage =
-            'Unable to load dashboard data.';
+        _errorMessage = 'Unable to load dashboard data.';
       });
     }
   }
 
   double _safeDouble(dynamic value) {
     if (value is num) {
-      final double result =
-          value.toDouble();
+      final double result = value.toDouble();
 
       if (result.isFinite) {
         return result;
@@ -355,9 +445,7 @@ class _DashboardHomeScreenState
     return 0;
   }
 
-  double _calculateProfit(
-    List<SaleModel> sales,
-  ) {
+  double _calculateProfit(List<SaleModel> sales) {
     double profit = 0;
 
     for (final SaleModel sale in sales) {
@@ -375,9 +463,7 @@ class _DashboardHomeScreenState
         }
       }
 
-      final double saleTotal = sale.total.isFinite
-          ? sale.total
-          : 0;
+      final double saleTotal = sale.total.isFinite ? sale.total : 0;
 
       // SaleModel.total already represents the final
       // customer bill after item discount/tax calculations.
@@ -389,23 +475,15 @@ class _DashboardHomeScreenState
     return profit;
   }
 
-  double _calculateStockValue(
-    List<ProductModel> products,
-  ) {
+  double _calculateStockValue(List<ProductModel> products) {
     double value = 0;
 
-    for (final ProductModel product
-        in products) {
-      final double stock =
-          product.currentStock;
+    for (final ProductModel product in products) {
+      final double stock = product.currentStock;
 
-      final double cost =
-          product.purchasePrice;
+      final double cost = product.purchasePrice;
 
-      if (stock.isFinite &&
-          cost.isFinite &&
-          stock >= 0 &&
-          cost >= 0) {
+      if (stock.isFinite && cost.isFinite && stock >= 0 && cost >= 0) {
         value += stock * cost;
       }
     }
@@ -414,24 +492,17 @@ class _DashboardHomeScreenState
   }
 
   String _formatCurrency(double value) {
-    return _currencyFormat.format(value);
+    return AppNumberFormat.amount(value);
   }
 
   String _formatDate(DateTime date) {
-    return DateFormat(
-      'dd MMM yyyy',
-    ).format(date);
+    return DateFormat('dd MMM yyyy').format(date);
   }
-
 
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const SafeArea(
-        child: Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
+      return const SafeArea(child: Center(child: CircularProgressIndicator()));
     }
 
     if (_errorMessage != null) {
@@ -442,23 +513,13 @@ class _DashboardHomeScreenState
       child: RefreshIndicator(
         onRefresh: _loadDashboard,
         child: SingleChildScrollView(
-          physics:
-              const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(
-            20,
-            16,
-            20,
-            32,
-          ),
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
           child: Center(
             child: ConstrainedBox(
-              constraints:
-                  const BoxConstraints(
-                maxWidth: 1200,
-              ),
+              constraints: const BoxConstraints(maxWidth: 1200),
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildHeader(context),
 
@@ -476,9 +537,7 @@ class _DashboardHomeScreenState
 
                   const SizedBox(height: 24),
 
-                  _buildPerformanceOverview(
-                    context,
-                  ),
+                  _buildPerformanceOverview(context),
 
                   const SizedBox(height: 24),
 
@@ -486,9 +545,7 @@ class _DashboardHomeScreenState
 
                   const SizedBox(height: 24),
 
-                  _buildInventoryOverview(
-                    context,
-                  ),
+                  _buildInventoryOverview(context),
                 ],
               ),
             ),
@@ -499,33 +556,25 @@ class _DashboardHomeScreenState
   }
 
   Widget _buildHeader(BuildContext context) {
-    final ThemeData theme =
-        Theme.of(context);
+    final ThemeData theme = Theme.of(context);
 
-    final String businessName =
-        _business?.businessName.trim() ?? '';
+    final String businessName = _business?.businessName.trim() ?? '';
 
-    final String ownerName =
-        _business?.ownerName.trim() ?? '';
+    final String ownerName = _business?.ownerName.trim() ?? '';
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [
-            AppColors.primary,
-            AppColors.primaryDark,
-          ],
+          colors: [AppColors.primary, AppColors.primaryDark],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius:
-            BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primary
-                .withValues(alpha: 0.18),
+            color: AppColors.primary.withValues(alpha: 0.18),
             blurRadius: 24,
             offset: const Offset(0, 8),
           ),
@@ -537,10 +586,8 @@ class _DashboardHomeScreenState
             width: 56,
             height: 56,
             decoration: BoxDecoration(
-              color: Colors.white
-                  .withValues(alpha: 0.14),
-              borderRadius:
-                  BorderRadius.circular(16),
+              color: Colors.white.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(16),
             ),
             child: const Icon(
               Icons.dashboard_rounded,
@@ -553,23 +600,15 @@ class _DashboardHomeScreenState
 
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  businessName.isEmpty
-                      ? 'Business Dashboard'
-                      : businessName,
+                  businessName.isEmpty ? 'Business Dashboard' : businessName,
                   maxLines: 1,
-                  overflow:
-                      TextOverflow.ellipsis,
-                  style: theme
-                      .textTheme
-                      .headlineSmall
-                      ?.copyWith(
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.headlineSmall?.copyWith(
                     color: Colors.white,
-                    fontWeight:
-                        FontWeight.w800,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
 
@@ -580,29 +619,18 @@ class _DashboardHomeScreenState
                       ? 'Business overview'
                       : 'Welcome, $ownerName',
                   maxLines: 1,
-                  overflow:
-                      TextOverflow.ellipsis,
-                  style: theme
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(
-                    color: Colors.white
-                        .withValues(alpha: 0.82),
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: Colors.white.withValues(alpha: 0.82),
                   ),
                 ),
 
                 const SizedBox(height: 3),
 
                 Text(
-                  DateFormat(
-                    'EEEE, dd MMM yyyy',
-                  ).format(DateTime.now()),
-                  style: theme
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(
-                    color: Colors.white
-                        .withValues(alpha: 0.70),
+                  DateFormat('EEEE, dd MMM yyyy').format(DateTime.now()),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: Colors.white.withValues(alpha: 0.70),
                   ),
                 ),
               ],
@@ -612,32 +640,22 @@ class _DashboardHomeScreenState
           IconButton(
             tooltip: 'Refresh',
             onPressed: _loadDashboard,
-            icon: const Icon(
-              Icons.refresh_rounded,
-              color: Colors.white,
-            ),
+            icon: const Icon(Icons.refresh_rounded, color: Colors.white),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildTodayOverview(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget _buildTodayOverview(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           "Today's Overview",
-          style: theme
-              .textTheme
-              .titleLarge
-              ?.copyWith(
+          style: theme.textTheme.titleLarge?.copyWith(
             fontWeight: FontWeight.w800,
           ),
         ),
@@ -645,58 +663,37 @@ class _DashboardHomeScreenState
         const SizedBox(height: 14),
 
         LayoutBuilder(
-          builder: (
-            context,
-            constraints,
-          ) {
-            final bool compact =
-                constraints.maxWidth < 700;
+          builder: (context, constraints) {
+            final bool compact = constraints.maxWidth < 700;
 
             return GridView.count(
-              crossAxisCount:
-                  compact ? 2 : 3,
+              crossAxisCount: compact ? 2 : 3,
               shrinkWrap: true,
-              physics:
-                  const NeverScrollableScrollPhysics(),
+              physics: const NeverScrollableScrollPhysics(),
               crossAxisSpacing: 12,
               mainAxisSpacing: 12,
-              childAspectRatio:
-                  compact ? 1.42 : 1.80,
+              childAspectRatio: compact ? 1.42 : 1.80,
               children: [
                 _MetricCard(
                   title: "Today's Sales",
-                  value: _formatCurrency(
-                    _todaySales,
-                  ),
-                  subtitle:
-                      'Sales recorded today',
-                  icon:
-                      Icons.trending_up_rounded,
-                  color:
-                      AppColors.success,
+                  value: _formatCurrency(_todaySales),
+                  subtitle: 'Sales recorded today',
+                  icon: Icons.trending_up_rounded,
+                  color: AppColors.success,
                 ),
                 _MetricCard(
                   title: "Today's Purchase",
-                  value: _formatCurrency(
-                    _todayPurchase,
-                  ),
-                  subtitle:
-                      'Purchases today',
-                  icon:
-                      Icons.shopping_cart_outlined,
+                  value: _formatCurrency(_todayPurchase),
+                  subtitle: 'Purchases today',
+                  icon: Icons.shopping_cart_outlined,
                   color: AppColors.info,
                 ),
                 _MetricCard(
                   title: "Today's Profit",
-                  value: _formatCurrency(
-                    _todayProfit,
-                  ),
-                  subtitle:
-                      'Gross product profit',
-                  icon: Icons
-                      .account_balance_wallet_outlined,
-                  color:
-                      AppColors.primary,
+                  value: _formatCurrency(_todayProfit),
+                  subtitle: 'Gross product profit',
+                  icon: Icons.account_balance_wallet_outlined,
+                  color: AppColors.primary,
                 ),
               ],
             );
@@ -706,88 +703,67 @@ class _DashboardHomeScreenState
     );
   }
 
-  Widget _buildBusinessSummary(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget _buildBusinessSummary(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     final List<_MetricData> metrics = [
       _MetricData(
         title: 'Total Sales',
-        value:
-            _formatCurrency(_totalSales),
+        value: _formatCurrency(_totalSales),
         subtitle: 'All recorded sales',
-        icon:
-            Icons.receipt_long_rounded,
+        icon: Icons.receipt_long_rounded,
         color: AppColors.success,
       ),
       _MetricData(
         title: 'Total Purchase',
-        value:
-            _formatCurrency(_totalPurchase),
-        subtitle:
-            'All recorded purchases',
-        icon:
-            Icons.inventory_2_outlined,
+        value: _formatCurrency(_totalPurchase),
+        subtitle: 'All recorded purchases',
+        icon: Icons.inventory_2_outlined,
         color: AppColors.info,
       ),
       _MetricData(
         title: 'Expenses',
-        value:
-            _formatCurrency(_totalExpenses),
+        value: _formatCurrency(_totalExpenses),
         subtitle: 'Business expenses',
-        icon:
-            Icons.money_off_csred_outlined,
+        icon: Icons.money_off_csred_outlined,
         color: AppColors.danger,
       ),
       _MetricData(
         title: 'Received',
-        value:
-            _formatCurrency(_totalReceived),
+        value: _formatCurrency(_totalReceived),
         subtitle: 'Sale + separate payments',
         icon: Icons.payments_rounded,
         color: AppColors.success,
       ),
       _MetricData(
         title: 'Outstanding',
-        value:
-            _formatCurrency(_totalOutstanding),
+        value: _formatCurrency(_totalOutstanding),
         subtitle: 'Customer pending',
-        icon:
-            Icons.account_balance_wallet_outlined,
+        icon: Icons.account_balance_wallet_outlined,
         color: AppColors.warning,
       ),
       _MetricData(
         title: 'Supplier Payable',
-        value:
-            _formatCurrency(_supplierOutstanding),
+        value: _formatCurrency(_supplierOutstanding),
         subtitle: 'Amount payable to suppliers',
-        icon:
-            Icons.account_balance_outlined,
+        icon: Icons.account_balance_outlined,
         color: AppColors.danger,
       ),
       _MetricData(
         title: 'Stock Value',
-        value:
-            _formatCurrency(_stockValue),
-        subtitle:
-            'Current inventory value',
+        value: _formatCurrency(_stockValue),
+        subtitle: 'Current inventory value',
         icon: Icons.warehouse_outlined,
         color: AppColors.primary,
       ),
     ];
 
     return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           'Financial Overview',
-          style: theme
-              .textTheme
-              .titleLarge
-              ?.copyWith(
+          style: theme.textTheme.titleLarge?.copyWith(
             fontWeight: FontWeight.w800,
           ),
         ),
@@ -795,33 +771,21 @@ class _DashboardHomeScreenState
         const SizedBox(height: 14),
 
         LayoutBuilder(
-          builder: (
-            context,
-            constraints,
-          ) {
-            final bool compact =
-                constraints.maxWidth < 700;
+          builder: (context, constraints) {
+            final bool compact = constraints.maxWidth < 700;
 
             return GridView.builder(
               itemCount: metrics.length,
               shrinkWrap: true,
-              physics:
-                  const NeverScrollableScrollPhysics(),
-              gridDelegate:
-                  SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount:
-                    compact ? 2 : 3,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: compact ? 2 : 3,
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
-                childAspectRatio:
-                    compact ? 1.42 : 1.80,
+                childAspectRatio: compact ? 1.42 : 1.80,
               ),
-              itemBuilder: (
-                context,
-                index,
-              ) {
-                final _MetricData item =
-                    metrics[index];
+              itemBuilder: (context, index) {
+                final _MetricData item = metrics[index];
 
                 return _MetricCard(
                   title: item.title,
@@ -838,76 +802,54 @@ class _DashboardHomeScreenState
     );
   }
 
-  Widget _buildBusinessHealth(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget _buildBusinessHealth(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
-    final double netAfterExpenses =
-        _totalProfit - _totalExpenses;
+    final double netAfterExpenses = _totalProfit - _totalExpenses;
 
-    final double margin =
-        _totalSales <= 0
-            ? 0
-            : (_totalProfit /
-                    _totalSales) *
-                100;
+    final double margin = _totalSales <= 0
+        ? 0
+        : (_totalProfit / _totalSales) * 100;
 
     final List<_HealthData> cards = [
       _HealthData(
         icon: Icons.inventory_2_rounded,
         title: 'Products',
         value: '$_totalProducts',
-        subtitle:
-            'Inventory products',
+        subtitle: 'Inventory products',
         color: AppColors.primary,
       ),
       _HealthData(
-        icon:
-            Icons.warning_amber_rounded,
+        icon: Icons.warning_amber_rounded,
         title: 'Low Stock',
-        value:
-            '$_lowStockProducts',
+        value: '$_lowStockProducts',
         subtitle: _lowStockProducts == 0
             ? 'Stock levels are healthy'
             : 'Products need attention',
-        color: _lowStockProducts == 0
-            ? AppColors.success
-            : AppColors.warning,
+        color: _lowStockProducts == 0 ? AppColors.success : AppColors.warning,
       ),
       _HealthData(
-        icon:
-            Icons.trending_up_rounded,
+        icon: Icons.trending_up_rounded,
         title: 'Gross Profit',
-        value:
-            _formatCurrency(_totalProfit),
-        subtitle:
-            'Before business expenses',
+        value: _formatCurrency(_totalProfit),
+        subtitle: 'Before business expenses',
         color: AppColors.success,
       ),
       _HealthData(
-        icon:
-            Icons.account_balance_outlined,
+        icon: Icons.account_balance_outlined,
         title: 'Net After Expenses',
-        value:
-            _formatCurrency(netAfterExpenses),
-        subtitle:
-            'After business expenses',
+        value: _formatCurrency(netAfterExpenses),
+        subtitle: 'After business expenses',
         color: AppColors.info,
       ),
     ];
 
     return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           'Business Health',
-          style: theme
-              .textTheme
-              .titleLarge
-              ?.copyWith(
+          style: theme.textTheme.titleLarge?.copyWith(
             fontWeight: FontWeight.w800,
           ),
         ),
@@ -915,35 +857,23 @@ class _DashboardHomeScreenState
         const SizedBox(height: 14),
 
         LayoutBuilder(
-          builder: (
-            context,
-            constraints,
-          ) {
-            final bool compact =
-                constraints.maxWidth < 700;
+          builder: (context, constraints) {
+            final bool compact = constraints.maxWidth < 700;
 
             return Column(
               children: [
                 GridView.builder(
                   itemCount: cards.length,
                   shrinkWrap: true,
-                  physics:
-                      const NeverScrollableScrollPhysics(),
-                  gridDelegate:
-                      SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount:
-                        compact ? 2 : 4,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: compact ? 2 : 4,
                     crossAxisSpacing: 12,
                     mainAxisSpacing: 12,
-                    childAspectRatio:
-                        compact ? 1.35 : 1.20,
+                    childAspectRatio: compact ? 1.35 : 1.20,
                   ),
-                  itemBuilder: (
-                    context,
-                    index,
-                  ) {
-                    final _HealthData item =
-                        cards[index];
+                  itemBuilder: (context, index) {
+                    final _HealthData item = cards[index];
 
                     return _HealthCard(
                       icon: item.icon,
@@ -959,29 +889,19 @@ class _DashboardHomeScreenState
 
                 Card(
                   child: Padding(
-                    padding:
-                        const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(16),
                     child: Row(
                       children: [
                         Container(
                           width: 44,
                           height: 44,
-                          decoration:
-                              BoxDecoration(
-                            color: AppColors
-                                .success
-                                .withValues(
-                              alpha: 0.10,
-                            ),
-                            borderRadius:
-                                BorderRadius.circular(
-                              13,
-                            ),
+                          decoration: BoxDecoration(
+                            color: AppColors.success.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(13),
                           ),
                           child: const Icon(
                             Icons.percent_rounded,
-                            color:
-                                AppColors.success,
+                            color: AppColors.success,
                           ),
                         ),
 
@@ -989,32 +909,19 @@ class _DashboardHomeScreenState
 
                         Expanded(
                           child: Column(
-                            crossAxisAlignment:
-                                CrossAxisAlignment
-                                    .start,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
                                 'Profit Margin',
-                                style: theme
-                                    .textTheme
-                                    .bodyMedium
-                                    ?.copyWith(
-                                  fontWeight:
-                                      FontWeight.w700,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
                                 ),
                               ),
-                              const SizedBox(
-                                height: 3,
-                              ),
+                              const SizedBox(height: 3),
                               Text(
                                 'Gross profit compared with total sales',
-                                style: theme
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(
-                                  color: theme
-                                      .colorScheme
-                                      .onSurfaceVariant,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
                                 ),
                               ),
                             ],
@@ -1023,14 +930,9 @@ class _DashboardHomeScreenState
 
                         Text(
                           '${margin.toStringAsFixed(1)}%',
-                          style: theme
-                              .textTheme
-                              .titleMedium
-                              ?.copyWith(
-                            color:
-                                AppColors.success,
-                            fontWeight:
-                                FontWeight.w800,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            color: AppColors.success,
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
                       ],
@@ -1045,14 +947,10 @@ class _DashboardHomeScreenState
     );
   }
 
-  Widget _buildPerformanceOverview(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget _buildPerformanceOverview(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
-    final List<_PerformanceBarData> data =
-        _buildLastSevenDayData();
+    final List<_PerformanceBarData> data = _buildLastSevenDayData();
 
     double maxValue = 0;
 
@@ -1071,46 +969,29 @@ class _DashboardHomeScreenState
         : (maxValue * 1.25).ceilToDouble();
 
     return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
             Expanded(
               child: Text(
                 'Performance Overview',
-                style: theme
-                    .textTheme
-                    .titleLarge
-                    ?.copyWith(
+                style: theme.textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w800,
                 ),
               ),
             ),
             Container(
-              padding:
-                  const EdgeInsets.symmetric(
-                horizontal: 10,
-                vertical: 6,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: theme
-                    .colorScheme
-                    .primary
-                    .withValues(alpha: 0.08),
-                borderRadius:
-                    BorderRadius.circular(10),
+                color: theme.colorScheme.primary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
                 'Last 7 days',
-                style: theme
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(
-                  color:
-                      theme.colorScheme.primary,
-                  fontWeight:
-                      FontWeight.w700,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ),
@@ -1122,51 +1003,27 @@ class _DashboardHomeScreenState
         Card(
           clipBehavior: Clip.antiAlias,
           child: Padding(
-            padding:
-                const EdgeInsets.fromLTRB(
-              16,
-              16,
-              16,
-              14,
-            ),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
             child: Column(
               children: [
                 Row(
                   children: [
-                    const _LegendDot(
-                      color: AppColors.success,
-                      label: 'Sales',
-                    ),
+                    const _LegendDot(color: AppColors.success, label: 'Sales'),
                     const SizedBox(width: 18),
-                    const _LegendDot(
-                      color: AppColors.info,
-                      label: 'Purchase',
-                    ),
+                    const _LegendDot(color: AppColors.info, label: 'Purchase'),
                     const Spacer(),
                     Text(
-                      _formatCurrency(
-                        _totalProfit,
-                      ),
-                      style: theme
-                          .textTheme
-                          .titleMedium
-                          ?.copyWith(
-                        color:
-                            AppColors.success,
-                        fontWeight:
-                            FontWeight.w800,
+                      _formatCurrency(_totalProfit),
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: AppColors.success,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                     const SizedBox(width: 6),
                     Text(
                       'profit',
-                      style: theme
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(
-                        color: theme
-                            .colorScheme
-                            .onSurfaceVariant,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
@@ -1177,10 +1034,7 @@ class _DashboardHomeScreenState
                 SizedBox(
                   height: 220,
                   width: double.infinity,
-                  child: _PerformanceChart(
-                    data: data,
-                    maxValue: chartMax,
-                  ),
+                  child: _PerformanceChart(data: data, maxValue: chartMax),
                 ),
               ],
             ),
@@ -1190,51 +1044,36 @@ class _DashboardHomeScreenState
     );
   }
 
-  List<_PerformanceBarData>
-      _buildLastSevenDayData() {
+  List<_PerformanceBarData> _buildLastSevenDayData() {
     final DateTime today = DateTime.now();
 
-    final List<_PerformanceBarData>
-        result = <_PerformanceBarData>[];
+    final List<_PerformanceBarData> result = <_PerformanceBarData>[];
 
-    for (int offset = 6;
-        offset >= 0;
-        offset--) {
+    for (int offset = 6; offset >= 0; offset--) {
       final DateTime day = DateTime(
         today.year,
         today.month,
         today.day,
-      ).subtract(
-        Duration(days: offset),
-      );
+      ).subtract(Duration(days: offset));
 
       double sales = 0;
       double purchase = 0;
 
-      for (final SaleModel sale
-          in _chartSales) {
-        if (_isSameDay(
-          sale.date,
-          day,
-        )) {
+      for (final SaleModel sale in _chartSales) {
+        if (_isSameDay(sale.date, day)) {
           sales += sale.total;
         }
       }
 
-      for (final PurchaseModel item
-          in _chartPurchases) {
-        if (_isSameDay(
-          item.date,
-          day,
-        )) {
+      for (final PurchaseModel item in _chartPurchases) {
+        if (_isSameDay(item.date, day)) {
           purchase += item.total;
         }
       }
 
       result.add(
         _PerformanceBarData(
-          label:
-              DateFormat('EEE').format(day),
+          label: DateFormat('EEE').format(day),
           sales: sales,
           purchase: purchase,
         ),
@@ -1244,47 +1083,30 @@ class _DashboardHomeScreenState
     return result;
   }
 
-  bool _isSameDay(
-    DateTime a,
-    DateTime b,
-  ) {
-    return a.year == b.year &&
-        a.month == b.month &&
-        a.day == b.day;
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
-  Widget _buildRecentActivity(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget _buildRecentActivity(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
             Expanded(
               child: Text(
                 'Recent Activity',
-                style: theme
-                    .textTheme
-                    .titleLarge
-                    ?.copyWith(
+                style: theme.textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w800,
                 ),
               ),
             ),
             Text(
               'Latest transactions',
-              style: theme
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(
-                color: theme
-                    .colorScheme
-                    .onSurfaceVariant,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ],
@@ -1294,42 +1116,24 @@ class _DashboardHomeScreenState
 
         Card(
           child: Padding(
-            padding:
-                const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(16),
             child: Column(
               children: [
                 if (_recentSales.isNotEmpty)
                   ..._recentSales
                       .take(2)
                       .map(
-                        (sale) =>
-                            _ActivityTile(
-                          icon: Icons
-                              .receipt_long_rounded,
-                          title:
-                              sale.invoiceNumber
-                                      .trim()
-                                      .isEmpty
-                                  ? 'Sale'
-                                  : sale
-                                      .invoiceNumber,
-                          subtitle:
-                              sale.customerName
-                                      .trim()
-                                      .isEmpty
-                                  ? 'Customer'
-                                  : sale
-                                      .customerName,
-                          amount:
-                              _formatCurrency(
-                            sale.total,
-                          ),
-                          date:
-                              _formatDate(
-                            sale.date,
-                          ),
-                          color:
-                              AppColors.success,
+                        (sale) => _ActivityTile(
+                          icon: Icons.receipt_long_rounded,
+                          title: sale.invoiceNumber.trim().isEmpty
+                              ? 'Sale'
+                              : sale.invoiceNumber,
+                          subtitle: sale.customerName.trim().isEmpty
+                              ? 'Customer'
+                              : sale.customerName,
+                          amount: _formatCurrency(sale.total),
+                          date: _formatDate(sale.date),
+                          color: AppColors.success,
                         ),
                       ),
 
@@ -1337,29 +1141,15 @@ class _DashboardHomeScreenState
                   ..._recentPurchases
                       .take(2)
                       .map(
-                        (purchase) =>
-                            _ActivityTile(
-                          icon: Icons
-                              .shopping_cart_rounded,
+                        (purchase) => _ActivityTile(
+                          icon: Icons.shopping_cart_rounded,
                           title: 'Purchase',
-                          subtitle:
-                              purchase
-                                  .supplierName
-                                  .trim()
-                                  .isEmpty
+                          subtitle: purchase.supplierName.trim().isEmpty
                               ? 'Supplier'
-                              : purchase
-                                  .supplierName,
-                          amount:
-                              _formatCurrency(
-                            purchase.total,
-                          ),
-                          date:
-                              _formatDate(
-                            purchase.date,
-                          ),
-                          color:
-                              AppColors.info,
+                              : purchase.supplierName,
+                          amount: _formatCurrency(purchase.total),
+                          date: _formatDate(purchase.date),
+                          color: AppColors.info,
                         ),
                       ),
 
@@ -1367,30 +1157,15 @@ class _DashboardHomeScreenState
                   ..._recentPayments
                       .take(2)
                       .map(
-                        (payment) =>
-                            _ActivityTile(
-                          icon: Icons
-                              .payments_rounded,
-                          title:
-                              'Payment Received',
-                          subtitle:
-                              payment
-                                      .customerName
-                                      .trim()
-                                      .isEmpty
-                                  ? 'Customer'
-                                  : payment
-                                      .customerName,
-                          amount:
-                              _formatCurrency(
-                            payment.amount,
-                          ),
-                          date:
-                              _formatDate(
-                            payment.date,
-                          ),
-                          color:
-                              AppColors.success,
+                        (payment) => _ActivityTile(
+                          icon: Icons.payments_rounded,
+                          title: 'Payment Received',
+                          subtitle: payment.customerName.trim().isEmpty
+                              ? 'Customer'
+                              : payment.customerName,
+                          amount: _formatCurrency(payment.amount),
+                          date: _formatDate(payment.date),
+                          color: AppColors.success,
                         ),
                       ),
 
@@ -1398,35 +1173,17 @@ class _DashboardHomeScreenState
                   ..._recentExpenses
                       .take(2)
                       .map(
-                        (expense) =>
-                            _ActivityTile(
-                          icon: Icons
-                              .money_off_rounded,
-                          title:
-                              expense.category
-                                      .trim()
-                                      .isEmpty
-                                  ? 'Expense'
-                                  : expense
-                                      .category,
-                          subtitle:
-                              expense
-                                      .description
-                                      .trim()
-                                      .isEmpty
-                                  ? 'Business expense'
-                                  : expense
-                                      .description,
-                          amount:
-                              _formatCurrency(
-                            expense.amount,
-                          ),
-                          date:
-                              _formatDate(
-                            expense.date,
-                          ),
-                          color:
-                              AppColors.danger,
+                        (expense) => _ActivityTile(
+                          icon: Icons.money_off_rounded,
+                          title: expense.category.trim().isEmpty
+                              ? 'Expense'
+                              : expense.category,
+                          subtitle: expense.description.trim().isEmpty
+                              ? 'Business expense'
+                              : expense.description,
+                          amount: _formatCurrency(expense.amount),
+                          date: _formatDate(expense.date),
+                          color: AppColors.danger,
                         ),
                       ),
 
@@ -1434,9 +1191,7 @@ class _DashboardHomeScreenState
                     _recentPurchases.isEmpty &&
                     _recentPayments.isEmpty &&
                     _recentExpenses.isEmpty)
-                  _buildNoActivityState(
-                    context,
-                  ),
+                  _buildNoActivityState(context),
               ],
             ),
           ),
@@ -1445,25 +1200,18 @@ class _DashboardHomeScreenState
     );
   }
 
-  Widget _buildNoActivityState(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget _buildNoActivityState(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     return Padding(
-      padding:
-          const EdgeInsets.symmetric(
-        vertical: 30,
-      ),
+      padding: const EdgeInsets.symmetric(vertical: 30),
       child: Column(
         children: [
           Container(
             width: 64,
             height: 64,
             decoration: BoxDecoration(
-              color: AppColors.primary
-                  .withValues(alpha: 0.10),
+              color: AppColors.primary.withValues(alpha: 0.10),
               shape: BoxShape.circle,
             ),
             child: const Icon(
@@ -1477,10 +1225,7 @@ class _DashboardHomeScreenState
 
           Text(
             'No recent activity',
-            style: theme
-                .textTheme
-                .titleMedium
-                ?.copyWith(
+            style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -1490,13 +1235,8 @@ class _DashboardHomeScreenState
           Text(
             'Sales, purchases, payments and expenses will appear here.',
             textAlign: TextAlign.center,
-            style: theme
-                .textTheme
-                .bodySmall
-                ?.copyWith(
-              color: theme
-                  .colorScheme
-                  .onSurfaceVariant,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
         ],
@@ -1504,30 +1244,21 @@ class _DashboardHomeScreenState
     );
   }
 
-  Widget _buildInventoryOverview(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget _buildInventoryOverview(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
-    final bool hasLowStock =
-        _lowStockProducts > 0;
+    final bool hasLowStock = _lowStockProducts > 0;
 
-    final Color statusColor =
-        hasLowStock
-            ? AppColors.warning
-            : AppColors.success;
+    final Color statusColor = hasLowStock
+        ? AppColors.warning
+        : AppColors.success;
 
     return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           'Inventory Overview',
-          style: theme
-              .textTheme
-              .titleLarge
-              ?.copyWith(
+          style: theme.textTheme.titleLarge?.copyWith(
             fontWeight: FontWeight.w800,
           ),
         ),
@@ -1536,81 +1267,49 @@ class _DashboardHomeScreenState
 
         Card(
           child: Padding(
-            padding:
-                const EdgeInsets.all(18),
+            padding: const EdgeInsets.all(18),
             child: LayoutBuilder(
-              builder: (
-                context,
-                constraints,
-              ) {
-                final bool compact =
-                    constraints.maxWidth <
-                        600;
+              builder: (context, constraints) {
+                final bool compact = constraints.maxWidth < 600;
 
-                final Widget stockValue =
-                    Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.end,
+                final Widget stockValue = Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      _formatCurrency(
-                        _stockValue,
-                      ),
-                      style: theme
-                          .textTheme
-                          .titleMedium
-                          ?.copyWith(
-                        fontWeight:
-                            FontWeight.w800,
+                      _formatCurrency(_stockValue),
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                     const SizedBox(height: 3),
                     Text(
                       'Stock Value',
-                      style: theme
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(
-                        color: theme
-                            .colorScheme
-                            .onSurfaceVariant,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
                 );
 
-                final Widget content =
-                    Expanded(
+                final Widget content = Expanded(
                   child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         hasLowStock
                             ? 'Low Stock Alert'
                             : 'Inventory Looks Good',
-                        style: theme
-                            .textTheme
-                            .titleMedium
-                            ?.copyWith(
-                          fontWeight:
-                              FontWeight.w700,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
-                      const SizedBox(
-                        height: 4,
-                      ),
+                      const SizedBox(height: 4),
                       Text(
                         hasLowStock
                             ? '$_lowStockProducts product${_lowStockProducts == 1 ? '' : 's'} need restocking attention.'
                             : 'No products are below the minimum stock level.',
-                        style: theme
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(
-                          color: theme
-                              .colorScheme
-                              .onSurfaceVariant,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ],
@@ -1619,28 +1318,21 @@ class _DashboardHomeScreenState
 
                 if (compact) {
                   return Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
                           _InventoryIcon(
                             color: statusColor,
                             icon: hasLowStock
-                                ? Icons
-                                    .warning_amber_rounded
-                                : Icons
-                                    .inventory_2_rounded,
+                                ? Icons.warning_amber_rounded
+                                : Icons.inventory_2_rounded,
                           ),
-                          const SizedBox(
-                            width: 14,
-                          ),
+                          const SizedBox(width: 14),
                           content,
                         ],
                       ),
-                      const SizedBox(
-                        height: 16,
-                      ),
+                      const SizedBox(height: 16),
                       stockValue,
                     ],
                   );
@@ -1651,18 +1343,12 @@ class _DashboardHomeScreenState
                     _InventoryIcon(
                       color: statusColor,
                       icon: hasLowStock
-                          ? Icons
-                              .warning_amber_rounded
-                          : Icons
-                              .inventory_2_rounded,
+                          ? Icons.warning_amber_rounded
+                          : Icons.inventory_2_rounded,
                     ),
-                    const SizedBox(
-                      width: 14,
-                    ),
+                    const SizedBox(width: 14),
                     content,
-                    const SizedBox(
-                      width: 16,
-                    ),
+                    const SizedBox(width: 16),
                     stockValue,
                   ],
                 );
@@ -1674,32 +1360,25 @@ class _DashboardHomeScreenState
     );
   }
 
-  Widget _buildErrorState(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget _buildErrorState(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     return SafeArea(
       child: Center(
         child: Padding(
-          padding:
-              const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(24),
           child: Column(
-            mainAxisSize:
-                MainAxisSize.min,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Container(
                 width: 72,
                 height: 72,
                 decoration: BoxDecoration(
-                  color: AppColors.danger
-                      .withValues(alpha: 0.10),
+                  color: AppColors.danger.withValues(alpha: 0.10),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
-                  Icons
-                      .error_outline_rounded,
+                  Icons.error_outline_rounded,
                   color: AppColors.danger,
                   size: 36,
                 ),
@@ -1709,12 +1388,8 @@ class _DashboardHomeScreenState
 
               Text(
                 'Unable to load dashboard',
-                style: theme
-                    .textTheme
-                    .titleLarge
-                    ?.copyWith(
-                  fontWeight:
-                      FontWeight.w800,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
                 ),
               ),
 
@@ -1724,13 +1399,8 @@ class _DashboardHomeScreenState
                 _errorMessage ??
                     'Something went wrong while loading dashboard data.',
                 textAlign: TextAlign.center,
-                style: theme
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(
-                  color: theme
-                      .colorScheme
-                      .onSurfaceVariant,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
 
@@ -1738,11 +1408,8 @@ class _DashboardHomeScreenState
 
               FilledButton.icon(
                 onPressed: _loadDashboard,
-                icon: const Icon(
-                  Icons.refresh_rounded,
-                ),
-                label:
-                    const Text('TRY AGAIN'),
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('TRY AGAIN'),
               ),
             ],
           ),
@@ -1792,25 +1459,16 @@ class _MetricCard extends StatelessWidget {
   });
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     return Container(
-      padding:
-          const EdgeInsets.all(15),
+      padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color:
-            theme.colorScheme.surface,
-        borderRadius:
-            BorderRadius.circular(18),
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: theme
-              .colorScheme
-              .outline
-              .withValues(alpha: 0.12),
+          color: theme.colorScheme.outline.withValues(alpha: 0.12),
         ),
       ),
       child: Row(
@@ -1819,40 +1477,25 @@ class _MetricCard extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: color.withValues(
-                alpha: 0.10,
-              ),
-              borderRadius:
-                  BorderRadius.circular(13),
+              color: color.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(13),
             ),
-            child: Icon(
-              icon,
-              color: color,
-              size: 22,
-            ),
+            child: Icon(icon, color: color, size: 22),
           ),
 
           const SizedBox(width: 11),
 
           Expanded(
             child: Column(
-              mainAxisAlignment:
-                  MainAxisAlignment.center,
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   title,
                   maxLines: 1,
-                  overflow:
-                      TextOverflow.ellipsis,
-                  style: theme
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(
-                    color: theme
-                        .colorScheme
-                        .onSurfaceVariant,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
 
@@ -1861,14 +1504,9 @@ class _MetricCard extends StatelessWidget {
                 Text(
                   value,
                   maxLines: 1,
-                  overflow:
-                      TextOverflow.ellipsis,
-                  style: theme
-                      .textTheme
-                      .titleMedium
-                      ?.copyWith(
-                    fontWeight:
-                        FontWeight.w800,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
 
@@ -1877,14 +1515,8 @@ class _MetricCard extends StatelessWidget {
                 Text(
                   subtitle,
                   maxLines: 1,
-                  overflow:
-                      TextOverflow.ellipsis,
-                  style: theme
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(
-                    color: color,
-                  ),
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(color: color),
                 ),
               ],
             ),
@@ -1935,32 +1567,21 @@ class _HealthCard extends StatelessWidget {
   });
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     return Container(
-      padding:
-          const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color:
-            theme.colorScheme.surface,
-        borderRadius:
-            BorderRadius.circular(18),
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: theme
-              .colorScheme
-              .outline
-              .withValues(alpha: 0.12),
+          color: theme.colorScheme.outline.withValues(alpha: 0.12),
         ),
       ),
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        mainAxisAlignment:
-            MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Row(
             children: [
@@ -1968,17 +1589,10 @@ class _HealthCard extends StatelessWidget {
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
-                  color: color.withValues(
-                    alpha: 0.10,
-                  ),
-                  borderRadius:
-                      BorderRadius.circular(11),
+                  color: color.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(11),
                 ),
-                child: Icon(
-                  icon,
-                  color: color,
-                  size: 20,
-                ),
+                child: Icon(icon, color: color, size: 20),
               ),
 
               const Spacer(),
@@ -1987,14 +1601,9 @@ class _HealthCard extends StatelessWidget {
                 child: Text(
                   value,
                   maxLines: 1,
-                  overflow:
-                      TextOverflow.ellipsis,
-                  style: theme
-                      .textTheme
-                      .titleMedium
-                      ?.copyWith(
-                    fontWeight:
-                        FontWeight.w800,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
@@ -2006,14 +1615,9 @@ class _HealthCard extends StatelessWidget {
           Text(
             title,
             maxLines: 1,
-            overflow:
-                TextOverflow.ellipsis,
-            style: theme
-                .textTheme
-                .bodyMedium
-                ?.copyWith(
-              fontWeight:
-                  FontWeight.w700,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w700,
             ),
           ),
 
@@ -2022,15 +1626,9 @@ class _HealthCard extends StatelessWidget {
           Text(
             subtitle,
             maxLines: 2,
-            overflow:
-                TextOverflow.ellipsis,
-            style: theme
-                .textTheme
-                .bodySmall
-                ?.copyWith(
-              color: theme
-                  .colorScheme
-                  .onSurfaceVariant,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
         ],
@@ -2063,37 +1661,23 @@ class _LegendDot extends StatelessWidget {
   final Color color;
   final String label;
 
-  const _LegendDot({
-    required this.color,
-    required this.label,
-  });
+  const _LegendDot({required this.color, required this.label});
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     return Row(
-      mainAxisSize:
-          MainAxisSize.min,
+      mainAxisSize: MainAxisSize.min,
       children: [
         Container(
           width: 9,
           height: 9,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
         const SizedBox(width: 6),
         Text(
           label,
-          style: Theme.of(context)
-              .textTheme
-              .bodySmall
-              ?.copyWith(
-            fontWeight:
-                FontWeight.w600,
-          ),
+          style: Theme.of(context).textTheme.bodySmall
+              ?.copyWith(fontWeight: FontWeight.w600),
         ),
       ],
     );
@@ -2104,37 +1688,23 @@ class _LegendDot extends StatelessWidget {
 // PERFORMANCE CHART
 // =============================================================================
 
-class _PerformanceChart
-    extends StatelessWidget {
+class _PerformanceChart extends StatelessWidget {
   final List<_PerformanceBarData> data;
   final double maxValue;
 
-  const _PerformanceChart({
-    required this.data,
-    required this.maxValue,
-  });
+  const _PerformanceChart({required this.data, required this.maxValue});
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     return CustomPaint(
       painter: _PerformanceChartPainter(
         data: data,
         maxValue: maxValue,
-        textStyle:
-            theme.textTheme.bodySmall ??
-                const TextStyle(),
-        gridColor: theme
-            .colorScheme
-            .outlineVariant
-            .withValues(alpha: 0.35),
-        labelColor: theme
-            .colorScheme
-            .onSurfaceVariant,
+        textStyle: theme.textTheme.bodySmall ?? const TextStyle(),
+        gridColor: theme.colorScheme.outlineVariant.withValues(alpha: 0.35),
+        labelColor: theme.colorScheme.onSurfaceVariant,
       ),
     );
   }
@@ -2144,8 +1714,7 @@ class _PerformanceChart
 // PERFORMANCE CHART PAINTER
 // =============================================================================
 
-class _PerformanceChartPainter
-    extends CustomPainter {
+class _PerformanceChartPainter extends CustomPainter {
   final List<_PerformanceBarData> data;
   final double maxValue;
   final TextStyle textStyle;
@@ -2161,23 +1730,17 @@ class _PerformanceChartPainter
   });
 
   @override
-  void paint(
-    Canvas canvas,
-    Size size,
-  ) {
+  void paint(Canvas canvas, Size size) {
     const double left = 8;
     const double right = 8;
     const double top = 8;
     const double bottom = 28;
 
-    final double chartHeight =
-        size.height - top - bottom;
+    final double chartHeight = size.height - top - bottom;
 
-    final double chartWidth =
-        size.width - left - right;
+    final double chartWidth = size.width - left - right;
 
-    if (chartHeight <= 0 ||
-        chartWidth <= 0) {
+    if (chartHeight <= 0 || chartWidth <= 0) {
       return;
     }
 
@@ -2186,17 +1749,11 @@ class _PerformanceChartPainter
       ..strokeWidth = 1;
 
     for (int i = 0; i <= 4; i++) {
-      final double y =
-          top +
-              chartHeight -
-              (chartHeight * i / 4);
+      final double y = top + chartHeight - (chartHeight * i / 4);
 
       canvas.drawLine(
         Offset(left, y),
-        Offset(
-          size.width - right,
-          y,
-        ),
+        Offset(size.width - right, y),
         gridPaint,
       );
     }
@@ -2205,16 +1762,11 @@ class _PerformanceChartPainter
       return;
     }
 
-    final double safeMax =
-        maxValue <= 0 ? 1 : maxValue;
+    final double safeMax = maxValue <= 0 ? 1 : maxValue;
 
-    final double groupWidth =
-        chartWidth / data.length;
+    final double groupWidth = chartWidth / data.length;
 
-    final double barWidth =
-        (groupWidth * 0.22)
-            .clamp(8.0, 22.0)
-            .toDouble();
+    final double barWidth = (groupWidth * 0.22).clamp(8.0, 22.0).toDouble();
 
     final Paint salesPaint = Paint()
       ..color = AppColors.success
@@ -2224,78 +1776,54 @@ class _PerformanceChartPainter
       ..color = AppColors.info
       ..style = PaintingStyle.fill;
 
-    for (int i = 0;
-        i < data.length;
-        i++) {
-      final _PerformanceBarData item =
-          data[i];
+    for (int i = 0; i < data.length; i++) {
+      final _PerformanceBarData item = data[i];
 
-      final double centerX =
-          left +
-              groupWidth * i +
-              groupWidth / 2;
+      final double centerX = left + groupWidth * i + groupWidth / 2;
 
-      final double salesRatio =
-          (item.sales / safeMax)
-              .clamp(0.0, 1.0)
-              .toDouble();
+      final double salesRatio = (item.sales / safeMax)
+          .clamp(0.0, 1.0)
+          .toDouble();
 
-      final double purchaseRatio =
-          (item.purchase / safeMax)
-              .clamp(0.0, 1.0)
-              .toDouble();
+      final double purchaseRatio = (item.purchase / safeMax)
+          .clamp(0.0, 1.0)
+          .toDouble();
 
-      final double salesHeight =
-          chartHeight * salesRatio;
+      final double salesHeight = chartHeight * salesRatio;
 
-      final double purchaseHeight =
-          chartHeight * purchaseRatio;
+      final double purchaseHeight = chartHeight * purchaseRatio;
 
-      final RRect salesRect =
-          RRect.fromRectAndRadius(
+      final RRect salesRect = RRect.fromRectAndRadius(
         Rect.fromLTWH(
           centerX - barWidth - 2,
-          top +
-              chartHeight -
-              salesHeight,
+          top + chartHeight - salesHeight,
           barWidth,
           salesHeight,
         ),
         const Radius.circular(5),
       );
 
-      final RRect purchaseRect =
-          RRect.fromRectAndRadius(
+      final RRect purchaseRect = RRect.fromRectAndRadius(
         Rect.fromLTWH(
           centerX + 2,
-          top +
-              chartHeight -
-              purchaseHeight,
+          top + chartHeight - purchaseHeight,
           barWidth,
           purchaseHeight,
         ),
         const Radius.circular(5),
       );
 
-      canvas.drawRRect(
-        salesRect,
-        salesPaint,
-      );
+      canvas.drawRRect(salesRect, salesPaint);
 
-      canvas.drawRRect(
-        purchaseRect,
-        purchasePaint,
-      );
+      canvas.drawRRect(purchaseRect, purchasePaint);
 
-      final TextPainter labelPainter =
-          TextPainter(
+      final TextPainter labelPainter = TextPainter(
         text: TextSpan(
           text: item.label,
           style: textStyle.copyWith(
             color: labelColor,
             fontSize: 10,
-            fontWeight:
-                FontWeight.w600,
+            fontWeight: FontWeight.w600,
           ),
         ),
 
@@ -2307,29 +1835,17 @@ class _PerformanceChartPainter
 
       labelPainter.paint(
         canvas,
-        Offset(
-          centerX -
-              labelPainter.width / 2,
-          size.height -
-              bottom +
-              8,
-        ),
+        Offset(centerX - labelPainter.width / 2, size.height - bottom + 8),
       );
     }
   }
 
   @override
-  bool shouldRepaint(
-    covariant _PerformanceChartPainter
-        oldDelegate,
-  ) {
+  bool shouldRepaint(covariant _PerformanceChartPainter oldDelegate) {
     return oldDelegate.data != data ||
-        oldDelegate.maxValue !=
-            maxValue ||
-        oldDelegate.gridColor !=
-            gridColor ||
-        oldDelegate.labelColor !=
-            labelColor;
+        oldDelegate.maxValue != maxValue ||
+        oldDelegate.gridColor != gridColor ||
+        oldDelegate.labelColor != labelColor;
   }
 }
 
@@ -2337,35 +1853,22 @@ class _PerformanceChartPainter
 // INVENTORY ICON
 // =============================================================================
 
-class _InventoryIcon
-    extends StatelessWidget {
+class _InventoryIcon extends StatelessWidget {
   final Color color;
   final IconData icon;
 
-  const _InventoryIcon({
-    required this.color,
-    required this.icon,
-  });
+  const _InventoryIcon({required this.color, required this.icon});
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     return Container(
       width: 50,
       height: 50,
       decoration: BoxDecoration(
-        color: color.withValues(
-          alpha: 0.10,
-        ),
-        borderRadius:
-            BorderRadius.circular(15),
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(15),
       ),
-      child: Icon(
-        icon,
-        color: color,
-        size: 25,
-      ),
+      child: Icon(icon, color: color, size: 25),
     );
   }
 }
@@ -2374,8 +1877,7 @@ class _InventoryIcon
 // ACTIVITY TILE
 // =============================================================================
 
-class _ActivityTile
-    extends StatelessWidget {
+class _ActivityTile extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
@@ -2393,26 +1895,17 @@ class _ActivityTile
   });
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     return Container(
-      margin:
-          const EdgeInsets.only(
-        bottom: 10,
-      ),
-      padding:
-          const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: theme
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(alpha: 0.35),
-        borderRadius:
-            BorderRadius.circular(14),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(
+          alpha: 0.35,
+        ),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
         children: [
@@ -2420,37 +1913,24 @@ class _ActivityTile
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: color.withValues(
-                alpha: 0.10,
-              ),
-              borderRadius:
-                  BorderRadius.circular(12),
+              color: color.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(
-              icon,
-              color: color,
-              size: 20,
-            ),
+            child: Icon(icon, color: color, size: 20),
           ),
 
           const SizedBox(width: 11),
 
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   title,
                   maxLines: 1,
-                  overflow:
-                      TextOverflow.ellipsis,
-                  style: theme
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(
-                    fontWeight:
-                        FontWeight.w700,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
 
@@ -2459,15 +1939,9 @@ class _ActivityTile
                 Text(
                   subtitle,
                   maxLines: 1,
-                  overflow:
-                      TextOverflow.ellipsis,
-                  style: theme
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(
-                    color: theme
-                        .colorScheme
-                        .onSurfaceVariant,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],
@@ -2477,18 +1951,13 @@ class _ActivityTile
           const SizedBox(width: 10),
 
           Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.end,
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
                 amount,
-                style: theme
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(
+                style: theme.textTheme.bodyMedium?.copyWith(
                   color: color,
-                  fontWeight:
-                      FontWeight.w800,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
 
@@ -2496,13 +1965,8 @@ class _ActivityTile
 
               Text(
                 date,
-                style: theme
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(
-                  color: theme
-                      .colorScheme
-                      .onSurfaceVariant,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
             ],

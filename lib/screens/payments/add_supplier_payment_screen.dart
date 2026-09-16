@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../../core/widgets/app_date_picker.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../models/business_model.dart';
@@ -334,9 +335,10 @@ class _AddSupplierPaymentScreenState
     }
 
     final DateTime? selected =
-        await showDatePicker(
+        await AppDatePicker.showDatePicker(
       context: context,
-      initialDate: _paymentDate,
+      
+      initialEntryMode: DatePickerEntryMode.calendar,initialDate: _paymentDate,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
     );

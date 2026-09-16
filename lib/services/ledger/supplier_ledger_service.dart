@@ -324,6 +324,7 @@ Future<void> deleteTransaction({
     required String supplierId,
     required String supplierName,
     required double paymentAmount,
+    double? balanceBefore,
     String referenceId = '',
     DateTime? date,
     String notes = '',
@@ -339,23 +340,29 @@ Future<void> deleteTransaction({
           paymentAmount,
     );
 
-    final double balanceBefore =
+    final double resolvedBalanceBefore =
+        balanceBefore ??
         await getSupplierBalance(
-      businessId:
-          businessId,
-      supplierId:
-          supplierId,
-    );
+          businessId: businessId,
+          supplierId: supplierId,
+        );
+
+    if (!resolvedBalanceBefore.isFinite ||
+        resolvedBalanceBefore < 0) {
+      throw StateError('Supplier outstanding balance is invalid.');
+    }
 
     if (paymentAmount >
-        balanceBefore + 0.000001) {
+        resolvedBalanceBefore + 0.000001) {
       throw StateError(
         'Supplier payment cannot be greater than the outstanding payable.',
       );
     }
 
     final double balanceAfter =
-        balanceBefore - paymentAmount;
+        (resolvedBalanceBefore - paymentAmount).abs() <= 0.01
+            ? 0
+            : resolvedBalanceBefore - paymentAmount;
 
     return _repository.createTransaction(
       LedgerTransactionModel(
@@ -379,7 +386,7 @@ Future<void> deleteTransaction({
             paymentAmount,
 
         balanceBefore:
-            balanceBefore,
+            resolvedBalanceBefore,
 
         balanceAfter:
             balanceAfter,

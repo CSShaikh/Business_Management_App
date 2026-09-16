@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import '../../core/widgets/app_date_picker.dart';
 
 import '../../core/services/purchase_stock_service.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/app_number_format.dart';
 import '../../models/ledger_transaction_model.dart';
 import '../../models/purchase_model.dart';
 import '../../models/supplier_model.dart';
@@ -1343,8 +1345,10 @@ class _PurchasesScreenState
   Future<void> _selectDateRange() async {
     final DateTimeRange?
         selectedRange =
-        await showDateRangePicker(
+        await AppDatePicker.showDateRangePicker(
       context: context,
+      
+      initialEntryMode: DatePickerEntryMode.calendar,
       firstDate: DateTime(
         2020,
         1,
@@ -2105,11 +2109,7 @@ class _PurchasesScreenState
   String _formatCurrency(
     double value,
   ) {
-    return NumberFormat.currency(
-      locale: 'en_IN',
-      symbol: '₹',
-      decimalDigits: 2,
-    ).format(value);
+    return AppNumberFormat.amount(value);
   }
 }
 

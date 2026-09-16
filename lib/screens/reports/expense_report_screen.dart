@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import '../../core/widgets/app_date_picker.dart';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
@@ -13,25 +15,18 @@ import '../../repositories/business_repository.dart';
 import '../../repositories/expense_repository.dart';
 
 class ExpenseReportScreen extends StatefulWidget {
-  const ExpenseReportScreen({
-    super.key,
-  });
+  const ExpenseReportScreen({super.key});
 
   @override
-  State<ExpenseReportScreen> createState() =>
-      _ExpenseReportScreenState();
+  State<ExpenseReportScreen> createState() => _ExpenseReportScreenState();
 }
 
-class _ExpenseReportScreenState
-    extends State<ExpenseReportScreen> {
-  final BusinessRepository _businessRepository =
-      BusinessRepository();
+class _ExpenseReportScreenState extends State<ExpenseReportScreen> {
+  final BusinessRepository _businessRepository = BusinessRepository();
 
-  final ExpenseRepository _expenseRepository =
-      ExpenseRepository();
+  final ExpenseRepository _expenseRepository = ExpenseRepository();
 
-  final TextEditingController _searchController =
-      TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
 
   bool _loading = true;
   bool _refreshing = false;
@@ -48,8 +43,7 @@ class _ExpenseReportScreenState
   DateTime? _startDate;
   DateTime? _endDate;
 
-  List<ExpenseModel> _allExpenses =
-      <ExpenseModel>[];
+  List<ExpenseModel> _allExpenses = <ExpenseModel>[];
 
   @override
   void initState() {
@@ -67,9 +61,7 @@ class _ExpenseReportScreenState
   // LOAD
   // ===========================================================================
 
-  Future<void> _loadReport({
-    bool showLoader = true,
-  }) async {
+  Future<void> _loadReport({bool showLoader = true}) async {
     if (showLoader) {
       setState(() {
         _loading = true;
@@ -83,18 +75,13 @@ class _ExpenseReportScreenState
     }
 
     try {
-      final business =
-          await _businessRepository
-              .getBusinessForCurrentUser();
+      final business = await _businessRepository.getBusinessForCurrentUser();
 
       if (business == null) {
-        throw Exception(
-          'Business information is not available.',
-        );
+        throw Exception('Business information is not available.');
       }
 
-      final List<ExpenseModel> expenses =
-          await _expenseRepository.getExpenses(
+      final List<ExpenseModel> expenses = await _expenseRepository.getExpenses(
         businessId: business.id,
       );
 
@@ -119,9 +106,7 @@ class _ExpenseReportScreenState
   }
 
   Future<void> _refreshReport() async {
-    await _loadReport(
-      showLoader: false,
-    );
+    await _loadReport(showLoader: false);
   }
 
   // ===========================================================================
@@ -131,30 +116,15 @@ class _ExpenseReportScreenState
   Future<void> _selectDateRange() async {
     final DateTime now = DateTime.now();
 
-    final DateTimeRange? selected =
-        await showDateRangePicker(
+    final DateTimeRange? selected = await AppDatePicker.showDateRangePicker(
       context: context,
+
+      initialEntryMode: DatePickerEntryMode.calendar,
       firstDate: DateTime(2020),
-      lastDate: DateTime(
-        now.year + 2,
-        12,
-        31,
-      ),
-      initialDateRange:
-          _startDate != null &&
-                  _endDate != null
-              ? DateTimeRange(
-                  start: _startDate!,
-                  end: _endDate!,
-                )
-              : DateTimeRange(
-                  start: DateTime(
-                    now.year,
-                    now.month,
-                    1,
-                  ),
-                  end: now,
-                ),
+      lastDate: DateTime(now.year + 2, 12, 31),
+      initialDateRange: _startDate != null && _endDate != null
+          ? DateTimeRange(start: _startDate!, end: _endDate!)
+          : DateTimeRange(start: DateTime(now.year, now.month, 1), end: now),
       helpText: 'Select Expense Report Period',
       saveText: 'Apply',
     );
@@ -190,15 +160,7 @@ class _ExpenseReportScreenState
   void _setDateRange(DateTime start, DateTime end) {
     setState(() {
       _startDate = DateTime(start.year, start.month, start.day);
-      _endDate = DateTime(
-        end.year,
-        end.month,
-        end.day,
-        23,
-        59,
-        59,
-        999,
-      );
+      _endDate = DateTime(end.year, end.month, end.day, 23, 59, 59, 999);
     });
   }
 
@@ -229,19 +191,13 @@ class _ExpenseReportScreenState
   void _setLastMonth() {
     final DateTime now = DateTime.now();
     final DateTime first = DateTime(now.year, now.month - 1, 1);
-    _setDateRange(
-      first,
-      DateTime(first.year, first.month + 1, 0),
-    );
+    _setDateRange(first, DateTime(first.year, first.month + 1, 0));
   }
 
   String _pdfCurrency(double value) =>
       'Rs. ${NumberFormat('#,##0.00', 'en_IN').format(value)}';
 
-  void _showMessage(
-    String message, {
-    bool isError = false,
-  }) {
+  void _showMessage(String message, {bool isError = false}) {
     if (!mounted) {
       return;
     }
@@ -252,8 +208,7 @@ class _ExpenseReportScreenState
         SnackBar(
           content: Text(message),
           behavior: SnackBarBehavior.floating,
-          backgroundColor:
-              isError ? AppColors.danger : AppColors.success,
+          backgroundColor: isError ? AppColors.danger : AppColors.success,
         ),
       );
   }
@@ -337,74 +292,116 @@ class _ExpenseReportScreenState
             ],
           ),
           build: (context) => [
-            pw.Text('Expense Report', style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
+            pw.Text(
+              'Expense Report',
+              style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
+            ),
             pw.SizedBox(height: 4),
             pw.Text('Period: $period'),
             pw.SizedBox(height: 16),
             pw.Table(
               border: pw.TableBorder.all(color: PdfColors.grey400),
               children: [
-                pw.TableRow(children: [
-                  _pdfCell('Total Expenses', bold: true),
-                  _pdfCell(_pdfCurrency(total), bold: true),
-                  _pdfCell('Expense Count', bold: true),
-                  _pdfCell(expenses.length.toString(), bold: true),
-                ]),
-                pw.TableRow(children: [
-                  _pdfCell('Today'),
-                  _pdfCell(_pdfCurrency(_todayExpenses(expenses))),
-                  _pdfCell('Average'),
-                  _pdfCell(_pdfCurrency(_averageExpense(expenses))),
-                ]),
+                pw.TableRow(
+                  children: [
+                    _pdfCell('Total Expenses', bold: true),
+                    _pdfCell(_pdfCurrency(total), bold: true),
+                    _pdfCell('Expense Count', bold: true),
+                    _pdfCell(expenses.length.toString(), bold: true),
+                  ],
+                ),
+                pw.TableRow(
+                  children: [
+                    _pdfCell('Today'),
+                    _pdfCell(_pdfCurrency(_todayExpenses(expenses))),
+                    _pdfCell('Average'),
+                    _pdfCell(_pdfCurrency(_averageExpense(expenses))),
+                  ],
+                ),
               ],
             ),
             pw.SizedBox(height: 18),
-            pw.Text('Expense Details', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+            pw.Text(
+              'Expense Details',
+              style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+            ),
             pw.SizedBox(height: 8),
             if (expenses.isEmpty)
               pw.Text('No expenses found for the selected filters.')
             else
               pw.TableHelper.fromTextArray(
-                headers: const ['Date', 'Category', 'Description', 'Payment Method', 'Amount'],
-                data: expenses.map((expense) => [
-                  _date(expense.date),
-                  expense.category.trim().isEmpty ? 'Other' : expense.category.trim(),
-                  expense.description.trim().isEmpty ? '—' : expense.description.trim(),
-                  expense.paymentMethod.trim().isEmpty ? 'Other' : expense.paymentMethod.trim(),
-                  _pdfCurrency(expense.amount),
-                ]).toList(),
+                headers: const [
+                  'Date',
+                  'Category',
+                  'Description',
+                  'Payment Method',
+                  'Amount',
+                ],
+                data: expenses
+                    .map(
+                      (expense) => [
+                        _date(expense.date),
+                        expense.category.trim().isEmpty
+                            ? 'Other'
+                            : expense.category.trim(),
+                        expense.description.trim().isEmpty
+                            ? '—'
+                            : expense.description.trim(),
+                        expense.paymentMethod.trim().isEmpty
+                            ? 'Other'
+                            : expense.paymentMethod.trim(),
+                        _pdfCurrency(expense.amount),
+                      ],
+                    )
+                    .toList(),
                 headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
                 cellStyle: const pw.TextStyle(fontSize: 8),
                 cellAlignments: {4: pw.Alignment.centerRight},
-                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColors.grey300,
+                ),
               ),
             pw.SizedBox(height: 18),
-            pw.Text('Category-wise Expenses', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+            pw.Text(
+              'Category-wise Expenses',
+              style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+            ),
             pw.SizedBox(height: 8),
             if (categoryRows.isEmpty)
               pw.Text('No category data available.')
             else
               pw.TableHelper.fromTextArray(
                 headers: const ['Category', 'Amount'],
-                data: categoryRows.map((e) => [e.key, _pdfCurrency(e.value)]).toList(),
+                data: categoryRows
+                    .map((e) => [e.key, _pdfCurrency(e.value)])
+                    .toList(),
                 headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
                 cellStyle: const pw.TextStyle(fontSize: 9),
                 cellAlignments: {1: pw.Alignment.centerRight},
-                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColors.grey300,
+                ),
               ),
             pw.SizedBox(height: 18),
-            pw.Text('Payment Method-wise Expenses', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+            pw.Text(
+              'Payment Method-wise Expenses',
+              style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+            ),
             pw.SizedBox(height: 8),
             if (paymentRows.isEmpty)
               pw.Text('No payment method data available.')
             else
               pw.TableHelper.fromTextArray(
                 headers: const ['Payment Method', 'Amount'],
-                data: paymentRows.map((e) => [e.key, _pdfCurrency(e.value)]).toList(),
+                data: paymentRows
+                    .map((e) => [e.key, _pdfCurrency(e.value)])
+                    .toList(),
                 headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
                 cellStyle: const pw.TextStyle(fontSize: 9),
                 cellAlignments: {1: pw.Alignment.centerRight},
-                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColors.grey300,
+                ),
               ),
           ],
         ),
@@ -452,32 +449,25 @@ class _ExpenseReportScreenState
   // ===========================================================================
 
   List<ExpenseModel> get _filteredExpenses {
-    final String query =
-        _searchQuery.trim().toLowerCase();
+    final String query = _searchQuery.trim().toLowerCase();
 
-    final List<ExpenseModel> result =
-        _allExpenses.where((expense) {
-      if (_startDate != null &&
-          expense.date.isBefore(_startDate!)) {
+    final List<ExpenseModel> result = _allExpenses.where((expense) {
+      if (_startDate != null && expense.date.isBefore(_startDate!)) {
         return false;
       }
 
-      if (_endDate != null &&
-          expense.date.isAfter(_endDate!)) {
+      if (_endDate != null && expense.date.isAfter(_endDate!)) {
         return false;
       }
 
       if (_categoryFilter != 'All' &&
-          expense.category.toLowerCase() !=
-              _categoryFilter.toLowerCase()) {
+          expense.category.toLowerCase() != _categoryFilter.toLowerCase()) {
         return false;
       }
 
       if (_paymentMethodFilter != 'All' &&
-          expense.paymentMethod
-                  .toLowerCase() !=
-              _paymentMethodFilter
-                  .toLowerCase()) {
+          expense.paymentMethod.toLowerCase() !=
+              _paymentMethodFilter.toLowerCase()) {
         return false;
       }
 
@@ -485,23 +475,13 @@ class _ExpenseReportScreenState
         return true;
       }
 
-      return expense.category
-              .toLowerCase()
-              .contains(query) ||
-          expense.description
-              .toLowerCase()
-              .contains(query) ||
-          expense.notes
-              .toLowerCase()
-              .contains(query) ||
-          expense.paymentMethod
-              .toLowerCase()
-              .contains(query);
+      return expense.category.toLowerCase().contains(query) ||
+          expense.description.toLowerCase().contains(query) ||
+          expense.notes.toLowerCase().contains(query) ||
+          expense.paymentMethod.toLowerCase().contains(query);
     }).toList();
 
-    result.sort(
-      (a, b) => b.date.compareTo(a.date),
-    );
+    result.sort((a, b) => b.date.compareTo(a.date));
 
     return result;
   }
@@ -510,121 +490,83 @@ class _ExpenseReportScreenState
   // CALCULATIONS
   // ===========================================================================
 
-  double _totalExpenses(
-    List<ExpenseModel> expenses,
-  ) {
-    return expenses.fold(
-      0,
-      (sum, expense) =>
-          sum + expense.amount,
-    );
+  double _totalExpenses(List<ExpenseModel> expenses) {
+    return expenses.fold(0, (sum, expense) => sum + expense.amount);
   }
 
-  double _todayExpenses(
-    List<ExpenseModel> expenses,
-  ) {
+  double _todayExpenses(List<ExpenseModel> expenses) {
     final DateTime now = DateTime.now();
 
     return expenses
         .where(
           (expense) =>
-              expense.date.year ==
-                  now.year &&
-              expense.date.month ==
-                  now.month &&
-              expense.date.day ==
-                  now.day,
+              expense.date.year == now.year &&
+              expense.date.month == now.month &&
+              expense.date.day == now.day,
         )
-        .fold(
-          0,
-          (sum, expense) =>
-              sum + expense.amount,
-        );
+        .fold(0, (sum, expense) => sum + expense.amount);
   }
 
-  double _averageExpense(
-    List<ExpenseModel> expenses,
-  ) {
+  double _averageExpense(List<ExpenseModel> expenses) {
     if (expenses.isEmpty) return 0;
 
-    return _totalExpenses(expenses) /
-        expenses.length;
+    return _totalExpenses(expenses) / expenses.length;
   }
 
-  Map<String, double> _categoryTotals(
-    List<ExpenseModel> expenses,
-  ) {
-    final Map<String, double> result =
-        <String, double>{};
+  Map<String, double> _categoryTotals(List<ExpenseModel> expenses) {
+    final Map<String, double> result = <String, double>{};
 
     for (final expense in expenses) {
-      final String category =
-          expense.category.trim().isEmpty
-              ? 'Other'
-              : expense.category.trim();
+      final String category = expense.category.trim().isEmpty
+          ? 'Other'
+          : expense.category.trim();
 
-      result[category] =
-          (result[category] ?? 0) +
-              expense.amount;
+      result[category] = (result[category] ?? 0) + expense.amount;
     }
 
     return result;
   }
 
-  Map<String, int> _categoryCounts(
-    List<ExpenseModel> expenses,
-  ) {
-    final Map<String, int> result =
-        <String, int>{};
+  Map<String, int> _categoryCounts(List<ExpenseModel> expenses) {
+    final Map<String, int> result = <String, int>{};
 
     for (final expense in expenses) {
-      final String category =
-          expense.category.trim().isEmpty
-              ? 'Other'
-              : expense.category.trim();
+      final String category = expense.category.trim().isEmpty
+          ? 'Other'
+          : expense.category.trim();
 
-      result[category] =
-          (result[category] ?? 0) + 1;
+      result[category] = (result[category] ?? 0) + 1;
     }
 
     return result;
   }
 
-  Map<String, double> _paymentMethodTotals(
-    List<ExpenseModel> expenses,
-  ) {
-    final Map<String, double> result =
-        <String, double>{};
+  Map<String, double> _paymentMethodTotals(List<ExpenseModel> expenses) {
+    final Map<String, double> result = <String, double>{};
 
     for (final expense in expenses) {
-      final String method =
-          expense.paymentMethod.trim().isEmpty
-              ? 'Other'
-              : expense.paymentMethod.trim();
+      final String method = expense.paymentMethod.trim().isEmpty
+          ? 'Other'
+          : expense.paymentMethod.trim();
 
-      result[method] =
-          (result[method] ?? 0) +
-              expense.amount;
+      result[method] = (result[method] ?? 0) + expense.amount;
     }
 
     return result;
   }
 
   List<String> get _availableCategories {
-    final Set<String> categories =
-        <String>{};
+    final Set<String> categories = <String>{};
 
     for (final expense in _allExpenses) {
-      final String category =
-          expense.category.trim();
+      final String category = expense.category.trim();
 
       if (category.isNotEmpty) {
         categories.add(category);
       }
     }
 
-    final List<String> result =
-        categories.toList();
+    final List<String> result = categories.toList();
 
     result.sort();
 
@@ -632,20 +574,17 @@ class _ExpenseReportScreenState
   }
 
   List<String> get _availablePaymentMethods {
-    final Set<String> methods =
-        <String>{};
+    final Set<String> methods = <String>{};
 
     for (final expense in _allExpenses) {
-      final String method =
-          expense.paymentMethod.trim();
+      final String method = expense.paymentMethod.trim();
 
       if (method.isNotEmpty) {
         methods.add(method);
       }
     }
 
-    final List<String> result =
-        methods.toList();
+    final List<String> result = methods.toList();
 
     result.sort();
 
@@ -665,14 +604,11 @@ class _ExpenseReportScreenState
   }
 
   String _date(DateTime date) {
-    return DateFormat(
-      'dd MMM yyyy',
-    ).format(date);
+    return DateFormat('dd MMM yyyy').format(date);
   }
 
   String _dateRangeText() {
-    if (_startDate == null ||
-        _endDate == null) {
+    if (_startDate == null || _endDate == null) {
       return 'All Dates';
     }
 
@@ -687,8 +623,7 @@ class _ExpenseReportScreenState
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme =
-        Theme.of(context);
+    final ThemeData theme = Theme.of(context);
 
     if (_loading) {
       return Scaffold(
@@ -746,82 +681,53 @@ class _ExpenseReportScreenState
         ],
       ),
       body: RefreshIndicator(
-      onRefresh: _refreshReport,
-      child: LayoutBuilder(
-        builder: (
-          context,
-          constraints,
-        ) {
-          final bool isDesktop =
-              constraints.maxWidth >= 1000;
+        onRefresh: _refreshReport,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final bool isDesktop = constraints.maxWidth >= 1000;
 
-          final bool isTablet =
-              constraints.maxWidth >= 650 &&
-                  constraints.maxWidth < 1000;
+            final bool isTablet =
+                constraints.maxWidth >= 650 && constraints.maxWidth < 1000;
 
-          return SingleChildScrollView(
-            physics:
-                const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.symmetric(
-              horizontal: isDesktop
-                  ? 28
-                  : isTablet
-                      ? 22
-                      : 16,
-              vertical: 20,
-            ),
-            child: Center(
-              child: ConstrainedBox(
-                constraints:
-                    const BoxConstraints(
-                  maxWidth: 1250,
-                ),
-                child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-                    _buildHeader(
-                      theme,
-                      isDesktop,
-                    ),
-                    const SizedBox(height: 20),
-                    _buildDateFilter(theme),
-                    const SizedBox(height: 20),
-                    _buildSummaryCards(
-                      theme,
-                      expenses,
-                      isDesktop,
-                    ),
-                    const SizedBox(height: 20),
-                    _buildFilters(theme),
-                    const SizedBox(height: 20),
-                    _buildCategorySection(
-                      theme,
-                      expenses,
-                    ),
-                    const SizedBox(height: 20),
-                    _buildPaymentMethodSection(
-                      theme,
-                      expenses,
-                    ),
-                    const SizedBox(height: 20),
-                    _buildExpenseList(
-                      theme,
-                      expenses,
-                    ),
-                    const SizedBox(height: 20),
-                    _buildFooter(
-                      theme,
-                      expenses,
-                    ),
-                  ],
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: EdgeInsets.symmetric(
+                horizontal: isDesktop
+                    ? 28
+                    : isTablet
+                    ? 22
+                    : 16,
+                vertical: 20,
+              ),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1250),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildHeader(theme, isDesktop),
+                      const SizedBox(height: 20),
+                      _buildDateFilter(theme),
+                      const SizedBox(height: 20),
+                      _buildSummaryCards(theme, expenses, isDesktop),
+                      const SizedBox(height: 20),
+                      _buildFilters(theme),
+                      const SizedBox(height: 20),
+                      _buildCategorySection(theme, expenses),
+                      const SizedBox(height: 20),
+                      _buildPaymentMethodSection(theme, expenses),
+                      const SizedBox(height: 20),
+                      _buildExpenseList(theme, expenses),
+                      const SizedBox(height: 20),
+                      _buildFooter(theme, expenses),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
-    ),
     );
   }
 
@@ -829,41 +735,27 @@ class _ExpenseReportScreenState
   // HEADER
   // ===========================================================================
 
-  Widget _buildHeader(
-    ThemeData theme,
-    bool isDesktop,
-  ) {
+  Widget _buildHeader(ThemeData theme, bool isDesktop) {
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.all(
-        isDesktop ? 26 : 20,
-      ),
+      padding: EdgeInsets.all(isDesktop ? 26 : 20),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [
-            AppColors.danger,
-            AppColors.warning,
-          ],
+          colors: [AppColors.danger, AppColors.warning],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius:
-            BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(22),
       ),
       child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
             width: 54,
             height: 54,
             decoration: BoxDecoration(
-              color:
-                  Colors.white.withValues(
-                alpha: 0.15,
-              ),
-              borderRadius:
-                  BorderRadius.circular(16),
+              color: Colors.white.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(16),
             ),
             child: const Icon(
               Icons.receipt_long_rounded,
@@ -874,56 +766,41 @@ class _ExpenseReportScreenState
           const SizedBox(width: 16),
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
                   'Expense Report',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 24,
-                    fontWeight:
-                        FontWeight.w800,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
                 const SizedBox(height: 5),
                 Text(
                   'Track business expenses, categories and payment methods.',
                   style: TextStyle(
-                    color:
-                        Colors.white.withValues(
-                      alpha: 0.82,
-                    ),
+                    color: Colors.white.withValues(alpha: 0.82),
                     fontSize: 13,
                     height: 1.4,
                   ),
                 ),
                 const SizedBox(height: 10),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(
+                  padding: const EdgeInsets.symmetric(
                     horizontal: 11,
                     vertical: 6,
                   ),
-                  decoration:
-                      BoxDecoration(
-                    color:
-                        Colors.white.withValues(
-                      alpha: 0.14,
-                    ),
-                    borderRadius:
-                        BorderRadius.circular(
-                      30,
-                    ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(30),
                   ),
                   child: Text(
                     _dateRangeText(),
-                    style:
-                        const TextStyle(
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 12,
-                      fontWeight:
-                          FontWeight.w600,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
@@ -933,26 +810,17 @@ class _ExpenseReportScreenState
           if (isDesktop)
             IconButton(
               tooltip: 'Refresh',
-              onPressed:
-                  _refreshing
-                      ? null
-                      : _refreshReport,
+              onPressed: _refreshing ? null : _refreshReport,
               icon: _refreshing
                   ? const SizedBox(
                       width: 20,
                       height: 20,
-                      child:
-                          CircularProgressIndicator(
+                      child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color:
-                            Colors.white,
+                        color: Colors.white,
                       ),
                     )
-                  : const Icon(
-                      Icons.refresh_rounded,
-                      color:
-                          Colors.white,
-                    ),
+                  : const Icon(Icons.refresh_rounded, color: Colors.white),
             ),
         ],
       ),
@@ -963,95 +831,49 @@ class _ExpenseReportScreenState
   // DATE
   // ===========================================================================
 
-  Widget _buildDateFilter(
-    ThemeData theme,
-  ) {
-    final bool hasFilter =
-        _startDate != null &&
-            _endDate != null;
+  Widget _buildDateFilter(ThemeData theme) {
+    final bool hasFilter = _startDate != null && _endDate != null;
 
     return _ReportCard(
       child: Wrap(
         spacing: 10,
         runSpacing: 10,
-        crossAxisAlignment:
-            WrapCrossAlignment.center,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          const Icon(
-            Icons.date_range_rounded,
-            size: 21,
-          ),
+          const Icon(Icons.date_range_rounded, size: 21),
           Text(
             'Report Period',
-            style:
-                theme.textTheme.titleMedium
-                    ?.copyWith(
-              fontWeight:
-                  FontWeight.w700,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
             ),
           ),
           Container(
-            padding:
-                const EdgeInsets.symmetric(
-              horizontal: 13,
-              vertical: 9,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
             decoration: BoxDecoration(
-              color: theme
-                  .colorScheme
-                  .surfaceContainerHighest,
-              borderRadius:
-                  BorderRadius.circular(10),
+              color: theme.colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
               _dateRangeText(),
-              style: theme
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(
-                fontWeight:
-                    FontWeight.w600,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
-          ActionChip(
-            label: const Text('Today'),
-            onPressed: _setToday,
-          ),
-          ActionChip(
-            label: const Text('This Week'),
-            onPressed: _setThisWeek,
-          ),
-          ActionChip(
-            label: const Text('This Month'),
-            onPressed: _setThisMonth,
-          ),
-          ActionChip(
-            label: const Text('Last Month'),
-            onPressed: _setLastMonth,
-          ),
+          ActionChip(label: const Text('Today'), onPressed: _setToday),
+          ActionChip(label: const Text('This Week'), onPressed: _setThisWeek),
+          ActionChip(label: const Text('This Month'), onPressed: _setThisMonth),
+          ActionChip(label: const Text('Last Month'), onPressed: _setLastMonth),
           FilledButton.icon(
             onPressed: _selectDateRange,
-            icon: const Icon(
-              Icons.calendar_month_rounded,
-              size: 18,
-            ),
-            label: Text(
-              hasFilter
-                  ? 'Change Period'
-                  : 'Select Period',
-            ),
+            icon: const Icon(Icons.calendar_month_rounded, size: 18),
+            label: Text(hasFilter ? 'Change Period' : 'Select Period'),
           ),
           if (hasFilter)
             OutlinedButton.icon(
-              onPressed:
-                  _clearDateFilter,
-              icon: const Icon(
-                Icons.clear_rounded,
-                size: 18,
-              ),
-              label:
-                  const Text('Clear'),
+              onPressed: _clearDateFilter,
+              icon: const Icon(Icons.clear_rounded, size: 18),
+              label: const Text('Clear'),
             ),
         ],
       ),
@@ -1070,71 +892,47 @@ class _ExpenseReportScreenState
     final List<_SummaryItem> items = [
       _SummaryItem(
         title: 'Total Expenses',
-        value: _currency(
-          _totalExpenses(expenses),
-        ),
+        value: _currency(_totalExpenses(expenses)),
         subtitle:
             '${expenses.length} expense${expenses.length == 1 ? '' : 's'}',
-        icon:
-            Icons.account_balance_wallet_rounded,
+        icon: Icons.account_balance_wallet_rounded,
         color: AppColors.danger,
       ),
       _SummaryItem(
         title: 'Today',
-        value: _currency(
-          _todayExpenses(expenses),
-        ),
-        subtitle:
-            'Today\'s expense',
-        icon:
-            Icons.today_rounded,
+        value: _currency(_todayExpenses(expenses)),
+        subtitle: 'Today\'s expense',
+        icon: Icons.today_rounded,
         color: AppColors.warning,
       ),
       _SummaryItem(
         title: 'Average Expense',
-        value: _currency(
-          _averageExpense(expenses),
-        ),
-        subtitle:
-            'Per transaction',
-        icon:
-            Icons.analytics_rounded,
+        value: _currency(_averageExpense(expenses)),
+        subtitle: 'Per transaction',
+        icon: Icons.analytics_rounded,
         color: AppColors.primary,
       ),
       _SummaryItem(
         title: 'Categories',
-        value: _categoryTotals(
-          expenses,
-        ).length.toString(),
-        subtitle:
-            'Expense categories',
-        icon:
-            Icons.category_rounded,
+        value: _categoryTotals(expenses).length.toString(),
+        subtitle: 'Expense categories',
+        icon: Icons.category_rounded,
         color: AppColors.secondary,
       ),
     ];
 
     return GridView.builder(
       shrinkWrap: true,
-      physics:
-          const NeverScrollableScrollPhysics(),
+      physics: const NeverScrollableScrollPhysics(),
       itemCount: items.length,
-      gridDelegate:
-          SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount:
-            isDesktop ? 4 : 2,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: isDesktop ? 4 : 2,
         crossAxisSpacing: 14,
         mainAxisSpacing: 14,
-        childAspectRatio:
-            isDesktop ? 1.9 : 1.45,
+        mainAxisExtent: isDesktop ? 180 : 156,
       ),
-      itemBuilder: (
-        context,
-        index,
-      ) {
-        return _SummaryCard(
-          item: items[index],
-        );
+      itemBuilder: (context, index) {
+        return _SummaryCard(item: items[index]);
       },
     );
   }
@@ -1143,100 +941,67 @@ class _ExpenseReportScreenState
   // FILTERS
   // ===========================================================================
 
-  Widget _buildFilters(
-    ThemeData theme,
-  ) {
+  Widget _buildFilters(ThemeData theme) {
     return _ReportCard(
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           TextField(
-            controller:
-                _searchController,
+            controller: _searchController,
             onChanged: (value) {
               setState(() {
-                _searchQuery =
-                    value.trim().toLowerCase();
+                _searchQuery = value.trim().toLowerCase();
               });
             },
-            decoration:
-                InputDecoration(
+            decoration: InputDecoration(
               hintText:
                   'Search category, description, payment method or notes...',
-              prefixIcon:
-                  const Icon(
-                Icons.search_rounded,
-              ),
-              suffixIcon:
-                  _searchQuery.isNotEmpty
-                      ? IconButton(
-                          onPressed: () {
-                            _searchController
-                                .clear();
+              prefixIcon: const Icon(Icons.search_rounded),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                      onPressed: () {
+                        _searchController.clear();
 
-                            setState(() {
-                              _searchQuery =
-                                  '';
-                            });
-                          },
-                          icon:
-                              const Icon(
-                            Icons.clear_rounded,
-                          ),
-                        )
-                      : null,
+                        setState(() {
+                          _searchQuery = '';
+                        });
+                      },
+                      icon: const Icon(Icons.clear_rounded),
+                    )
+                  : null,
             ),
           ),
           const SizedBox(height: 16),
           Text(
             'Category',
-            style: theme
-                .textTheme
-                .labelLarge
-                ?.copyWith(
-              fontWeight:
-                  FontWeight.w700,
+            style: theme.textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 8),
           _buildHorizontalChips(
-            values: [
-              'All',
-              ..._availableCategories,
-            ],
-            selected:
-                _categoryFilter,
+            values: ['All', ..._availableCategories],
+            selected: _categoryFilter,
             onSelected: (value) {
               setState(() {
-                _categoryFilter =
-                    value;
+                _categoryFilter = value;
               });
             },
           ),
           const SizedBox(height: 16),
           Text(
             'Payment Method',
-            style: theme
-                .textTheme
-                .labelLarge
-                ?.copyWith(
-              fontWeight:
-                  FontWeight.w700,
+            style: theme.textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 8),
           _buildHorizontalChips(
-            values: [
-              'All',
-              ..._availablePaymentMethods,
-            ],
-            selected:
-                _paymentMethodFilter,
+            values: ['All', ..._availablePaymentMethods],
+            selected: _paymentMethodFilter,
             onSelected: (value) {
               setState(() {
-                _paymentMethodFilter =
-                    value;
+                _paymentMethodFilter = value;
               });
             },
           ),
@@ -1253,39 +1018,25 @@ class _ExpenseReportScreenState
     return Wrap(
       spacing: 8,
       runSpacing: 8,
-      children: values.map(
-        (value) {
-          final bool isSelected =
-              selected == value;
+      children: values.map((value) {
+        final bool isSelected = selected == value;
 
-          return ChoiceChip(
-            label: Text(value),
-            selected: isSelected,
-            onSelected: (_) =>
-                onSelected(value),
-            selectedColor:
-                AppColors.primary
-                    .withValues(
-              alpha: 0.13,
-            ),
-            side: BorderSide(
-              color: isSelected
-                  ? AppColors.primary
-                  : Theme.of(context)
-                      .colorScheme
-                      .outlineVariant,
-            ),
-            labelStyle: TextStyle(
-              color: isSelected
-                  ? AppColors.primary
-                  : null,
-              fontWeight: isSelected
-                  ? FontWeight.w700
-                  : FontWeight.w500,
-            ),
-          );
-        },
-      ).toList(),
+        return ChoiceChip(
+          label: Text(value),
+          selected: isSelected,
+          onSelected: (_) => onSelected(value),
+          selectedColor: AppColors.primary.withValues(alpha: 0.13),
+          side: BorderSide(
+            color: isSelected
+                ? AppColors.primary
+                : Theme.of(context).colorScheme.outlineVariant,
+          ),
+          labelStyle: TextStyle(
+            color: isSelected ? AppColors.primary : null,
+            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+          ),
+        );
+      }).toList(),
     );
   }
 
@@ -1293,73 +1044,45 @@ class _ExpenseReportScreenState
   // CATEGORY
   // ===========================================================================
 
-  Widget _buildCategorySection(
-    ThemeData theme,
-    List<ExpenseModel> expenses,
-  ) {
-    final Map<String, double> totals =
-        _categoryTotals(expenses);
+  Widget _buildCategorySection(ThemeData theme, List<ExpenseModel> expenses) {
+    final Map<String, double> totals = _categoryTotals(expenses);
 
-    final Map<String, int> counts =
-        _categoryCounts(expenses);
+    final Map<String, int> counts = _categoryCounts(expenses);
 
-    final List<MapEntry<String, double>>
-        entries =
-        totals.entries.toList()
-          ..sort(
-            (a, b) =>
-                b.value.compareTo(a.value),
-          );
+    final List<MapEntry<String, double>> entries = totals.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
 
-    final double total =
-        _totalExpenses(expenses);
+    final double total = _totalExpenses(expenses);
 
     return _ReportCard(
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _SectionHeader(
-            icon:
-                Icons.category_rounded,
-            title:
-                'Category-wise Expenses',
-            subtitle:
-                'See where your business money is being spent',
+            icon: Icons.category_rounded,
+            title: 'Category-wise Expenses',
+            subtitle: 'See where your business money is being spent',
           ),
           const SizedBox(height: 18),
           if (entries.isEmpty)
             const _EmptyInline(
-              icon:
-                  Icons.category_outlined,
-              message:
-                  'No expense categories available.',
+              icon: Icons.category_outlined,
+              message: 'No expense categories available.',
             )
           else
-            ...entries.map(
-              (entry) {
-                final double percentage =
-                    total > 0
-                        ? (entry.value /
-                                total) *
-                            100
-                        : 0;
+            ...entries.map((entry) {
+              final double percentage = total > 0
+                  ? (entry.value / total) * 100
+                  : 0;
 
-                return _CategoryTile(
-                  category:
-                      entry.key,
-                  amount:
-                      entry.value,
-                  percentage:
-                      percentage,
-                  count:
-                      counts[entry.key] ??
-                          0,
-                  currency:
-                      _currency,
-                );
-              },
-            ),
+              return _CategoryTile(
+                category: entry.key,
+                amount: entry.value,
+                percentage: percentage,
+                count: counts[entry.key] ?? 0,
+                currency: _currency,
+              );
+            }),
         ],
       ),
     );
@@ -1373,97 +1096,60 @@ class _ExpenseReportScreenState
     ThemeData theme,
     List<ExpenseModel> expenses,
   ) {
-    final Map<String, double> totals =
-        _paymentMethodTotals(expenses);
+    final Map<String, double> totals = _paymentMethodTotals(expenses);
 
-    final List<MapEntry<String, double>>
-        entries =
-        totals.entries.toList()
-          ..sort(
-            (a, b) =>
-                b.value.compareTo(a.value),
-          );
+    final List<MapEntry<String, double>> entries = totals.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
 
     return _ReportCard(
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _SectionHeader(
-            icon:
-                Icons.payments_rounded,
-            title:
-                'Payment Method Analysis',
-            subtitle:
-                'Expense amount by payment method',
+            icon: Icons.payments_rounded,
+            title: 'Payment Method Analysis',
+            subtitle: 'Expense amount by payment method',
           ),
           const SizedBox(height: 18),
           if (entries.isEmpty)
             const _EmptyInline(
-              icon:
-                  Icons.payments_outlined,
-              message:
-                  'No payment method data available.',
+              icon: Icons.payments_outlined,
+              message: 'No payment method data available.',
             )
           else
             LayoutBuilder(
-              builder: (
-                context,
-                constraints,
-              ) {
-                final bool wide =
-                    constraints.maxWidth >=
-                        650;
+              builder: (context, constraints) {
+                final bool wide = constraints.maxWidth >= 650;
 
                 if (!wide) {
                   return Column(
-                    children:
-                        entries.map(
-                      (entry) {
-                        return _PaymentMethodTile(
-                          method:
-                              entry.key,
-                          amount:
-                              entry.value,
-                          currency:
-                              _currency,
-                        );
-                      },
-                    ).toList(),
+                    children: entries.map((entry) {
+                      return _PaymentMethodTile(
+                        method: entry.key,
+                        amount: entry.value,
+                        currency: _currency,
+                      );
+                    }).toList(),
                   );
                 }
 
                 return GridView.builder(
                   shrinkWrap: true,
-                  physics:
-                      const NeverScrollableScrollPhysics(),
-                  itemCount:
-                      entries.length,
-                  gridDelegate:
-                      SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount:
-                        constraints.maxWidth >=
-                                1000
-                            ? 3
-                            : 2,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: entries.length,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: constraints.maxWidth >= 1000 ? 3 : 2,
                     crossAxisSpacing: 12,
                     mainAxisSpacing: 12,
-                    childAspectRatio:
-                        2.7,
+                    childAspectRatio: 2.7,
                   ),
-                  itemBuilder: (
-                    context,
-                    index,
-                  ) {
-                    final entry =
-                        entries[index];
+                  itemBuilder: (context, index) {
+                    final entry = entries[index];
 
                     return _PaymentMethodTile(
                       method: entry.key,
-                      amount:
-                          entry.value,
-                      currency:
-                          _currency,
+                      amount: entry.value,
+                      currency: _currency,
                     );
                   },
                 );
@@ -1478,46 +1164,34 @@ class _ExpenseReportScreenState
   // EXPENSE LIST
   // ===========================================================================
 
-  Widget _buildExpenseList(
-    ThemeData theme,
-    List<ExpenseModel> expenses,
-  ) {
+  Widget _buildExpenseList(ThemeData theme, List<ExpenseModel> expenses) {
     return _ReportCard(
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _SectionHeader(
-            icon:
-                Icons.receipt_long_rounded,
-            title:
-                'Expense-wise Details',
+            icon: Icons.receipt_long_rounded,
+            title: 'Expense-wise Details',
             subtitle:
                 '${expenses.length} matching expense${expenses.length == 1 ? '' : 's'}',
           ),
           const SizedBox(height: 18),
           if (expenses.isEmpty)
             const _EmptyInline(
-              icon:
-                  Icons.receipt_long_outlined,
-              message:
-                  'No expenses found for the selected filters.',
+              icon: Icons.receipt_long_outlined,
+              message: 'No expenses found for the selected filters.',
             )
           else
-            ...expenses.map(
-              (expense) {
-                return _ExpenseTile(
-                  expense: expense,
-                  currency: _currency,
-                  date: _date,
-                  onTap: () {
-                    _showExpenseDetails(
-                      expense,
-                    );
-                  },
-                );
-              },
-            ),
+            ...expenses.map((expense) {
+              return _ExpenseTile(
+                expense: expense,
+                currency: _currency,
+                date: _date,
+                onTap: () {
+                  _showExpenseDetails(expense);
+                },
+              );
+            }),
         ],
       ),
     );
@@ -1527,92 +1201,53 @@ class _ExpenseReportScreenState
   // DETAILS
   // ===========================================================================
 
-  void _showExpenseDetails(
-    ExpenseModel expense,
-  ) {
+  void _showExpenseDetails(ExpenseModel expense) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (sheetContext) {
-        final ThemeData theme =
-            Theme.of(sheetContext);
+        final ThemeData theme = Theme.of(sheetContext);
 
         return SafeArea(
           child: Padding(
-            padding:
-                const EdgeInsets.fromLTRB(
-              20,
-              8,
-              20,
-              24,
-            ),
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
             child: SingleChildScrollView(
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     'Expense Details',
-                    style: theme
-                        .textTheme
-                        .headlineSmall
-                        ?.copyWith(
-                      fontWeight:
-                          FontWeight.w800,
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     _date(expense.date),
-                    style: theme
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(
-                      color: theme
-                          .colorScheme
-                          .onSurfaceVariant,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
                   const SizedBox(height: 18),
-                  _DetailRow(
-                    label: 'Category',
-                    value:
-                        expense.category,
-                  ),
+                  _DetailRow(label: 'Category', value: expense.category),
                   _DetailRow(
                     label: 'Amount',
-                    value:
-                        _currency(
-                      expense.amount,
-                    ),
+                    value: _currency(expense.amount),
                     bold: true,
-                    valueColor:
-                        AppColors.danger,
+                    valueColor: AppColors.danger,
                   ),
                   _DetailRow(
-                    label:
-                        'Payment Method',
-                    value:
-                        expense.paymentMethod,
+                    label: 'Payment Method',
+                    value: expense.paymentMethod,
                   ),
-                  if (expense.description
-                      .trim()
-                      .isNotEmpty)
+                  if (expense.description.trim().isNotEmpty)
                     _DetailRow(
-                      label:
-                          'Description',
-                      value:
-                          expense.description,
+                      label: 'Description',
+                      value: expense.description,
                     ),
-                  if (expense.notes
-                      .trim()
-                      .isNotEmpty)
-                    _DetailRow(
-                      label: 'Notes',
-                      value:
-                          expense.notes,
-                    ),
+                  if (expense.notes.trim().isNotEmpty)
+                    _DetailRow(label: 'Notes', value: expense.notes),
                 ],
               ),
             ),
@@ -1626,52 +1261,31 @@ class _ExpenseReportScreenState
   // FOOTER
   // ===========================================================================
 
-  Widget _buildFooter(
-    ThemeData theme,
-    List<ExpenseModel> expenses,
-  ) {
-    final Map<String, double> categoryTotals =
-        _categoryTotals(expenses);
+  Widget _buildFooter(ThemeData theme, List<ExpenseModel> expenses) {
+    final Map<String, double> categoryTotals = _categoryTotals(expenses);
 
-    final String topCategory =
-        categoryTotals.isEmpty
-            ? '—'
-            : (categoryTotals.entries.toList()
-                  ..sort(
-                    (a, b) =>
-                        b.value.compareTo(
-                      a.value,
-                    ),
-                  ))
-                .first
-                .key;
+    final String topCategory = categoryTotals.isEmpty
+        ? '—'
+        : (categoryTotals.entries.toList()
+                ..sort((a, b) => b.value.compareTo(a.value)))
+              .first
+              .key;
 
     return _ReportCard(
       child: Wrap(
         spacing: 24,
         runSpacing: 14,
         children: [
-          _FooterMetric(
-            label: 'Expenses',
-            value:
-                expenses.length.toString(),
-          ),
+          _FooterMetric(label: 'Expenses', value: expenses.length.toString()),
           _FooterMetric(
             label: 'Total',
-            value: _currency(
-              _totalExpenses(expenses),
-            ),
+            value: _currency(_totalExpenses(expenses)),
           ),
           _FooterMetric(
             label: 'Average',
-            value: _currency(
-              _averageExpense(expenses),
-            ),
+            value: _currency(_averageExpense(expenses)),
           ),
-          _FooterMetric(
-            label: 'Top Category',
-            value: topCategory,
-          ),
+          _FooterMetric(label: 'Top Category', value: topCategory),
         ],
       ),
     );
@@ -1681,82 +1295,50 @@ class _ExpenseReportScreenState
   // ERROR
   // ===========================================================================
 
-  Widget _buildErrorState(
-    ThemeData theme,
-  ) {
+  Widget _buildErrorState(ThemeData theme) {
     return Center(
       child: Padding(
-        padding:
-            const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(24),
         child: ConstrainedBox(
-          constraints:
-              const BoxConstraints(
-            maxWidth: 500,
-          ),
+          constraints: const BoxConstraints(maxWidth: 500),
           child: _ReportCard(
             child: Column(
-              mainAxisSize:
-                  MainAxisSize.min,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
                   width: 64,
                   height: 64,
-                  decoration:
-                      BoxDecoration(
-                    color:
-                        AppColors.danger
-                            .withValues(
-                      alpha: 0.10,
-                    ),
-                    shape:
-                        BoxShape.circle,
+                  decoration: BoxDecoration(
+                    color: AppColors.danger.withValues(alpha: 0.10),
+                    shape: BoxShape.circle,
                   ),
                   child: const Icon(
                     Icons.error_outline_rounded,
-                    color:
-                        AppColors.danger,
+                    color: AppColors.danger,
                     size: 32,
                   ),
                 ),
                 const SizedBox(height: 16),
                 Text(
                   'Unable to load Expense Report',
-                  textAlign:
-                      TextAlign.center,
-                  style: theme
-                      .textTheme
-                      .titleLarge
-                      ?.copyWith(
-                    fontWeight:
-                        FontWeight.w800,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  _errorMessage ??
-                      'Something went wrong.',
-                  textAlign:
-                      TextAlign.center,
-                  style: theme
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(
-                    color: theme
-                        .colorScheme
-                        .onSurfaceVariant,
+                  _errorMessage ?? 'Something went wrong.',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
                 const SizedBox(height: 20),
                 FilledButton.icon(
-                  onPressed:
-                      () => _loadReport(),
-                  icon: const Icon(
-                    Icons.refresh_rounded,
-                  ),
-                  label:
-                      const Text(
-                    'Try Again',
-                  ),
+                  onPressed: () => _loadReport(),
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Try Again'),
                 ),
               ],
             ),
@@ -1794,45 +1376,28 @@ class _SummaryItem {
 class _ReportCard extends StatelessWidget {
   final Widget child;
 
-  const _ReportCard({
-    required this.child,
-  });
+  const _ReportCard({required this.child});
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme =
-        Theme.of(context);
+    final ThemeData theme = Theme.of(context);
 
     return Container(
       width: double.infinity,
-      padding:
-          const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color:
-            theme.colorScheme.surface,
-        borderRadius:
-            BorderRadius.circular(18),
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: theme
-              .colorScheme
-              .outlineVariant
-              .withValues(
-            alpha: 0.55,
-          ),
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.55),
         ),
         boxShadow: [
           BoxShadow(
-            color:
-                Colors.black.withValues(
-              alpha:
-                  theme.brightness ==
-                          Brightness.dark
-                      ? 0.08
-                      : 0.035,
+            color: Colors.black.withValues(
+              alpha: theme.brightness == Brightness.dark ? 0.08 : 0.035,
             ),
             blurRadius: 16,
-            offset:
-                const Offset(0, 6),
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -1845,67 +1410,40 @@ class _ReportCard extends StatelessWidget {
 // SUMMARY CARD
 // =============================================================================
 
-class _SummaryCard
-    extends StatelessWidget {
+class _SummaryCard extends StatelessWidget {
   final _SummaryItem item;
 
-  const _SummaryCard({
-    required this.item,
-  });
+  const _SummaryCard({required this.item});
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme =
-        Theme.of(context);
+    final ThemeData theme = Theme.of(context);
 
     return Container(
-      padding:
-          const EdgeInsets.all(17),
+      padding: const EdgeInsets.all(17),
       decoration: BoxDecoration(
-        color:
-            theme.colorScheme.surface,
-        borderRadius:
-            BorderRadius.circular(17),
-        border: Border.all(
-          color:
-              item.color.withValues(
-            alpha: 0.20,
-          ),
-        ),
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(17),
+        border: Border.all(color: item.color.withValues(alpha: 0.20)),
       ),
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Container(
                 width: 40,
                 height: 40,
-                decoration:
-                    BoxDecoration(
-                  color:
-                      item.color.withValues(
-                    alpha: 0.10,
-                  ),
-                  borderRadius:
-                      BorderRadius.circular(
-                    12,
-                  ),
+                decoration: BoxDecoration(
+                  color: item.color.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(
-                  item.icon,
-                  color: item.color,
-                  size: 21,
-                ),
+                child: Icon(item.icon, color: item.color, size: 21),
               ),
               const Spacer(),
               Icon(
                 Icons.arrow_outward_rounded,
-                color:
-                    item.color.withValues(
-                  alpha: 0.65,
-                ),
+                color: item.color.withValues(alpha: 0.65),
                 size: 18,
               ),
             ],
@@ -1914,46 +1452,29 @@ class _SummaryCard
           Text(
             item.title,
             maxLines: 1,
-            overflow:
-                TextOverflow.ellipsis,
-            style: theme
-                .textTheme
-                .bodySmall
-                ?.copyWith(
-              color: theme
-                  .colorScheme
-                  .onSurfaceVariant,
-              fontWeight:
-                  FontWeight.w600,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 3),
           Text(
             item.value,
             maxLines: 1,
-            overflow:
-                TextOverflow.ellipsis,
-            style: theme
-                .textTheme
-                .titleLarge
-                ?.copyWith(
-              fontWeight:
-                  FontWeight.w800,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w800,
             ),
           ),
           const SizedBox(height: 2),
           Text(
             item.subtitle,
             maxLines: 1,
-            overflow:
-                TextOverflow.ellipsis,
-            style: theme
-                .textTheme
-                .bodySmall
-                ?.copyWith(
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
               color: item.color,
-              fontWeight:
-                  FontWeight.w600,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],
@@ -1966,8 +1487,7 @@ class _SummaryCard
 // SECTION HEADER
 // =============================================================================
 
-class _SectionHeader
-    extends StatelessWidget {
+class _SectionHeader extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
@@ -1980,60 +1500,35 @@ class _SectionHeader
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme =
-        Theme.of(context);
+    final ThemeData theme = Theme.of(context);
 
     return Row(
       children: [
         Container(
           width: 42,
           height: 42,
-          decoration:
-              BoxDecoration(
-            color: theme
-                .colorScheme
-                .primary
-                .withValues(
-              alpha: 0.10,
-            ),
-            borderRadius:
-                BorderRadius.circular(
-              12,
-            ),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.primary.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(12),
           ),
-          child: Icon(
-            icon,
-            color:
-                theme.colorScheme.primary,
-            size: 22,
-          ),
+          child: Icon(icon, color: theme.colorScheme.primary, size: 22),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 title,
-                style: theme
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(
-                  fontWeight:
-                      FontWeight.w800,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
                 ),
               ),
               const SizedBox(height: 2),
               Text(
                 subtitle,
-                style: theme
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(
-                  color: theme
-                      .colorScheme
-                      .onSurfaceVariant,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
             ],
@@ -2048,8 +1543,7 @@ class _SectionHeader
 // CATEGORY TILE
 // =============================================================================
 
-class _CategoryTile
-    extends StatelessWidget {
+class _CategoryTile extends StatelessWidget {
   final String category;
   final double amount;
   final double percentage;
@@ -2066,25 +1560,16 @@ class _CategoryTile
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme =
-        Theme.of(context);
+    final ThemeData theme = Theme.of(context);
 
     return Container(
-      margin:
-          const EdgeInsets.only(
-        bottom: 10,
-      ),
-      padding:
-          const EdgeInsets.all(14),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: theme
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(
           alpha: 0.42,
         ),
-        borderRadius:
-            BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
         children: [
@@ -2096,42 +1581,24 @@ class _CategoryTile
                     Container(
                       width: 38,
                       height: 38,
-                      decoration:
-                          BoxDecoration(
-                        color:
-                            AppColors.danger
-                                .withValues(
-                          alpha: 0.10,
-                        ),
-                        borderRadius:
-                            BorderRadius
-                                .circular(
-                          10,
-                        ),
+                      decoration: BoxDecoration(
+                        color: AppColors.danger.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(
                         Icons.category_rounded,
-                        color:
-                            AppColors.danger,
+                        color: AppColors.danger,
                         size: 20,
                       ),
                     ),
-                    const SizedBox(
-                      width: 10,
-                    ),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         category,
                         maxLines: 1,
-                        overflow:
-                            TextOverflow
-                                .ellipsis,
-                        style: theme
-                            .textTheme
-                            .bodyLarge
-                            ?.copyWith(
-                          fontWeight:
-                              FontWeight.w700,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
@@ -2140,31 +1607,19 @@ class _CategoryTile
               ),
               const SizedBox(width: 10),
               Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
                     currency(amount),
-                    style: theme
-                        .textTheme
-                        .bodyLarge
-                        ?.copyWith(
-                      fontWeight:
-                          FontWeight.w800,
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                  const SizedBox(
-                    height: 2,
-                  ),
+                  const SizedBox(height: 2),
                   Text(
                     '$count transaction${count == 1 ? '' : 's'}',
-                    style: theme
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(
-                      color: theme
-                          .colorScheme
-                          .onSurfaceVariant,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ],
@@ -2173,40 +1628,24 @@ class _CategoryTile
           ),
           const SizedBox(height: 10),
           ClipRRect(
-            borderRadius:
-                BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(20),
             child: LinearProgressIndicator(
-              value:
-                  (percentage / 100)
-                      .clamp(0.0, 1.0),
+              value: (percentage / 100).clamp(0.0, 1.0),
               minHeight: 7,
-              backgroundColor: theme
-                  .colorScheme
-                  .outlineVariant
-                  .withValues(
+              backgroundColor: theme.colorScheme.outlineVariant.withValues(
                 alpha: 0.35,
               ),
-              valueColor:
-                  const AlwaysStoppedAnimation<
-                      Color>(
-                AppColors.danger,
-              ),
+              valueColor: const AlwaysStoppedAnimation<Color>(AppColors.danger),
             ),
           ),
           const SizedBox(height: 5),
           Align(
-            alignment:
-                Alignment.centerRight,
+            alignment: Alignment.centerRight,
             child: Text(
               '${percentage.toStringAsFixed(1)}%',
-              style: theme
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(
-                color:
-                    AppColors.danger,
-                fontWeight:
-                    FontWeight.w700,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: AppColors.danger,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ),
@@ -2220,8 +1659,7 @@ class _CategoryTile
 // PAYMENT METHOD TILE
 // =============================================================================
 
-class _PaymentMethodTile
-    extends StatelessWidget {
+class _PaymentMethodTile extends StatelessWidget {
   final String method;
   final double amount;
   final String Function(double) currency;
@@ -2250,72 +1688,42 @@ class _PaymentMethodTile
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme =
-        Theme.of(context);
+    final ThemeData theme = Theme.of(context);
 
     return Container(
-      padding:
-          const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: theme
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(
           alpha: 0.42,
         ),
-        borderRadius:
-            BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
         children: [
           Container(
             width: 42,
             height: 42,
-            decoration:
-                BoxDecoration(
-              color:
-                  AppColors.primary
-                      .withValues(
-                alpha: 0.10,
-              ),
-              borderRadius:
-                  BorderRadius.circular(
-                11,
-              ),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(11),
             ),
-            child: Icon(
-              _icon(),
-              color:
-                  AppColors.primary,
-              size: 21,
-            ),
+            child: Icon(_icon(), color: AppColors.primary, size: 21),
           ),
-          const SizedBox(
-            width: 11,
-          ),
+          const SizedBox(width: 11),
           Expanded(
             child: Text(
               method,
               maxLines: 1,
-              overflow:
-                  TextOverflow.ellipsis,
-              style: theme
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(
-                fontWeight:
-                    FontWeight.w700,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w700,
               ),
             ),
           ),
           Text(
             currency(amount),
-            style: theme
-                .textTheme
-                .bodyMedium
-                ?.copyWith(
-              fontWeight:
-                  FontWeight.w800,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w800,
             ),
           ),
         ],
@@ -2328,8 +1736,7 @@ class _PaymentMethodTile
 // EXPENSE TILE
 // =============================================================================
 
-class _ExpenseTile
-    extends StatelessWidget {
+class _ExpenseTile extends StatelessWidget {
   final ExpenseModel expense;
   final String Function(double) currency;
   final String Function(DateTime) date;
@@ -2344,36 +1751,21 @@ class _ExpenseTile
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme =
-        Theme.of(context);
+    final ThemeData theme = Theme.of(context);
 
     return InkWell(
       onTap: onTap,
-      borderRadius:
-          BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(14),
       child: Container(
-        margin:
-            const EdgeInsets.only(
-          bottom: 10,
-        ),
-        padding:
-            const EdgeInsets.all(14),
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: theme
-              .colorScheme
-              .surfaceContainerHighest
-              .withValues(
+          color: theme.colorScheme.surfaceContainerHighest.withValues(
             alpha: 0.40,
           ),
-          borderRadius:
-              BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: theme
-                .colorScheme
-                .outlineVariant
-                .withValues(
-              alpha: 0.35,
-            ),
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.35),
           ),
         ),
         child: Row(
@@ -2381,75 +1773,46 @@ class _ExpenseTile
             Container(
               width: 44,
               height: 44,
-              decoration:
-                  BoxDecoration(
-                color:
-                    AppColors.danger
-                        .withValues(
-                  alpha: 0.10,
-                ),
-                borderRadius:
-                    BorderRadius.circular(
-                  12,
-                ),
+              decoration: BoxDecoration(
+                color: AppColors.danger.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: const Icon(
                 Icons.receipt_long_rounded,
-                color:
-                    AppColors.danger,
+                color: AppColors.danger,
                 size: 22,
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment
-                        .start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    expense.category
-                            .trim()
-                            .isEmpty
+                    expense.category.trim().isEmpty
                         ? 'Other'
                         : expense.category,
                     maxLines: 1,
-                    overflow:
-                        TextOverflow.ellipsis,
-                    style: theme
-                        .textTheme
-                        .bodyLarge
-                        ?.copyWith(
-                      fontWeight:
-                          FontWeight.w800,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                   const SizedBox(height: 4),
-                  if (expense.description
-                      .trim()
-                      .isNotEmpty)
+                  if (expense.description.trim().isNotEmpty)
                     Text(
                       expense.description,
                       maxLines: 1,
-                      overflow:
-                          TextOverflow.ellipsis,
-                      style: theme
-                          .textTheme
-                          .bodySmall,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall,
                     ),
                   const SizedBox(height: 3),
                   Text(
                     '${date(expense.date)} • ${expense.paymentMethod}',
                     maxLines: 1,
-                    overflow:
-                        TextOverflow.ellipsis,
-                    style: theme
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(
-                      color: theme
-                          .colorScheme
-                          .onSurfaceVariant,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ],
@@ -2457,28 +1820,17 @@ class _ExpenseTile
             ),
             const SizedBox(width: 10),
             Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  currency(
-                    expense.amount,
-                  ),
-                  style: theme
-                      .textTheme
-                      .bodyLarge
-                      ?.copyWith(
-                    color:
-                        AppColors.danger,
-                    fontWeight:
-                        FontWeight.w800,
+                  currency(expense.amount),
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: AppColors.danger,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
                 const SizedBox(height: 4),
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  size: 20,
-                ),
+                const Icon(Icons.chevron_right_rounded, size: 20),
               ],
             ),
           ],
@@ -2492,8 +1844,7 @@ class _ExpenseTile
 // DETAIL ROW
 // =============================================================================
 
-class _DetailRow
-    extends StatelessWidget {
+class _DetailRow extends StatelessWidget {
   final String label;
   final String value;
   final bool bold;
@@ -2508,28 +1859,18 @@ class _DetailRow
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme =
-        Theme.of(context);
+    final ThemeData theme = Theme.of(context);
 
     return Padding(
-      padding:
-          const EdgeInsets.only(
-        bottom: 10,
-      ),
+      padding: const EdgeInsets.only(bottom: 10),
       child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
             child: Text(
               label,
-              style: theme
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(
-                color: theme
-                    .colorScheme
-                    .onSurfaceVariant,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ),
@@ -2537,17 +1878,10 @@ class _DetailRow
           Flexible(
             child: Text(
               value,
-              textAlign:
-                  TextAlign.end,
-              style: theme
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(
+              textAlign: TextAlign.end,
+              style: theme.textTheme.bodyMedium?.copyWith(
                 color: valueColor,
-                fontWeight:
-                    bold
-                        ? FontWeight.w800
-                        : FontWeight.w600,
+                fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
               ),
             ),
           ),
@@ -2561,56 +1895,34 @@ class _DetailRow
 // EMPTY
 // =============================================================================
 
-class _EmptyInline
-    extends StatelessWidget {
+class _EmptyInline extends StatelessWidget {
   final IconData icon;
   final String message;
 
-  const _EmptyInline({
-    required this.icon,
-    required this.message,
-  });
+  const _EmptyInline({required this.icon, required this.message});
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme =
-        Theme.of(context);
+    final ThemeData theme = Theme.of(context);
 
     return Container(
       width: double.infinity,
-      padding:
-          const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: theme
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(
           alpha: 0.35,
         ),
-        borderRadius:
-            BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
         children: [
-          Icon(
-            icon,
-            size: 34,
-            color: theme
-                .colorScheme
-                .onSurfaceVariant,
-          ),
+          Icon(icon, size: 34, color: theme.colorScheme.onSurfaceVariant),
           const SizedBox(height: 10),
           Text(
             message,
-            textAlign:
-                TextAlign.center,
-            style: theme
-                .textTheme
-                .bodyMedium
-                ?.copyWith(
-              color: theme
-                  .colorScheme
-                  .onSurfaceVariant,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
         ],
@@ -2623,44 +1935,29 @@ class _EmptyInline
 // FOOTER
 // =============================================================================
 
-class _FooterMetric
-    extends StatelessWidget {
+class _FooterMetric extends StatelessWidget {
   final String label;
   final String value;
 
-  const _FooterMetric({
-    required this.label,
-    required this.value,
-  });
+  const _FooterMetric({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme =
-        Theme.of(context);
+    final ThemeData theme = Theme.of(context);
 
     return Row(
-      mainAxisSize:
-          MainAxisSize.min,
+      mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           '$label: ',
-          style: theme
-              .textTheme
-              .bodySmall
-              ?.copyWith(
-            color: theme
-                .colorScheme
-                .onSurfaceVariant,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
         Text(
           value,
-          style: theme
-              .textTheme
-              .bodySmall
-              ?.copyWith(
-            fontWeight:
-                FontWeight.w800,
+          style: theme.textTheme.bodySmall?.copyWith(
+            fontWeight: FontWeight.w800,
           ),
         ),
       ],

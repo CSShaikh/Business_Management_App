@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
+import '../../core/widgets/app_date_picker.dart';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -252,8 +253,10 @@ class _AnalyticsReportScreenState
     final DateTime now = DateTime.now();
 
     final DateTimeRange? selected =
-        await showDateRangePicker(
+        await AppDatePicker.showDateRangePicker(
       context: context,
+      
+      initialEntryMode: DatePickerEntryMode.calendar,
       firstDate: DateTime(2020),
       lastDate: DateTime(
         now.year + 2,
@@ -1616,8 +1619,8 @@ class _AnalyticsReportScreenState
             isDesktop ? 3 : 2,
         crossAxisSpacing: 12,
         mainAxisSpacing: 12,
-        childAspectRatio:
-            isDesktop ? 2.15 : 1.55,
+        mainAxisExtent:
+            isDesktop ? 180 : 156,
       ),
       itemBuilder:
           (context, index) {

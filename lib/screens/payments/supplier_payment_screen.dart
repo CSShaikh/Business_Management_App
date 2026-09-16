@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../../core/widgets/app_date_picker.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/app_number_format.dart';
 import '../../models/ledger_transaction_model.dart';
 import '../../models/supplier_model.dart';
 import '../../models/supplier_payment_model.dart';
@@ -386,9 +388,10 @@ class _SupplierPaymentScreenState
             DateTime.now();
 
     final DateTime? selected =
-        await showDatePicker(
+        await AppDatePicker.showDatePicker(
       context: context,
-      initialDate: initialDate,
+      
+      initialEntryMode: DatePickerEntryMode.calendar,initialDate: initialDate,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
     );
@@ -424,9 +427,10 @@ class _SupplierPaymentScreenState
             DateTime.now();
 
     final DateTime? selected =
-        await showDatePicker(
+        await AppDatePicker.showDatePicker(
       context: context,
-      initialDate: initialDate,
+      
+      initialEntryMode: DatePickerEntryMode.calendar,initialDate: initialDate,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
     );
@@ -2145,7 +2149,7 @@ class _SupplierPaymentScreenState
   String _formatCurrency(
     double value,
   ) {
-    return '₹${NumberFormat('#,##0.00').format(value)}';
+    return AppNumberFormat.amount(value);
   }
 
   String _cleanError(

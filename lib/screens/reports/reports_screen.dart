@@ -26,32 +26,24 @@ import 'purchase_report_screen.dart';
 import 'sales_report_screen.dart';
 
 class ReportsScreen extends StatefulWidget {
-  const ReportsScreen({
-    super.key,
-  });
+  const ReportsScreen({super.key});
 
   @override
   State<ReportsScreen> createState() => _ReportsScreenState();
 }
 
 class _ReportsScreenState extends State<ReportsScreen> {
-  final BusinessRepository _businessRepository =
-      BusinessRepository();
+  final BusinessRepository _businessRepository = BusinessRepository();
 
-  final SaleRepository _saleRepository =
-      SaleRepository();
+  final SaleRepository _saleRepository = SaleRepository();
 
-  final PurchaseRepository _purchaseRepository =
-      PurchaseRepository();
+  final PurchaseRepository _purchaseRepository = PurchaseRepository();
 
-  final ExpenseRepository _expenseRepository =
-      ExpenseRepository();
+  final ExpenseRepository _expenseRepository = ExpenseRepository();
 
-  final PaymentRepository _paymentRepository =
-      PaymentRepository();
+  final PaymentRepository _paymentRepository = PaymentRepository();
 
-  final ProductRepository _productRepository =
-      ProductRepository();
+  final ProductRepository _productRepository = ProductRepository();
 
   BusinessModel? _business;
 
@@ -87,8 +79,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     });
 
     try {
-      final BusinessModel? business =
-          await _businessRepository.getBusinessForCurrentUser();
+      final BusinessModel? business = await _businessRepository
+          .getBusinessForCurrentUser();
 
       if (!mounted) {
         return;
@@ -115,23 +107,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
         return;
       }
 
-      final List<dynamic> results =
-          await Future.wait<dynamic>([
-        _saleRepository.getSales(
-          businessId: businessId,
-        ),
-        _purchaseRepository.getPurchases(
-          businessId: businessId,
-        ),
-        _expenseRepository.getExpenses(
-          businessId: businessId,
-        ),
-        _paymentRepository.getPayments(
-          businessId: businessId,
-        ),
-        _productRepository.getProducts(
-          businessId,
-        ),
+      final List<dynamic> results = await Future.wait<dynamic>([
+        _saleRepository.getSales(businessId: businessId),
+        _purchaseRepository.getPurchases(businessId: businessId),
+        _expenseRepository.getExpenses(businessId: businessId),
+        _paymentRepository.getPayments(businessId: businessId),
+        _productRepository.getProducts(businessId),
       ]);
 
       if (!mounted) {
@@ -155,8 +136,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
       setState(() {
         _isLoading = false;
-        _errorMessage =
-            'Unable to load reports. Please try again.';
+        _errorMessage = 'Unable to load reports. Please try again.';
       });
     }
   }
@@ -175,8 +155,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     });
 
     try {
-      final BusinessModel? business =
-          await _businessRepository.getBusinessForCurrentUser();
+      final BusinessModel? business = await _businessRepository
+          .getBusinessForCurrentUser();
 
       if (business == null) {
         throw Exception('Business profile not found.');
@@ -188,23 +168,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
         throw Exception('Business ID is missing.');
       }
 
-      final List<dynamic> results =
-          await Future.wait<dynamic>([
-        _saleRepository.getSales(
-          businessId: businessId,
-        ),
-        _purchaseRepository.getPurchases(
-          businessId: businessId,
-        ),
-        _expenseRepository.getExpenses(
-          businessId: businessId,
-        ),
-        _paymentRepository.getPayments(
-          businessId: businessId,
-        ),
-        _productRepository.getProducts(
-          businessId,
-        ),
+      final List<dynamic> results = await Future.wait<dynamic>([
+        _saleRepository.getSales(businessId: businessId),
+        _purchaseRepository.getPurchases(businessId: businessId),
+        _expenseRepository.getExpenses(businessId: businessId),
+        _paymentRepository.getPayments(businessId: businessId),
+        _productRepository.getProducts(businessId),
       ]);
 
       if (!mounted) {
@@ -226,9 +195,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ..hideCurrentSnackBar()
           ..showSnackBar(
             const SnackBar(
-              content: Text(
-                'Reports refreshed successfully.',
-              ),
+              content: Text('Reports refreshed successfully.'),
               behavior: SnackBarBehavior.fixed,
             ),
           );
@@ -239,17 +206,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
       }
 
       setState(() {
-        _errorMessage =
-            'Unable to refresh reports. Please try again.';
+        _errorMessage = 'Unable to refresh reports. Please try again.';
       });
 
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
           const SnackBar(
-            content: Text(
-              'Unable to refresh reports.',
-            ),
+            content: Text('Unable to refresh reports.'),
             behavior: SnackBarBehavior.fixed,
           ),
         );
@@ -267,24 +231,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
   // ===========================================================================
 
   double get _totalSales {
-    return _sales.fold<double>(
-      0,
-      (sum, sale) => sum + sale.total,
-    );
+    return _sales.fold<double>(0, (sum, sale) => sum + sale.total);
   }
 
   double get _totalPurchases {
-    return _purchases.fold<double>(
-      0,
-      (sum, purchase) => sum + purchase.total,
-    );
+    return _purchases.fold<double>(0, (sum, purchase) => sum + purchase.total);
   }
 
   double get _totalExpenses {
-    return _expenses.fold<double>(
-      0,
-      (sum, expense) => sum + expense.amount,
-    );
+    return _expenses.fold<double>(0, (sum, expense) => sum + expense.amount);
   }
 
   /// Total customer receipts across the available sales/payment records.
@@ -311,8 +266,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   double _saleCost(SaleModel sale) {
     return sale.items.fold<double>(
       0,
-      (sum, item) =>
-          sum + (item.costPrice * item.quantity),
+      (sum, item) => sum + (item.costPrice * item.quantity),
     );
   }
 
@@ -321,8 +275,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   double get _grossProfit {
     return _sales.fold<double>(
       0,
-      (sum, sale) =>
-          sum + (sale.total - _saleCost(sale)),
+      (sum, sale) => sum + (sale.total - _saleCost(sale)),
     );
   }
 
@@ -341,8 +294,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   /// Current customer outstanding based on available
   /// sales and payment records.
   double get _outstandingSales {
-    final double outstanding =
-        _totalSales - _totalPayments;
+    final double outstanding = _totalSales - _totalPayments;
 
     return outstanding > 0 ? outstanding : 0;
   }
@@ -350,27 +302,25 @@ class _ReportsScreenState extends State<ReportsScreen> {
   double get _stockValue {
     return _products.fold<double>(
       0,
-      (sum, product) =>
-          sum +
-          (product.currentStock * product.purchasePrice),
+      (sum, product) => sum + (product.currentStock * product.purchasePrice),
     );
   }
 
   int get _lowStockCount {
-    return _products.where(
-      (product) =>
-          product.isActive &&
-          product.currentStock > 0 &&
-          product.currentStock <= product.minimumStock,
-    ).length;
+    return _products
+        .where(
+          (product) =>
+              product.isActive &&
+              product.currentStock > 0 &&
+              product.currentStock <= product.minimumStock,
+        )
+        .length;
   }
 
   int get _outOfStockCount {
-    return _products.where(
-      (product) =>
-          product.isActive &&
-          product.currentStock <= 0,
-    ).length;
+    return _products
+        .where((product) => product.isActive && product.currentStock <= 0)
+        .length;
   }
 
   // ===========================================================================
@@ -380,81 +330,63 @@ class _ReportsScreenState extends State<ReportsScreen> {
   void _openSalesReport() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => const SalesReportScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const SalesReportScreen()),
     );
   }
 
   void _openPurchaseReport() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => const PurchaseReportScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const PurchaseReportScreen()),
     );
   }
 
   void _openExpenseReport() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => const ExpenseReportScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const ExpenseReportScreen()),
     );
   }
 
   void _openProfitReport() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => const ProfitReportScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const ProfitReportScreen()),
     );
   }
 
   void _openPaymentReport() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => const PaymentReportScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const PaymentReportScreen()),
     );
   }
 
   void _openStockReport() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => const StockReportScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const StockReportScreen()),
     );
   }
 
   void _openCustomerReport() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => const CustomerReportScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const CustomerReportScreen()),
     );
   }
 
   void _openSupplierReport() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => const SupplierReportScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const SupplierReportScreen()),
     );
   }
 
   void _openAnalyticsReport() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => const AnalyticsReportScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const AnalyticsReportScreen()),
     );
   }
 
@@ -469,21 +401,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
     if (_isLoading) {
       return Scaffold(
         backgroundColor: theme.scaffoldBackgroundColor,
-        appBar: AppBar(
-          title: const Text('Reports'),
-        ),
-        body: const Center(
-          child: CircularProgressIndicator(),
-        ),
+        appBar: AppBar(title: const Text('Reports')),
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     if (_errorMessage != null) {
       return Scaffold(
         backgroundColor: theme.scaffoldBackgroundColor,
-        appBar: AppBar(
-          title: const Text('Reports'),
-        ),
+        appBar: AppBar(title: const Text('Reports')),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -506,9 +432,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 const SizedBox(height: 18),
                 FilledButton.icon(
                   onPressed: _initialize,
-                  icon: const Icon(
-                    Icons.refresh_rounded,
-                  ),
+                  icon: const Icon(Icons.refresh_rounded),
                   label: const Text('Try Again'),
                 ),
               ],
@@ -534,13 +458,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                    ),
+                    child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Icon(
-                    Icons.refresh_rounded,
-                  ),
+                : const Icon(Icons.refresh_rounded),
           ),
           const SizedBox(width: 6),
         ],
@@ -548,40 +468,21 @@ class _ReportsScreenState extends State<ReportsScreen> {
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: LayoutBuilder(
-          builder: (
-            context,
-            constraints,
-          ) {
-            final double maxWidth =
-                isDesktop ? 1250 : 1000;
+          builder: (context, constraints) {
+            final double maxWidth = isDesktop ? 1250 : 1000;
 
             return SingleChildScrollView(
-              physics:
-                  const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(
-                16,
-                16,
-                16,
-                30,
-              ),
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 30),
               child: Center(
                 child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxWidth: maxWidth,
-                  ),
+                  constraints: BoxConstraints(maxWidth: maxWidth),
                   child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.stretch,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      _buildHeader(
-                        theme,
-                        isDesktop,
-                      ),
+                      _buildHeader(theme, isDesktop),
                       const SizedBox(height: 18),
-                      _buildOverview(
-                        theme,
-                        isDesktop,
-                      ),
+                      _buildOverview(theme, isDesktop),
                       const SizedBox(height: 22),
                       _buildQuickSummary(theme),
                       const SizedBox(height: 22),
@@ -605,14 +506,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
   // HEADER
   // ===========================================================================
 
-  Widget _buildHeader(
-    ThemeData theme,
-    bool isDesktop,
-  ) {
+  Widget _buildHeader(ThemeData theme, bool isDesktop) {
     final String businessName =
         _business?.businessName.trim().isNotEmpty == true
-            ? _business!.businessName.trim()
-            : 'Business';
+        ? _business!.businessName.trim()
+        : 'Business';
 
     return Container(
       width: double.infinity,
@@ -627,9 +525,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             AppColors.secondary.withValues(alpha: 0.08),
           ],
         ),
-        border: Border.all(
-          color: AppColors.primary.withValues(alpha: 0.16),
-        ),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.16)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -654,18 +550,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
               children: [
                 Text(
                   'Business Reports',
-                  style:
-                      theme.textTheme.headlineSmall?.copyWith(
+                  style: theme.textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w900,
                   ),
                 ),
                 const SizedBox(height: 5),
                 Text(
                   businessName,
-                  style:
-                      theme.textTheme.titleSmall?.copyWith(
-                    color:
-                        theme.colorScheme.onSurfaceVariant,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -674,11 +567,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   'Monitor sales, purchases, expenses, '
                   'profit, collections, stock, customers '
                   'and suppliers from one place.',
-                  style:
-                      theme.textTheme.bodyMedium?.copyWith(
+                  style: theme.textTheme.bodyMedium?.copyWith(
                     height: 1.45,
-                    color:
-                        theme.colorScheme.onSurfaceVariant,
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],
@@ -693,10 +584,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   // OVERVIEW
   // ===========================================================================
 
-  Widget _buildOverview(
-    ThemeData theme,
-    bool isDesktop,
-  ) {
+  Widget _buildOverview(ThemeData theme, bool isDesktop) {
     final List<_MetricItem> metrics = [
       _MetricItem(
         title: 'Total Sales',
@@ -720,9 +608,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         title: 'Net Profit',
         value: _currency(_netProfit),
         icon: Icons.trending_up_rounded,
-        color: _netProfit >= 0
-            ? AppColors.success
-            : AppColors.danger,
+        color: _netProfit >= 0 ? AppColors.success : AppColors.danger,
       ),
       _MetricItem(
         title: 'Received',
@@ -749,10 +635,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         ),
         const SizedBox(height: 12),
         LayoutBuilder(
-          builder: (
-            context,
-            constraints,
-          ) {
+          builder: (context, constraints) {
             final double width = constraints.maxWidth;
 
             int columns = 1;
@@ -766,23 +649,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
             const double spacing = 12;
 
             final double cardWidth =
-                (width - ((columns - 1) * spacing)) /
-                    columns;
+                (width - ((columns - 1) * spacing)) / columns;
 
             return Wrap(
               spacing: spacing,
               runSpacing: spacing,
-              children: metrics.map(
-                (metric) {
-                  return SizedBox(
-                    width: cardWidth,
-                    child: _metricCard(
-                      theme,
-                      metric,
-                    ),
-                  );
-                },
-              ).toList(),
+              children: metrics.map((metric) {
+                return SizedBox(
+                  width: cardWidth,
+                  child: _metricCard(theme, metric),
+                );
+              }).toList(),
             );
           },
         ),
@@ -790,24 +667,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  Widget _metricCard(
-    ThemeData theme,
-    _MetricItem metric,
-  ) {
+  Widget _metricCard(ThemeData theme, _MetricItem metric) {
     return Container(
       padding: const EdgeInsets.all(17),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: metric.color.withValues(alpha: 0.20),
-        ),
+        border: Border.all(color: metric.color.withValues(alpha: 0.20)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(
-              alpha: theme.brightness == Brightness.dark
-                  ? 0.08
-                  : 0.035,
+              alpha: theme.brightness == Brightness.dark ? 0.08 : 0.035,
             ),
             blurRadius: 15,
             offset: const Offset(0, 5),
@@ -823,27 +693,20 @@ class _ReportsScreenState extends State<ReportsScreen> {
               color: metric.color.withValues(alpha: 0.10),
               borderRadius: BorderRadius.circular(13),
             ),
-            child: Icon(
-              metric.icon,
-              color: metric.color,
-              size: 23,
-            ),
+            child: Icon(metric.icon, color: metric.color, size: 23),
           ),
           const SizedBox(width: 13),
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   metric.title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style:
-                      theme.textTheme.bodySmall?.copyWith(
+                  style: theme.textTheme.bodySmall?.copyWith(
                     fontWeight: FontWeight.w700,
-                    color:
-                        theme.colorScheme.onSurfaceVariant,
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
                 const SizedBox(height: 5),
@@ -851,8 +714,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   metric.value,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style:
-                      theme.textTheme.titleLarge?.copyWith(
+                  style: theme.textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -868,9 +730,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   // QUICK SUMMARY
   // ===========================================================================
 
-  Widget _buildQuickSummary(
-    ThemeData theme,
-  ) {
+  Widget _buildQuickSummary(ThemeData theme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -931,10 +791,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     Color color,
   ) {
     return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 15,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
       child: Row(
         children: [
           Container(
@@ -944,26 +801,20 @@ class _ReportsScreenState extends State<ReportsScreen> {
               color: color.withValues(alpha: 0.10),
               borderRadius: BorderRadius.circular(11),
             ),
-            child: Icon(
-              icon,
-              size: 19,
-              color: color,
-            ),
+            child: Icon(icon, size: 19, color: color),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
               label,
-              style:
-                  theme.textTheme.bodyMedium?.copyWith(
+              style: theme.textTheme.bodyMedium?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
             ),
           ),
           Text(
             value,
-            style:
-                theme.textTheme.titleSmall?.copyWith(
+            style: theme.textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.w900,
             ),
           ),
@@ -976,9 +827,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   // REPORT GRID
   // ===========================================================================
 
-  Widget _buildReportGrid(
-    ThemeData theme,
-  ) {
+  Widget _buildReportGrid(ThemeData theme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -990,10 +839,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         ),
         const SizedBox(height: 12),
         LayoutBuilder(
-          builder: (
-            context,
-            constraints,
-          ) {
+          builder: (context, constraints) {
             final double width = constraints.maxWidth;
 
             int columns = 1;
@@ -1007,22 +853,19 @@ class _ReportsScreenState extends State<ReportsScreen> {
             const double spacing = 12;
 
             final double cardWidth =
-                (width - ((columns - 1) * spacing)) /
-                    columns;
+                (width - ((columns - 1) * spacing)) / columns;
 
             final List<_ReportItem> reports = [
               _ReportItem(
                 title: 'Sales Report',
-                description:
-                    'Analyze sales, invoices, customers, collections and profit.',
+                description: 'Analyze sales, invoices, customers, collections and profit.',
                 icon: Icons.point_of_sale_rounded,
                 color: AppColors.success,
                 onTap: _openSalesReport,
               ),
               _ReportItem(
                 title: 'Purchase Report',
-                description:
-                    'Track purchases, suppliers, spending and outstanding amounts.',
+                description: 'Track purchases, suppliers, spending and outstanding amounts.',
                 icon: Icons.shopping_bag_rounded,
                 color: AppColors.primary,
                 onTap: _openPurchaseReport,
@@ -1037,8 +880,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
               ),
               _ReportItem(
                 title: 'Profit Report',
-                description:
-                    'Understand gross profit, expenses, net profit and margins.',
+                description: 'Understand gross profit, expenses, net profit and margins.',
                 icon: Icons.bar_chart_rounded,
                 color: AppColors.secondary,
                 onTap: _openProfitReport,
@@ -1061,24 +903,21 @@ class _ReportsScreenState extends State<ReportsScreen> {
               ),
               _ReportItem(
                 title: 'Customer Report',
-                description:
-                    'Analyze customer sales, received amount and outstanding balance.',
+                description: 'Analyze customer sales, received amount and outstanding balance.',
                 icon: Icons.people_alt_rounded,
                 color: const Color(0xFF0891B2),
                 onTap: _openCustomerReport,
               ),
               _ReportItem(
                 title: 'Supplier Report',
-                description:
-                    'Review supplier purchases, payments and outstanding amounts.',
+                description: 'Review supplier purchases, payments and outstanding amounts.',
                 icon: Icons.local_shipping_rounded,
                 color: const Color(0xFFEA580C),
                 onTap: _openSupplierReport,
               ),
               _ReportItem(
                 title: 'Analytics Report',
-                description:
-                    'Explore sales, purchases, expenses and payment trends with charts.',
+                description: 'Explore sales, purchases, expenses and payment trends with charts.',
                 icon: Icons.analytics_rounded,
                 color: const Color(0xFF7C3AED),
                 onTap: _openAnalyticsReport,
@@ -1088,17 +927,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
             return Wrap(
               spacing: spacing,
               runSpacing: spacing,
-              children: reports.map(
-                (report) {
-                  return SizedBox(
-                    width: cardWidth,
-                    child: _reportCard(
-                      theme,
-                      report,
-                    ),
-                  );
-                },
-              ).toList(),
+              children: reports.map((report) {
+                return SizedBox(
+                  width: cardWidth,
+                  child: _reportCard(theme, report),
+                );
+              }).toList(),
             );
           },
         ),
@@ -1106,10 +940,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  Widget _reportCard(
-    ThemeData theme,
-    _ReportItem report,
-  ) {
+  Widget _reportCard(ThemeData theme, _ReportItem report) {
     return Material(
       color: theme.colorScheme.surface,
       borderRadius: BorderRadius.circular(18),
@@ -1120,50 +951,37 @@ class _ReportsScreenState extends State<ReportsScreen> {
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: report.color.withValues(alpha: 0.16),
-            ),
+            border: Border.all(color: report.color.withValues(alpha: 0.16)),
           ),
           child: Row(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
                 width: 46,
                 height: 46,
                 decoration: BoxDecoration(
-                  color:
-                      report.color.withValues(alpha: 0.10),
-                  borderRadius:
-                      BorderRadius.circular(13),
+                  color: report.color.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(13),
                 ),
-                child: Icon(
-                  report.icon,
-                  color: report.color,
-                  size: 23,
-                ),
+                child: Icon(report.icon, color: report.color, size: 23),
               ),
               const SizedBox(width: 13),
               Expanded(
                 child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       report.title,
-                      style:
-                          theme.textTheme.titleSmall?.copyWith(
+                      style: theme.textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w900,
                       ),
                     ),
                     const SizedBox(height: 5),
                     Text(
                       report.description,
-                      style:
-                          theme.textTheme.bodySmall?.copyWith(
+                      style: theme.textTheme.bodySmall?.copyWith(
                         height: 1.35,
-                        color:
-                            theme.colorScheme.onSurfaceVariant,
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                     const SizedBox(height: 10),
@@ -1199,9 +1017,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   // INVENTORY SNAPSHOT
   // ===========================================================================
 
-  Widget _buildInventorySnapshot(
-    ThemeData theme,
-  ) {
+  Widget _buildInventorySnapshot(ThemeData theme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1213,10 +1029,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         ),
         const SizedBox(height: 12),
         LayoutBuilder(
-          builder: (
-            context,
-            constraints,
-          ) {
+          builder: (context, constraints) {
             final double width = constraints.maxWidth;
 
             int columns = 1;
@@ -1228,8 +1041,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             const double spacing = 12;
 
             final double cardWidth =
-                (width - ((columns - 1) * spacing)) /
-                    columns;
+                (width - ((columns - 1) * spacing)) / columns;
 
             final List<_MetricItem> inventoryMetrics = [
               _MetricItem(
@@ -1247,8 +1059,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
               _MetricItem(
                 title: 'Out of Stock',
                 value: _outOfStockCount.toString(),
-                icon:
-                    Icons.remove_shopping_cart_rounded,
+                icon: Icons.remove_shopping_cart_rounded,
                 color: AppColors.danger,
               ),
             ];
@@ -1256,17 +1067,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
             return Wrap(
               spacing: spacing,
               runSpacing: spacing,
-              children: inventoryMetrics.map(
-                (metric) {
-                  return SizedBox(
-                    width: cardWidth,
-                    child: _metricCard(
-                      theme,
-                      metric,
-                    ),
-                  );
-                },
-              ).toList(),
+              children: inventoryMetrics.map((metric) {
+                return SizedBox(
+                  width: cardWidth,
+                  child: _metricCard(theme, metric),
+                );
+              }).toList(),
             );
           },
         ),
@@ -1278,32 +1084,24 @@ class _ReportsScreenState extends State<ReportsScreen> {
   // REPORT TIPS
   // ===========================================================================
 
-  Widget _buildReportTips(
-    ThemeData theme,
-  ) {
+  Widget _buildReportTips(ThemeData theme) {
     return Card(
       elevation: 0,
       color: AppColors.primary.withValues(alpha: 0.06),
       child: Padding(
         padding: const EdgeInsets.all(18),
         child: Row(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(
-              Icons.lightbulb_rounded,
-              color: AppColors.warning,
-            ),
+            const Icon(Icons.lightbulb_rounded, color: AppColors.warning),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     'Reporting Tip',
-                    style:
-                        theme.textTheme.titleSmall?.copyWith(
+                    style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w800,
                     ),
                   ),
@@ -1314,10 +1112,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     'filters and reporting period so you can analyze '
                     'sales, purchases, expenses, payments, stock, '
                     'customers and suppliers in more detail.',
-                    style:
-                        theme.textTheme.bodySmall?.copyWith(
-                      height: 1.4,
-                    ),
+                    style: theme.textTheme.bodySmall?.copyWith(height: 1.4),
                   ),
                 ],
               ),
@@ -1341,31 +1136,23 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(
-          icon,
-          size: 22,
-          color: AppColors.primary,
-        ),
+        Icon(icon, size: 22, color: AppColors.primary),
         const SizedBox(width: 9),
         Expanded(
           child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 title,
-                style:
-                    theme.textTheme.titleLarge?.copyWith(
+                style: theme.textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w900,
                 ),
               ),
               const SizedBox(height: 3),
               Text(
                 subtitle,
-                style:
-                    theme.textTheme.bodySmall?.copyWith(
-                  color:
-                      theme.colorScheme.onSurfaceVariant,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
             ],

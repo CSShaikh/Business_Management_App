@@ -1,4 +1,5 @@
 import 'package:business_management_app/models/purchase_model.dart';
+import 'package:business_management_app/repositories/product_repository.dart';
 import 'package:business_management_app/repositories/stock_repository.dart';
 
 /// Handles inventory changes created by purchase transactions.
@@ -9,11 +10,13 @@ import 'package:business_management_app/repositories/stock_repository.dart';
 /// reversed through [reversePurchaseStock].
 class PurchaseStockService {
   final StockRepository stockRepository;
+  final ProductRepository productRepository;
 
   PurchaseStockService({
     StockRepository? stockRepository,
-  }) : stockRepository =
-            stockRepository ?? StockRepository();
+    ProductRepository? productRepository,
+  }) : stockRepository = stockRepository ?? StockRepository(),
+       productRepository = productRepository ?? ProductRepository();
 
   // ===========================================================================
   // PROCESS PURCHASE STOCK
@@ -23,11 +26,8 @@ class PurchaseStockService {
   ///
   /// This should be called after a purchase has been successfully created or
   /// when an edited purchase has been prepared after reversing the old stock.
-  Future<void> processPurchaseStock({
-    required PurchaseModel purchase,
-  }) async {
-    final String businessId =
-        purchase.businessId.trim();
+  Future<void> processPurchaseStock({required PurchaseModel purchase}) async {
+    final String businessId = purchase.businessId.trim();
 
     if (purchase.items.isEmpty) {
       return;
@@ -39,16 +39,13 @@ class PurchaseStockService {
       );
     }
 
-    final List<_ProcessedStockItem> processedItems =
-        [];
+    final List<_ProcessedStockItem> processedItems = [];
 
     try {
       for (final item in purchase.items) {
-        final String productId =
-            item.productId.trim();
+        final String productId = item.productId.trim();
 
-        final String productName =
-            item.productName.trim();
+        final String productName = item.productName.trim();
 
         _validateItem(
           productId: productId,
@@ -64,8 +61,16 @@ class PurchaseStockService {
           unitCost: item.purchaseRate,
           referenceId: purchase.id,
           date: purchase.date,
-          notes:
-              'Stock added for purchase transaction',
+          notes: 'Stock added for purchase transaction',
+        );
+
+        // Keep the product master record's latest purchase rate synchronized
+        // with the rate used in this purchase. The stock transaction above
+        // already updates currentStock atomically.
+        await productRepository.updatePurchasePrice(
+          businessId: businessId,
+          productId: productId,
+          purchasePrice: item.purchaseRate,
         );
 
         processedItems.add(
@@ -86,8 +91,7 @@ class PurchaseStockService {
       // must be reversed to avoid leaving partial stock.
       //
 
-      for (final processed
-          in processedItems.reversed) {
+      for (final processed in processedItems.reversed) {
         try {
           await stockRepository.stockOut(
             businessId: businessId,
@@ -96,8 +100,7 @@ class PurchaseStockService {
             unitCost: processed.unitCost,
             referenceId: purchase.id,
             date: DateTime.now(),
-            notes:
-                'Rollback for failed purchase stock processing',
+            notes: 'Rollback for failed purchase stock processing',
           );
         } catch (_) {
           // Preserve the original error.
@@ -119,11 +122,8 @@ class PurchaseStockService {
   /// - a purchase is deleted.
   ///
   /// The method applies the inverse inventory operation for every item.
-  Future<void> reversePurchaseStock({
-    required PurchaseModel purchase,
-  }) async {
-    final String businessId =
-        purchase.businessId.trim();
+  Future<void> reversePurchaseStock({required PurchaseModel purchase}) async {
+    final String businessId = purchase.businessId.trim();
 
     if (purchase.items.isEmpty) {
       return;
@@ -135,16 +135,13 @@ class PurchaseStockService {
       );
     }
 
-    final List<_ProcessedStockItem> reversedItems =
-        [];
+    final List<_ProcessedStockItem> reversedItems = [];
 
     try {
       for (final item in purchase.items) {
-        final String productId =
-            item.productId.trim();
+        final String productId = item.productId.trim();
 
-        final String productName =
-            item.productName.trim();
+        final String productName = item.productName.trim();
 
         _validateItem(
           productId: productId,
@@ -160,8 +157,7 @@ class PurchaseStockService {
           unitCost: item.purchaseRate,
           referenceId: purchase.id,
           date: DateTime.now(),
-          notes:
-              'Stock reversed for purchase transaction',
+          notes: 'Stock reversed for purchase transaction',
         );
 
         reversedItems.add(
@@ -181,8 +177,7 @@ class PurchaseStockService {
       // already reversed so the inventory remains in its original state.
       //
 
-      for (final reversed
-          in reversedItems.reversed) {
+      for (final reversed in reversedItems.reversed) {
         try {
           await stockRepository.stockIn(
             businessId: businessId,
@@ -191,8 +186,7 @@ class PurchaseStockService {
             unitCost: reversed.unitCost,
             referenceId: purchase.id,
             date: DateTime.now(),
-            notes:
-                'Rollback for failed purchase stock reversal',
+            notes: 'Rollback for failed purchase stock reversal',
           );
         } catch (_) {
           // Preserve the original error.
@@ -220,16 +214,14 @@ class PurchaseStockService {
       );
     }
 
-    if (!quantity.isFinite ||
-        quantity <= 0) {
+    if (!quantity.isFinite || quantity <= 0) {
       throw ArgumentError(
         'Purchase quantity must be greater than zero for '
         '${productName.isEmpty ? productId : productName}.',
       );
     }
 
-    if (!purchaseRate.isFinite ||
-        purchaseRate < 0) {
+    if (!purchaseRate.isFinite || purchaseRate < 0) {
       throw ArgumentError(
         'Purchase rate cannot be negative for '
         '${productName.isEmpty ? productId : productName}.',

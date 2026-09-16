@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import '../../core/widgets/app_date_picker.dart';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
@@ -26,8 +28,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   final SaleRepository _saleRepository = SaleRepository();
   final PaymentRepository _paymentRepository = PaymentRepository();
 
-  final TextEditingController _searchController =
-      TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
 
   bool _loading = true;
   bool _refreshing = false;
@@ -62,9 +63,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   // LOAD
   // ===========================================================================
 
-  Future<void> _loadReport({
-    bool showLoader = true,
-  }) async {
+  Future<void> _loadReport({bool showLoader = true}) async {
     if (showLoader) {
       setState(() {
         _loading = true;
@@ -78,30 +77,21 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     }
 
     try {
-      final BusinessModel? business =
-          await _businessRepository.getBusinessForCurrentUser();
+      final BusinessModel? business = await _businessRepository
+          .getBusinessForCurrentUser();
 
       if (business == null) {
-        throw Exception(
-          'Business information is not available.',
-        );
+        throw Exception('Business information is not available.');
       }
 
-      final List<dynamic> result =
-          await Future.wait<dynamic>([
-        _saleRepository.getSales(
-          businessId: business.id,
-        ),
-        _paymentRepository.getPayments(
-          businessId: business.id,
-        ),
+      final List<dynamic> result = await Future.wait<dynamic>([
+        _saleRepository.getSales(businessId: business.id),
+        _paymentRepository.getPayments(businessId: business.id),
       ]);
 
-      final List<SaleModel> sales =
-          result[0] as List<SaleModel>;
+      final List<SaleModel> sales = result[0] as List<SaleModel>;
 
-      final List<PaymentModel> payments =
-          result[1] as List<PaymentModel>;
+      final List<PaymentModel> payments = result[1] as List<PaymentModel>;
 
       if (!mounted) return;
 
@@ -125,9 +115,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   }
 
   Future<void> _refreshReport() async {
-    await _loadReport(
-      showLoader: false,
-    );
+    await _loadReport(showLoader: false);
   }
 
   // ===========================================================================
@@ -137,22 +125,15 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   Future<void> _selectDateRange() async {
     final DateTime now = DateTime.now();
 
-    final DateTimeRange? selected =
-        await showDateRangePicker(
+    final DateTimeRange? selected = await AppDatePicker.showDateRangePicker(
       context: context,
+
+      initialEntryMode: DatePickerEntryMode.calendar,
       firstDate: DateTime(2020),
-      lastDate: DateTime(
-        now.year + 2,
-        12,
-        31,
-      ),
-      initialDateRange:
-          _startDate != null && _endDate != null
-              ? DateTimeRange(
-                  start: _startDate!,
-                  end: _endDate!,
-                )
-              : null,
+      lastDate: DateTime(now.year + 2, 12, 31),
+      initialDateRange: _startDate != null && _endDate != null
+          ? DateTimeRange(start: _startDate!, end: _endDate!)
+          : null,
       helpText: 'Select reporting period',
       saveText: 'Apply',
       cancelText: 'Cancel',
@@ -181,26 +162,11 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     });
   }
 
-  void _setDateRange(
-    DateTime start,
-    DateTime end,
-  ) {
+  void _setDateRange(DateTime start, DateTime end) {
     setState(() {
-      _startDate = DateTime(
-        start.year,
-        start.month,
-        start.day,
-      );
+      _startDate = DateTime(start.year, start.month, start.day);
 
-      _endDate = DateTime(
-        end.year,
-        end.month,
-        end.day,
-        23,
-        59,
-        59,
-        999,
-      );
+      _endDate = DateTime(end.year, end.month, end.day, 23, 59, 59, 999);
     });
   }
 
@@ -213,9 +179,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     final DateTime now = DateTime.now();
 
     final DateTime start = now.subtract(
-      Duration(
-        days: now.weekday - DateTime.monday,
-      ),
+      Duration(days: now.weekday - DateTime.monday),
     );
 
     _setDateRange(start, now);
@@ -224,30 +188,15 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   void _setThisMonth() {
     final DateTime now = DateTime.now();
 
-    _setDateRange(
-      DateTime(
-        now.year,
-        now.month,
-        1,
-      ),
-      now,
-    );
+    _setDateRange(DateTime(now.year, now.month, 1), now);
   }
 
   void _setLastMonth() {
     final DateTime now = DateTime.now();
 
     _setDateRange(
-      DateTime(
-        now.year,
-        now.month - 1,
-        1,
-      ),
-      DateTime(
-        now.year,
-        now.month,
-        0,
-      ),
+      DateTime(now.year, now.month - 1, 1),
+      DateTime(now.year, now.month, 0),
     );
   }
 
@@ -263,24 +212,19 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   // ===========================================================================
 
   List<SaleModel> get _filteredSales {
-    final String query =
-        _searchQuery.trim().toLowerCase();
+    final String query = _searchQuery.trim().toLowerCase();
 
-    final List<SaleModel> sales =
-        _allSales.where((sale) {
-      if (_startDate != null &&
-          sale.date.isBefore(_startDate!)) {
+    final List<SaleModel> sales = _allSales.where((sale) {
+      if (_startDate != null && sale.date.isBefore(_startDate!)) {
         return false;
       }
 
-      if (_endDate != null &&
-          sale.date.isAfter(_endDate!)) {
+      if (_endDate != null && sale.date.isAfter(_endDate!)) {
         return false;
       }
 
       if (_paymentFilter != 'All' &&
-          sale.paymentStatus.toLowerCase() !=
-              _paymentFilter.toLowerCase()) {
+          sale.paymentStatus.toLowerCase() != _paymentFilter.toLowerCase()) {
         return false;
       }
 
@@ -288,50 +232,35 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
         return true;
       }
 
-      final bool invoiceMatch =
-          sale.invoiceNumber
-              .toLowerCase()
-              .contains(query);
-
-      final bool customerMatch =
-          sale.customerName
-              .toLowerCase()
-              .contains(query);
-
-      final bool notesMatch =
-          sale.notes
-              .toLowerCase()
-              .contains(query);
-
-      final bool productMatch =
-          sale.items.any(
-        (item) => item.productName
-            .toLowerCase()
-            .contains(query),
+      final bool invoiceMatch = sale.invoiceNumber.toLowerCase().contains(
+        query,
       );
 
-      return invoiceMatch ||
-          customerMatch ||
-          notesMatch ||
-          productMatch;
+      final bool customerMatch = sale.customerName.toLowerCase().contains(
+        query,
+      );
+
+      final bool notesMatch = sale.notes.toLowerCase().contains(query);
+
+      final bool productMatch = sale.items.any(
+        (item) => item.productName.toLowerCase().contains(query),
+      );
+
+      return invoiceMatch || customerMatch || notesMatch || productMatch;
     }).toList();
 
-    sales.sort(
-      (a, b) => b.date.compareTo(a.date),
-    );
+    sales.sort((a, b) => b.date.compareTo(a.date));
 
     return sales;
   }
 
   List<PaymentModel> get _filteredPayments {
     return _allPayments.where((payment) {
-      if (_startDate != null &&
-          payment.date.isBefore(_startDate!)) {
+      if (_startDate != null && payment.date.isBefore(_startDate!)) {
         return false;
       }
 
-      if (_endDate != null &&
-          payment.date.isAfter(_endDate!)) {
+      if (_endDate != null && payment.date.isAfter(_endDate!)) {
         return false;
       }
 
@@ -343,27 +272,17 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   // CALCULATIONS
   // ===========================================================================
 
-  double _totalSales(
-    List<SaleModel> sales,
-  ) {
-    return sales.fold<double>(
-      0,
-      (sum, sale) => sum + sale.total,
-    );
+  double _totalSales(List<SaleModel> sales) {
+    return sales.fold<double>(0, (sum, sale) => sum + sale.total);
   }
 
-  double _totalCollected(
-    List<SaleModel> sales,
-    List<PaymentModel> payments,
-  ) {
-    final double salePaid =
-        sales.fold<double>(
+  double _totalCollected(List<SaleModel> sales, List<PaymentModel> payments) {
+    final double salePaid = sales.fold<double>(
       0,
       (sum, sale) => sum + sale.paidAmount,
     );
 
-    final double separatePayments =
-        payments.fold<double>(
+    final double separatePayments = payments.fold<double>(
       0,
       (sum, payment) => sum + payment.amount,
     );
@@ -371,65 +290,40 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     return salePaid + separatePayments;
   }
 
-  double _totalOutstanding(
-    List<SaleModel> sales,
-    List<PaymentModel> payments,
-  ) {
+  double _totalOutstanding(List<SaleModel> sales, List<PaymentModel> payments) {
     final double outstanding =
-        _totalSales(sales) -
-            _totalCollected(
-              sales,
-              payments,
-            );
+        _totalSales(sales) - _totalCollected(sales, payments);
 
-    return outstanding > 0
-        ? outstanding
-        : 0;
+    return outstanding > 0 ? outstanding : 0;
   }
 
-  double _saleGrossProfit(
-    SaleModel sale,
-  ) {
+  double _saleGrossProfit(SaleModel sale) {
     double cost = 0;
 
     for (final item in sale.items) {
-      cost +=
-          item.costPrice *
-              item.quantity;
+      cost += item.costPrice * item.quantity;
     }
 
     return sale.total - cost;
   }
 
-  double _totalGrossProfit(
-    List<SaleModel> sales,
-  ) {
-    return sales.fold<double>(
-      0,
-      (sum, sale) =>
-          sum + _saleGrossProfit(sale),
-    );
+  double _totalGrossProfit(List<SaleModel> sales) {
+    return sales.fold<double>(0, (sum, sale) => sum + _saleGrossProfit(sale));
   }
 
-  double _totalCost(
-    List<SaleModel> sales,
-  ) {
+  double _totalCost(List<SaleModel> sales) {
     double total = 0;
 
     for (final sale in sales) {
       for (final item in sale.items) {
-        total +=
-            item.costPrice *
-                item.quantity;
+        total += item.costPrice * item.quantity;
       }
     }
 
     return total;
   }
 
-  double _totalQuantity(
-    List<SaleModel> sales,
-  ) {
+  double _totalQuantity(List<SaleModel> sales) {
     double total = 0;
 
     for (final sale in sales) {
@@ -441,215 +335,127 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     return total;
   }
 
-  double _profitMargin(
-    List<SaleModel> sales,
-  ) {
-    final double total =
-        _totalSales(sales);
+  double _profitMargin(List<SaleModel> sales) {
+    final double total = _totalSales(sales);
 
     if (total <= 0) {
       return 0;
     }
 
-    return (_totalGrossProfit(sales) /
-            total) *
-        100;
+    return (_totalGrossProfit(sales) / total) * 100;
   }
 
-  double _collectionRate(
-    List<SaleModel> sales,
-    List<PaymentModel> payments,
-  ) {
-    final double total =
-        _totalSales(sales);
+  double _collectionRate(List<SaleModel> sales, List<PaymentModel> payments) {
+    final double total = _totalSales(sales);
 
     if (total <= 0) {
       return 0;
     }
 
-    return (_totalCollected(
-              sales,
-              payments,
-            ) /
-            total) *
-        100;
+    return (_totalCollected(sales, payments) / total) * 100;
   }
 
-  int _countStatus(
-    List<SaleModel> sales,
-    String status,
-  ) {
-    return sales.where(
-      (sale) =>
-          sale.paymentStatus
-              .toLowerCase() ==
-          status.toLowerCase(),
-    ).length;
+  int _countStatus(List<SaleModel> sales, String status) {
+    return sales
+        .where(
+          (sale) => sale.paymentStatus.toLowerCase() == status.toLowerCase(),
+        )
+        .length;
   }
 
   // ===========================================================================
   // GROUPING
   // ===========================================================================
 
-  Map<String, _CustomerSalesSummary>
-      _customerWiseSales(
+  Map<String, _CustomerSalesSummary> _customerWiseSales(
     List<SaleModel> sales,
     List<PaymentModel> payments,
   ) {
-    final Map<String,
-            _CustomerSalesSummary>
-        result =
+    final Map<String, _CustomerSalesSummary> result =
         <String, _CustomerSalesSummary>{};
 
     for (final SaleModel sale in sales) {
-      final String customer =
-          sale.customerName.trim().isEmpty
-              ? 'Walk-in Customer'
-              : sale.customerName.trim();
+      final String customer = sale.customerName.trim().isEmpty
+          ? 'Walk-in Customer'
+          : sale.customerName.trim();
 
       final _CustomerSalesSummary old =
-          result[customer] ??
-              _CustomerSalesSummary(
-                name: customer,
-              );
+          result[customer] ?? _CustomerSalesSummary(name: customer);
 
-      final double outstanding =
-          sale.total - sale.paidAmount;
+      final double outstanding = sale.total - sale.paidAmount;
 
-      result[customer] =
-          _CustomerSalesSummary(
+      result[customer] = _CustomerSalesSummary(
         name: customer,
-        sales:
-            old.sales + sale.total,
-        collected:
-            old.collected +
-                sale.paidAmount,
-        outstanding:
-            old.outstanding +
-                (outstanding > 0
-                    ? outstanding
-                    : 0),
-        profit:
-            old.profit +
-                _saleGrossProfit(sale),
-        invoiceCount:
-            old.invoiceCount + 1,
+        sales: old.sales + sale.total,
+        collected: old.collected + sale.paidAmount,
+        outstanding: old.outstanding + (outstanding > 0 ? outstanding : 0),
+        profit: old.profit + _saleGrossProfit(sale),
+        invoiceCount: old.invoiceCount + 1,
       );
     }
 
-    for (final PaymentModel payment
-        in payments) {
-      final String customer =
-          payment.customerName.trim().isEmpty
-              ? 'Walk-in Customer'
-              : payment.customerName.trim();
+    for (final PaymentModel payment in payments) {
+      final String customer = payment.customerName.trim().isEmpty
+          ? 'Walk-in Customer'
+          : payment.customerName.trim();
 
       final _CustomerSalesSummary old =
-          result[customer] ??
-              _CustomerSalesSummary(
-                name: customer,
-              );
+          result[customer] ?? _CustomerSalesSummary(name: customer);
 
-      final double collected =
-          old.collected +
-              payment.amount;
+      final double collected = old.collected + payment.amount;
 
-      final double outstanding =
-          old.sales - collected;
+      final double outstanding = old.sales - collected;
 
-      result[customer] =
-          _CustomerSalesSummary(
+      result[customer] = _CustomerSalesSummary(
         name: customer,
         sales: old.sales,
         collected: collected,
-        outstanding:
-            outstanding > 0
-                ? outstanding
-                : 0,
+        outstanding: outstanding > 0 ? outstanding : 0,
         profit: old.profit,
-        invoiceCount:
-            old.invoiceCount,
+        invoiceCount: old.invoiceCount,
       );
     }
 
-    final List<_CustomerSalesSummary>
-        values =
-        result.values.toList();
+    final List<_CustomerSalesSummary> values = result.values.toList();
 
-    values.sort(
-      (a, b) => b.sales.compareTo(a.sales),
-    );
+    values.sort((a, b) => b.sales.compareTo(a.sales));
 
-    return {
-      for (final item in values)
-        item.name: item,
-    };
+    return {for (final item in values) item.name: item};
   }
 
-  Map<String, _ProductSalesSummary>
-      _productWiseSales(
-    List<SaleModel> sales,
-  ) {
-    final Map<String,
-            _ProductSalesSummary>
-        result =
+  Map<String, _ProductSalesSummary> _productWiseSales(List<SaleModel> sales) {
+    final Map<String, _ProductSalesSummary> result =
         <String, _ProductSalesSummary>{};
 
     for (final SaleModel sale in sales) {
       for (final item in sale.items) {
-        final String name =
-            item.productName.trim().isEmpty
-                ? 'Unknown Product'
-                : item.productName.trim();
+        final String name = item.productName.trim().isEmpty
+            ? 'Unknown Product'
+            : item.productName.trim();
 
         final _ProductSalesSummary old =
-            result[name] ??
-                _ProductSalesSummary(
-                  name: name,
-                );
+            result[name] ?? _ProductSalesSummary(name: name);
 
-        final double itemRevenue =
-            item.quantity *
-                item.sellingRate;
+        final double itemRevenue = item.quantity * item.sellingRate;
 
-        final double cost =
-            item.costPrice *
-                item.quantity;
+        final double cost = item.costPrice * item.quantity;
 
-        final double adjustment =
-            sale.total -
-                sale.subtotal;
+        final double adjustment = sale.total - sale.subtotal;
 
         final double allocatedAdjustment =
-            sale.subtotal > 0 &&
-                    sale.subtotal.isFinite
-                ? adjustment *
-                    (itemRevenue /
-                        sale.subtotal)
-                : 0;
+            sale.subtotal > 0 && sale.subtotal.isFinite
+            ? adjustment * (itemRevenue / sale.subtotal)
+            : 0;
 
-        final double revenue =
-            itemRevenue +
-                allocatedAdjustment;
+        final double revenue = itemRevenue + allocatedAdjustment;
 
-        result[name] =
-            _ProductSalesSummary(
+        result[name] = _ProductSalesSummary(
           name: name,
-          quantity:
-              old.quantity +
-                  item.quantity,
-          revenue:
-              old.revenue +
-                  revenue,
-          cost:
-              old.cost +
-                  cost,
-          profit:
-              old.profit +
-                  revenue -
-                  cost,
-          invoiceCount:
-              old.invoiceCount + 1,
+          quantity: old.quantity + item.quantity,
+          revenue: old.revenue + revenue,
+          cost: old.cost + cost,
+          profit: old.profit + revenue - cost,
+          invoiceCount: old.invoiceCount + 1,
           unit: item.unit,
         );
       }
@@ -671,21 +477,15 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   }
 
   String _number(double value) {
-    return NumberFormat(
-      '#,##0.##',
-      'en_IN',
-    ).format(value);
+    return NumberFormat('#,##0.##', 'en_IN').format(value);
   }
 
   String _date(DateTime value) {
-    return DateFormat(
-      'dd MMM yyyy',
-    ).format(value);
+    return DateFormat('dd MMM yyyy').format(value);
   }
 
   String _dateRangeText() {
-    if (_startDate == null ||
-        _endDate == null) {
+    if (_startDate == null || _endDate == null) {
       return 'All Dates';
     }
 
@@ -694,9 +494,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
         '${DateFormat('dd MMM yyyy').format(_endDate!)}';
   }
 
-  Color _statusColor(
-    String status,
-  ) {
+  Color _statusColor(String status) {
     switch (status.toLowerCase()) {
       case 'paid':
         return AppColors.success;
@@ -720,51 +518,31 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
         onPressed: () {
           Navigator.of(context).maybePop();
         },
-        icon: const Icon(
-          Icons.arrow_back_rounded,
-        ),
+        icon: const Icon(Icons.arrow_back_rounded),
       ),
-      title: const Text(
-        'Sales Report',
-      ),
+      title: const Text('Sales Report'),
       actions: [
         IconButton(
           tooltip: 'Download PDF',
-          onPressed:
-              _loading || _downloadingPdf
-                  ? null
-                  : _downloadPdf,
+          onPressed: _loading || _downloadingPdf ? null : _downloadPdf,
           icon: _downloadingPdf
               ? const SizedBox(
                   width: 20,
                   height: 20,
-                  child:
-                      CircularProgressIndicator(
-                    strokeWidth: 2,
-                  ),
+                  child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Icon(
-                  Icons.picture_as_pdf_rounded,
-                ),
+              : const Icon(Icons.picture_as_pdf_rounded),
         ),
         IconButton(
           tooltip: 'Refresh',
-          onPressed:
-              _refreshing
-                  ? null
-                  : _refreshReport,
+          onPressed: _refreshing ? null : _refreshReport,
           icon: _refreshing
               ? const SizedBox(
                   width: 20,
                   height: 20,
-                  child:
-                      CircularProgressIndicator(
-                    strokeWidth: 2,
-                  ),
+                  child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Icon(
-                  Icons.refresh_rounded,
-                ),
+              : const Icon(Icons.refresh_rounded),
         ),
         const SizedBox(width: 4),
       ],
@@ -776,70 +554,47 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   // ===========================================================================
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     return Scaffold(
-      backgroundColor:
-          theme.scaffoldBackgroundColor,
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: _buildAppBar(),
       body: _loading
-          ? const Center(
-              child:
-                  CircularProgressIndicator(),
-            )
+          ? const Center(child: CircularProgressIndicator())
           : _errorMessage != null
-              ? _buildErrorState(theme)
-              : _buildReportBody(theme),
+          ? _buildErrorState(theme)
+          : _buildReportBody(theme),
     );
   }
 
-  Widget _buildReportBody(
-    ThemeData theme,
-  ) {
-    final List<SaleModel> sales =
-        _filteredSales;
+  Widget _buildReportBody(ThemeData theme) {
+    final List<SaleModel> sales = _filteredSales;
 
     return RefreshIndicator(
       onRefresh: _refreshReport,
       child: LayoutBuilder(
-        builder: (
-          context,
-          constraints,
-        ) {
-          final bool isDesktop =
-              constraints.maxWidth >=
-                  1000;
+        builder: (context, constraints) {
+          final bool isDesktop = constraints.maxWidth >= 1000;
 
           final bool isTablet =
-              constraints.maxWidth >= 650 &&
-                  constraints.maxWidth < 1000;
+              constraints.maxWidth >= 650 && constraints.maxWidth < 1000;
 
           return SingleChildScrollView(
-            physics:
-                const AlwaysScrollableScrollPhysics(),
-            padding:
-                EdgeInsets.symmetric(
-              horizontal:
-                  isDesktop
-                      ? 28
-                      : isTablet
-                          ? 22
-                          : 16,
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.symmetric(
+              horizontal: isDesktop
+                  ? 28
+                  : isTablet
+                  ? 22
+                  : 16,
               vertical: 20,
             ),
             child: Center(
               child: ConstrainedBox(
-                constraints:
-                    const BoxConstraints(
-                  maxWidth: 1250,
-                ),
+                constraints: const BoxConstraints(maxWidth: 1250),
                 child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildHeader(theme),
                     const SizedBox(height: 20),
@@ -852,36 +607,17 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                       isDesktop,
                     ),
                     const SizedBox(height: 20),
-                    _buildPaymentStatusSection(
-                      theme,
-                      sales,
-                    ),
+                    _buildPaymentStatusSection(theme, sales),
                     const SizedBox(height: 20),
-                    _buildSearchAndFilters(
-                      theme,
-                    ),
+                    _buildSearchAndFilters(theme),
                     const SizedBox(height: 20),
-                    _buildCustomerWiseSection(
-                      theme,
-                      sales,
-                      _filteredPayments,
-                    ),
+                    _buildCustomerWiseSection(theme, sales, _filteredPayments),
                     const SizedBox(height: 20),
-                    _buildProductWiseSection(
-                      theme,
-                      sales,
-                    ),
+                    _buildProductWiseSection(theme, sales),
                     const SizedBox(height: 20),
-                    _buildInvoiceSection(
-                      theme,
-                      sales,
-                    ),
+                    _buildInvoiceSection(theme, sales),
                     const SizedBox(height: 20),
-                    _buildReportFooter(
-                      theme,
-                      sales,
-                      _filteredPayments,
-                    ),
+                    _buildReportFooter(theme, sales, _filteredPayments),
                   ],
                 ),
               ),
@@ -896,35 +632,22 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   // HEADER
   // ===========================================================================
 
-  Widget _buildHeader(
-    ThemeData theme,
-  ) {
+  Widget _buildHeader(ThemeData theme) {
     final String businessName =
-        _business?.businessName
-                    .trim()
-                    .isNotEmpty ==
-                true
-            ? _business!.businessName.trim()
-            : 'Business';
+        _business?.businessName.trim().isNotEmpty == true
+        ? _business!.businessName.trim()
+        : 'Business';
 
     return _ReportCard(
       child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
             width: 48,
             height: 48,
-            decoration:
-                BoxDecoration(
-              color: AppColors.primary
-                  .withValues(
-                alpha: 0.10,
-              ),
-              borderRadius:
-                  BorderRadius.circular(
-                14,
-              ),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(14),
             ),
             child: const Icon(
               Icons.bar_chart_rounded,
@@ -934,48 +657,30 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
           const SizedBox(width: 14),
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Sales Report',
-                  style: theme
-                      .textTheme
-                      .headlineSmall
-                      ?.copyWith(
-                    fontWeight:
-                        FontWeight.w800,
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   businessName,
                   maxLines: 1,
-                  overflow:
-                      TextOverflow.ellipsis,
-                  style: theme
-                      .textTheme
-                      .titleSmall
-                      ?.copyWith(
-                    fontWeight:
-                        FontWeight.w700,
-                    color:
-                        AppColors.primary,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primary,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   'Analyze sales, collections, '
                   'customers and product performance.',
-                  style: theme
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(
-                    color: theme
-                        .textTheme
-                        .bodyMedium
-                        ?.color
-                        ?.withValues(
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.textTheme.bodyMedium?.color?.withValues(
                       alpha: 0.70,
                     ),
                   ),
@@ -992,74 +697,45 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   // DATE UI
   // ===========================================================================
 
-  Widget _buildDateFilter(
-    ThemeData theme,
-  ) {
-    final bool hasFilter =
-        _startDate != null &&
-            _endDate != null;
+  Widget _buildDateFilter(ThemeData theme) {
+    final bool hasFilter = _startDate != null && _endDate != null;
 
     return _ReportCard(
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
                 width: 42,
                 height: 42,
-                decoration:
-                    BoxDecoration(
-                  color:
-                      AppColors.primary
-                          .withValues(
-                    alpha: 0.10,
-                  ),
-                  borderRadius:
-                      BorderRadius.circular(
-                    12,
-                  ),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(
-                  Icons
-                      .date_range_rounded,
-                  color:
-                      AppColors.primary,
+                  Icons.date_range_rounded,
+                  color: AppColors.primary,
                   size: 21,
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment
-                          .start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Reporting Period',
-                      style: theme
-                          .textTheme
-                          .titleMedium
-                          ?.copyWith(
-                        fontWeight:
-                            FontWeight.w800,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                     const SizedBox(height: 3),
                     Text(
                       _dateRangeText(),
-                      style: theme
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(
-                        color: theme
-                            .textTheme
-                            .bodySmall
-                            ?.color
-                            ?.withValues(
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.textTheme.bodySmall?.color?.withValues(
                           alpha: 0.65,
                         ),
                       ),
@@ -1069,13 +745,9 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
               ),
               if (hasFilter)
                 IconButton(
-                  tooltip:
-                      'Clear date filter',
-                  onPressed:
-                      _clearDateFilter,
-                  icon: const Icon(
-                    Icons.clear_rounded,
-                  ),
+                  tooltip: 'Clear date filter',
+                  onPressed: _clearDateFilter,
+                  icon: const Icon(Icons.clear_rounded),
                 ),
             ],
           ),
@@ -1084,47 +756,24 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _DatePresetButton(
-                label: 'Today',
-                onPressed: _setToday,
-              ),
-              _DatePresetButton(
-                label: 'This Week',
-                onPressed:
-                    _setThisWeek,
-              ),
-              _DatePresetButton(
-                label: 'This Month',
-                onPressed:
-                    _setThisMonth,
-              ),
-              _DatePresetButton(
-                label: 'Last Month',
-                onPressed:
-                    _setLastMonth,
-              ),
+              _DatePresetButton(label: 'Today', onPressed: _setToday),
+              _DatePresetButton(label: 'This Week', onPressed: _setThisWeek),
+              _DatePresetButton(label: 'This Month', onPressed: _setThisMonth),
+              _DatePresetButton(label: 'Last Month', onPressed: _setLastMonth),
               _DatePresetButton(
                 label: 'All Dates',
-                onPressed:
-                    _clearDateFilter,
+                onPressed: _clearDateFilter,
               ),
             ],
           ),
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
-            child:
-                OutlinedButton.icon(
-              onPressed:
-                  _selectDateRange,
-              icon: const Icon(
-                Icons
-                    .calendar_month_rounded,
-              ),
+            child: OutlinedButton.icon(
+              onPressed: _selectDateRange,
+              icon: const Icon(Icons.calendar_month_rounded),
               label: Text(
-                hasFilter
-                    ? 'Change Date Range'
-                    : 'Select Date Range',
+                hasFilter ? 'Change Date Range' : 'Select Date Range',
               ),
             ),
           ),
@@ -1143,93 +792,58 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     List<PaymentModel> payments,
     bool isDesktop,
   ) {
-    final double totalSales =
-        _totalSales(sales);
+    final double totalSales = _totalSales(sales);
 
-    final double collected =
-        _totalCollected(
-      sales,
-      payments,
-    );
+    final double collected = _totalCollected(sales, payments);
 
-    final double outstanding =
-        _totalOutstanding(
-      sales,
-      payments,
-    );
+    final double outstanding = _totalOutstanding(sales, payments);
 
-    final double profit =
-        _totalGrossProfit(sales);
+    final double profit = _totalGrossProfit(sales);
 
     final List<_SummaryItem> items = [
       _SummaryItem(
         title: 'Total Sales',
-        value:
-            _currency(totalSales),
-        subtitle:
-            '${sales.length} invoices',
-        icon:
-            Icons.trending_up_rounded,
-        color:
-            AppColors.primary,
+        value: _currency(totalSales),
+        subtitle: '${sales.length} invoices',
+        icon: Icons.trending_up_rounded,
+        color: AppColors.primary,
       ),
       _SummaryItem(
         title: 'Collected',
-        value:
-            _currency(collected),
+        value: _currency(collected),
         subtitle:
             '${_collectionRate(sales, payments).toStringAsFixed(1)}% collection',
-        icon:
-            Icons.payments_rounded,
-        color:
-            AppColors.success,
+        icon: Icons.payments_rounded,
+        color: AppColors.success,
       ),
       _SummaryItem(
         title: 'Outstanding',
-        value:
-            _currency(outstanding),
-        subtitle:
-            'Customer receivable',
-        icon:
-            Icons
-                .account_balance_wallet_rounded,
-        color:
-            AppColors.warning,
+        value: _currency(outstanding),
+        subtitle: 'Customer receivable',
+        icon: Icons.account_balance_wallet_rounded,
+        color: AppColors.warning,
       ),
       _SummaryItem(
         title: 'Gross Profit',
-        value:
-            _currency(profit),
-        subtitle:
-            '${_profitMargin(sales).toStringAsFixed(1)}% margin',
-        icon:
-            Icons.auto_graph_rounded,
-        color:
-            AppColors.secondary,
+        value: _currency(profit),
+        subtitle: '${_profitMargin(sales).toStringAsFixed(1)}% margin',
+        icon: Icons.auto_graph_rounded,
+        color: AppColors.secondary,
       ),
     ];
 
     return GridView.builder(
       shrinkWrap: true,
-      physics:
-          const NeverScrollableScrollPhysics(),
+      physics: const NeverScrollableScrollPhysics(),
       itemCount: items.length,
-      gridDelegate:
-          SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount:
-            isDesktop ? 4 : 2,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: isDesktop ? 4 : 2,
         crossAxisSpacing: 14,
         mainAxisSpacing: 14,
-        childAspectRatio:
-            isDesktop ? 1.9 : 1.45,
+        mainAxisExtent: isDesktop ? 180 : 156,
       ),
-      itemBuilder: (
-        context,
-        index,
-      ) {
-        return _SummaryCard(
-          item: items[index],
-        );
+      itemBuilder: (context, index) {
+        return _SummaryCard(item: items[index]);
       },
     );
   }
@@ -1238,20 +852,15 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   // PAYMENT STATUS
   // ===========================================================================
 
-  Widget _buildPaymentStatusSection(
-    ThemeData theme,
-    List<SaleModel> sales,
-  ) {
+  Widget _buildPaymentStatusSection(ThemeData theme, List<SaleModel> sales) {
     return _ReportCard(
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const _SectionHeader(
             icon: Icons.pie_chart_rounded,
             title: 'Payment Status',
-            subtitle:
-                'Invoice-level payment status distribution',
+            subtitle: 'Invoice-level payment status distribution',
           ),
           const SizedBox(height: 18),
           Wrap(
@@ -1260,33 +869,18 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
             children: [
               _StatusChip(
                 label: 'Paid',
-                count:
-                    _countStatus(
-                  sales,
-                  'paid',
-                ),
-                color:
-                    AppColors.success,
+                count: _countStatus(sales, 'paid'),
+                color: AppColors.success,
               ),
               _StatusChip(
                 label: 'Partial',
-                count:
-                    _countStatus(
-                  sales,
-                  'partial',
-                ),
-                color:
-                    AppColors.warning,
+                count: _countStatus(sales, 'partial'),
+                color: AppColors.warning,
               ),
               _StatusChip(
                 label: 'Unpaid',
-                count:
-                    _countStatus(
-                  sales,
-                  'unpaid',
-                ),
-                color:
-                    AppColors.danger,
+                count: _countStatus(sales, 'unpaid'),
+                color: AppColors.danger,
               ),
             ],
           ),
@@ -1299,94 +893,48 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   // SEARCH
   // ===========================================================================
 
-  Widget _buildSearchAndFilters(
-    ThemeData theme,
-  ) {
+  Widget _buildSearchAndFilters(ThemeData theme) {
     return _ReportCard(
       child: LayoutBuilder(
-        builder: (
-          context,
-          constraints,
-        ) {
-          final bool compact =
-              constraints.maxWidth < 700;
+        builder: (context, constraints) {
+          final bool compact = constraints.maxWidth < 700;
 
-          final Widget search =
-              TextField(
-            controller:
-                _searchController,
+          final Widget search = TextField(
+            controller: _searchController,
             onChanged: (value) {
               setState(() {
-                _searchQuery =
-                    value;
+                _searchQuery = value;
               });
             },
-            decoration:
-                InputDecoration(
-              hintText:
-                  'Search invoice, customer, notes or product',
-              prefixIcon:
-                  const Icon(
-                Icons.search_rounded,
-              ),
-              suffixIcon:
-                  _searchQuery.isEmpty
-                      ? null
-                      : IconButton(
-                          onPressed: () {
-                            _searchController
-                                .clear();
+            decoration: InputDecoration(
+              hintText: 'Search invoice, customer, notes or product',
+              prefixIcon: const Icon(Icons.search_rounded),
+              suffixIcon: _searchQuery.isEmpty
+                  ? null
+                  : IconButton(
+                      onPressed: () {
+                        _searchController.clear();
 
-                            setState(() {
-                              _searchQuery =
-                                  '';
-                            });
-                          },
-                          icon:
-                              const Icon(
-                            Icons
-                                .clear_rounded,
-                          ),
-                        ),
+                        setState(() {
+                          _searchQuery = '';
+                        });
+                      },
+                      icon: const Icon(Icons.clear_rounded),
+                    ),
             ),
           );
 
-          final Widget filter =
-              DropdownButtonFormField<
-                  String>(
-            initialValue:
-                _paymentFilter,
-            decoration:
-                const InputDecoration(
-              labelText:
-                  'Payment Status',
-              prefixIcon:
-                  Icon(
-                Icons
-                    .filter_alt_rounded,
-              ),
+          final Widget filter = DropdownButtonFormField<String>(
+            initialValue: _paymentFilter,
+            decoration: const InputDecoration(
+              labelText: 'Payment Status',
+              prefixIcon: Icon(Icons.filter_alt_rounded),
             ),
             items: const [
-              DropdownMenuItem(
-                value: 'All',
-                child:
-                    Text('All'),
-              ),
-              DropdownMenuItem(
-                value: 'Paid',
-                child:
-                    Text('Paid'),
-              ),
-              DropdownMenuItem(
-                value: 'Partial',
-                child:
-                    Text('Partial'),
-              ),
-              DropdownMenuItem(
-                value: 'Unpaid',
-                child:
-                    Text('Unpaid'),
-              ),
+              DropdownMenuItem(value: 'All', child: Text('All')),
+              DropdownMenuItem(value: 'Paid', child: Text('Paid')),
+              DropdownMenuItem(value: 'Partial', child: Text('Partial')),
+              DropdownMenuItem(value: 'Unpaid', child: Text('Unpaid')),
             ],
             onChanged: (value) {
               if (value == null) {
@@ -1394,32 +942,22 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
               }
 
               setState(() {
-                _paymentFilter =
-                    value;
+                _paymentFilter = value;
               });
             },
           );
 
           if (compact) {
             return Column(
-              children: [
-                search,
-                const SizedBox(height: 12),
-                filter,
-              ],
+              children: [search, const SizedBox(height: 12), filter],
             );
           }
 
           return Row(
             children: [
-              Expanded(
-                flex: 2,
-                child: search,
-              ),
+              Expanded(flex: 2, child: search),
               const SizedBox(width: 12),
-              Expanded(
-                child: filter,
-              ),
+              Expanded(child: filter),
             ],
           );
         },
@@ -1436,41 +974,30 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     List<SaleModel> sales,
     List<PaymentModel> payments,
   ) {
-    final List<_CustomerSalesSummary>
-        customers =
-        _customerWiseSales(
+    final List<_CustomerSalesSummary> customers = _customerWiseSales(
       sales,
       payments,
     ).values.toList();
 
     return _ReportCard(
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const _SectionHeader(
             icon: Icons.groups_rounded,
             title: 'Customer-wise Sales',
-            subtitle:
-                'Sales and collection by customer',
+            subtitle: 'Sales and collection by customer',
           ),
           const SizedBox(height: 18),
           if (customers.isEmpty)
             const _EmptyInline(
-              icon:
-                  Icons.groups_outlined,
-              message:
-                  'No customer sales available for the selected filters.',
+              icon: Icons.groups_outlined,
+              message: 'No customer sales available for the selected filters.',
             )
           else
             ...customers
                 .take(10)
-                .map(
-              (customer) =>
-                  _CustomerSalesTile(
-                summary: customer,
-              ),
-            ),
+                .map((customer) => _CustomerSalesTile(summary: customer)),
         ],
       ),
     );
@@ -1480,151 +1007,79 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   // PRODUCT-WISE
   // ===========================================================================
 
-  Widget _buildProductWiseSection(
-    ThemeData theme,
-    List<SaleModel> sales,
-  ) {
-    final List<_ProductSalesSummary>
-        products =
-        _productWiseSales(
-          sales,
-        ).values.toList()
-          ..sort(
-            (a, b) =>
-                b.revenue.compareTo(
-              a.revenue,
-            ),
-          );
+  Widget _buildProductWiseSection(ThemeData theme, List<SaleModel> sales) {
+    final List<_ProductSalesSummary> products = _productWiseSales(
+      sales,
+    ).values.toList()..sort((a, b) => b.revenue.compareTo(a.revenue));
 
     return _ReportCard(
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const _SectionHeader(
-            icon:
-                Icons.inventory_2_rounded,
+            icon: Icons.inventory_2_rounded,
             title: 'Product-wise Sales',
-            subtitle:
-                'Revenue, quantity and profit by product',
+            subtitle: 'Revenue, quantity and profit by product',
           ),
           const SizedBox(height: 18),
           if (products.isEmpty)
             const _EmptyInline(
-              icon:
-                  Icons.inventory_2_outlined,
-              message:
-                  'No product sales available for the selected filters.',
+              icon: Icons.inventory_2_outlined,
+              message: 'No product sales available for the selected filters.',
             )
           else
             LayoutBuilder(
-              builder: (
-                context,
-                constraints,
-              ) {
-                if (constraints.maxWidth <
-                    650) {
+              builder: (context, constraints) {
+                if (constraints.maxWidth < 650) {
                   return Column(
                     children: products
                         .take(15)
-                        .map(
-                      (product) =>
-                          _ProductSalesTile(
-                        summary:
-                            product,
-                      ),
-                    )
+                        .map((product) => _ProductSalesTile(summary: product))
                         .toList(),
                   );
                 }
 
                 return SingleChildScrollView(
-                  scrollDirection:
-                      Axis.horizontal,
+                  scrollDirection: Axis.horizontal,
                   child: DataTable(
                     columnSpacing: 28,
-                    headingTextStyle:
-                        theme
-                            .textTheme
-                            .labelLarge
-                            ?.copyWith(
-                      fontWeight:
-                          FontWeight.w700,
+                    headingTextStyle: theme.textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
                     ),
                     columns: const [
-                      DataColumn(
-                        label:
-                            Text('Product'),
-                      ),
-                      DataColumn(
-                        label:
-                            Text('Quantity'),
-                      ),
-                      DataColumn(
-                        label:
-                            Text('Revenue'),
-                      ),
-                      DataColumn(
-                        label:
-                            Text('Cost'),
-                      ),
-                      DataColumn(
-                        label:
-                            Text('Profit'),
-                      ),
+                      DataColumn(label: Text('Product')),
+                      DataColumn(label: Text('Quantity')),
+                      DataColumn(label: Text('Revenue')),
+                      DataColumn(label: Text('Cost')),
+                      DataColumn(label: Text('Profit')),
                     ],
                     rows: products
                         .take(20)
                         .map(
-                      (product) =>
-                          DataRow(
-                        cells: [
-                          DataCell(
-                            Text(
-                              product.name,
-                            ),
-                          ),
-                          DataCell(
-                            Text(
-                              '${_number(product.quantity)} ${product.unit}',
-                            ),
-                          ),
-                          DataCell(
-                            Text(
-                              _currency(
-                                product
-                                    .revenue,
+                          (product) => DataRow(
+                            cells: [
+                              DataCell(Text(product.name)),
+                              DataCell(
+                                Text(
+                                  '${_number(product.quantity)} ${product.unit}',
+                                ),
                               ),
-                            ),
-                          ),
-                          DataCell(
-                            Text(
-                              _currency(
-                                product
-                                    .cost,
-                              ),
-                            ),
-                          ),
-                          DataCell(
-                            Text(
-                              _currency(
-                                product
-                                    .profit,
-                              ),
-                              style:
-                                  TextStyle(
-                                color:
-                                    product.profit >= 0
+                              DataCell(Text(_currency(product.revenue))),
+                              DataCell(Text(_currency(product.cost))),
+                              DataCell(
+                                Text(
+                                  _currency(product.profit),
+                                  style: TextStyle(
+                                    color: product.profit >= 0
                                         ? AppColors.success
                                         : AppColors.danger,
-                                fontWeight:
-                                    FontWeight.w700,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
                               ),
-                            ),
+                            ],
                           ),
-                        ],
-                      ),
-                    )
+                        )
                         .toList(),
                   ),
                 );
@@ -1639,50 +1094,37 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   // INVOICE LIST
   // ===========================================================================
 
-  Widget _buildInvoiceSection(
-    ThemeData theme,
-    List<SaleModel> sales,
-  ) {
+  Widget _buildInvoiceSection(ThemeData theme, List<SaleModel> sales) {
     return _ReportCard(
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const _SectionHeader(
-            icon:
-                Icons.receipt_long_rounded,
+            icon: Icons.receipt_long_rounded,
             title: 'Invoice Details',
-            subtitle:
-                'Detailed sales invoice performance',
+            subtitle: 'Detailed sales invoice performance',
           ),
           const SizedBox(height: 18),
           if (sales.isEmpty)
             const _EmptyInline(
-              icon:
-                  Icons.receipt_long_outlined,
-              message:
-                  'No sales available for the selected filters.',
+              icon: Icons.receipt_long_outlined,
+              message: 'No sales available for the selected filters.',
             )
           else
-            ...sales.take(30).map(
-              (sale) => Padding(
-                padding:
-                    const EdgeInsets.only(
-                  bottom: 10,
-                ),
-                child: _InvoiceTile(
-                  sale: sale,
-                  currency: _currency,
-                  date: _date,
-                  statusColor:
-                      _statusColor,
-                  onTap: () =>
-                      _showSaleDetails(
-                    sale,
+            ...sales
+                .take(30)
+                .map(
+                  (sale) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _InvoiceTile(
+                      sale: sale,
+                      currency: _currency,
+                      date: _date,
+                      statusColor: _statusColor,
+                      onTap: () => _showSaleDetails(sale),
+                    ),
                   ),
                 ),
-              ),
-            ),
         ],
       ),
     );
@@ -1692,64 +1134,38 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   // SALE DETAILS
   // ===========================================================================
 
-  void _showSaleDetails(
-    SaleModel sale,
-  ) {
+  void _showSaleDetails(SaleModel sale) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (sheetContext) {
-        final ThemeData theme =
-            Theme.of(sheetContext);
+        final ThemeData theme = Theme.of(sheetContext);
 
-        final double profit =
-            _saleGrossProfit(sale);
+        final double profit = _saleGrossProfit(sale);
 
-        final double outstanding =
-            sale.total -
-                sale.paidAmount;
+        final double outstanding = sale.total - sale.paidAmount;
 
         return SafeArea(
           child: Padding(
-            padding:
-                const EdgeInsets.fromLTRB(
-              20,
-              8,
-              20,
-              24,
-            ),
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
             child: SingleChildScrollView(
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    sale.invoiceNumber
-                            .trim()
-                            .isEmpty
+                    sale.invoiceNumber.trim().isEmpty
                         ? 'Sale Details'
                         : sale.invoiceNumber,
-                    style: theme
-                        .textTheme
-                        .titleLarge
-                        ?.copyWith(
-                      fontWeight:
-                          FontWeight.w800,
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     _date(sale.date),
-                    style: theme
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(
-                      color: theme
-                          .textTheme
-                          .bodyMedium
-                          ?.color
-                          ?.withValues(
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.textTheme.bodyMedium?.color?.withValues(
                         alpha: 0.7,
                       ),
                     ),
@@ -1757,172 +1173,95 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                   const SizedBox(height: 18),
                   _DetailInfoRow(
                     label: 'Customer',
-                    value:
-                        sale.customerName
-                                .trim()
-                                .isEmpty
-                            ? 'Walk-in Customer'
-                            : sale.customerName,
+                    value: sale.customerName.trim().isEmpty
+                        ? 'Walk-in Customer'
+                        : sale.customerName,
                   ),
                   _DetailInfoRow(
-                    label:
-                        'Payment Method',
-                    value:
-                        sale.paymentMethod
-                                .trim()
-                                .isEmpty
-                            ? 'Not specified'
-                            : sale.paymentMethod,
+                    label: 'Payment Method',
+                    value: sale.paymentMethod.trim().isEmpty
+                        ? 'Not specified'
+                        : sale.paymentMethod,
                   ),
                   _DetailInfoRow(
-                    label:
-                        'Payment Status',
-                    value:
-                        sale.paymentStatus,
+                    label: 'Payment Status',
+                    value: sale.paymentStatus,
                   ),
                   _DetailInfoRow(
                     label: 'Subtotal',
-                    value:
-                        _currency(
-                      sale.subtotal,
-                    ),
+                    value: _currency(sale.subtotal),
                   ),
                   _DetailInfoRow(
                     label: 'Discount',
-                    value:
-                        _currency(
-                      sale.discount,
-                    ),
+                    value: _currency(sale.discount),
                   ),
-                  _DetailInfoRow(
-                    label: 'Tax',
-                    value:
-                        _currency(
-                      sale.tax,
-                    ),
-                  ),
+                  _DetailInfoRow(label: 'Tax', value: _currency(sale.tax)),
                   _DetailInfoRow(
                     label: 'Total',
-                    value:
-                        _currency(
-                      sale.total,
-                    ),
+                    value: _currency(sale.total),
                     bold: true,
                   ),
                   _DetailInfoRow(
                     label: 'Paid',
-                    value:
-                        _currency(
-                      sale.paidAmount,
-                    ),
+                    value: _currency(sale.paidAmount),
                   ),
                   _DetailInfoRow(
                     label: 'Outstanding',
-                    value:
-                        _currency(
-                      outstanding > 0
-                          ? outstanding
-                          : 0,
-                    ),
+                    value: _currency(outstanding > 0 ? outstanding : 0),
                   ),
                   _DetailInfoRow(
                     label: 'Gross Profit',
-                    value:
-                        _currency(profit),
-                    valueColor:
-                        profit >= 0
-                            ? AppColors.success
-                            : AppColors.danger,
+                    value: _currency(profit),
+                    valueColor: profit >= 0
+                        ? AppColors.success
+                        : AppColors.danger,
                     bold: true,
                   ),
-                  if (sale.notes
-                      .trim()
-                      .isNotEmpty) ...[
+                  if (sale.notes.trim().isNotEmpty) ...[
                     const SizedBox(height: 12),
                     Text(
                       'Notes',
-                      style: theme
-                          .textTheme
-                          .titleSmall
-                          ?.copyWith(
-                        fontWeight:
-                            FontWeight.w700,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                     const SizedBox(height: 6),
-                    Text(
-                      sale.notes,
-                      style:
-                          theme.textTheme.bodyMedium,
-                    ),
+                    Text(sale.notes, style: theme.textTheme.bodyMedium),
                   ],
                   const SizedBox(height: 18),
                   Text(
                     'Items',
-                    style: theme
-                        .textTheme
-                        .titleSmall
-                        ?.copyWith(
-                      fontWeight:
-                          FontWeight.w700,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                   const SizedBox(height: 10),
                   ...sale.items.map(
                     (item) => Container(
-                      margin:
-                          const EdgeInsets.only(
-                        bottom: 8,
-                      ),
-                      padding:
-                          const EdgeInsets.all(
-                        12,
-                      ),
-                      decoration:
-                          BoxDecoration(
-                        border: Border.all(
-                          color:
-                              theme.dividerColor,
-                        ),
-                        borderRadius:
-                            BorderRadius.circular(
-                          12,
-                        ),
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: theme.dividerColor),
+                        borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(
                         children: [
                           Expanded(
                             child: Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment
-                                      .start,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
                                   item.productName,
-                                  style: theme
-                                      .textTheme
-                                      .bodyMedium
-                                      ?.copyWith(
-                                    fontWeight:
-                                        FontWeight.w700,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
                                   ),
                                 ),
-                                const SizedBox(
-                                  height: 4,
-                                ),
+                                const SizedBox(height: 4),
                                 Text(
                                   '${_number(item.quantity)} ${item.unit} × ${_currency(item.sellingRate)}',
-                                  style: theme
-                                      .textTheme
-                                      .bodySmall
-                                      ?.copyWith(
-                                    color: theme
-                                        .textTheme
-                                        .bodySmall
-                                        ?.color
-                                        ?.withValues(
-                                      alpha: 0.7,
-                                    ),
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.textTheme.bodySmall?.color
+                                        ?.withValues(alpha: 0.7),
                                   ),
                                 ),
                               ],
@@ -1931,12 +1270,8 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                           const SizedBox(width: 12),
                           Text(
                             _currency(item.total),
-                            style: theme
-                                .textTheme
-                                .bodyMedium
-                                ?.copyWith(
-                              fontWeight:
-                                  FontWeight.w800,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
                         ],
@@ -1966,45 +1301,28 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
         spacing: 24,
         runSpacing: 14,
         children: [
-          _FooterMetric(
-            label: 'Invoices',
-            value:
-                sales.length.toString(),
-          ),
+          _FooterMetric(label: 'Invoices', value: sales.length.toString()),
           _FooterMetric(
             label: 'Items Sold',
-            value:
-                _number(
-              _totalQuantity(sales),
-            ),
+            value: _number(_totalQuantity(sales)),
           ),
           _FooterMetric(
             label: 'Sales Cost',
-            value:
-                _currency(
-              _totalCost(sales),
-            ),
+            value: _currency(_totalCost(sales)),
           ),
           _FooterMetric(
             label: 'Profit Margin',
-            value:
-                '${_profitMargin(sales).toStringAsFixed(2)}%',
+            value: '${_profitMargin(sales).toStringAsFixed(2)}%',
           ),
           _FooterMetric(
             label: 'Customer Payments',
-            value:
-                _currency(
-              payments.fold<double>(
-                0,
-                (sum, payment) =>
-                    sum + payment.amount,
-              ),
+            value: _currency(
+              payments.fold<double>(0, (sum, payment) => sum + payment.amount),
             ),
           ),
           _FooterMetric(
             label: 'Collection Rate',
-            value:
-                '${_collectionRate(sales, payments).toStringAsFixed(2)}%',
+            value: '${_collectionRate(sales, payments).toStringAsFixed(2)}%',
           ),
         ],
       ),
@@ -2015,90 +1333,56 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   // PDF
   // ===========================================================================
 
-  String _pdfCurrency(
-    double value,
-  ) {
-    return 'Rs. ${NumberFormat(
-      '#,##0.00',
-      'en_IN',
-    ).format(value)}';
+  String _pdfCurrency(double value) {
+    return 'Rs. ${NumberFormat('#,##0.00', 'en_IN').format(value)}';
   }
 
   String _pdfFileName() {
-    final String start =
-        _startDate == null
-            ? 'all'
-            : DateFormat(
-                'yyyy-MM-dd',
-              ).format(_startDate!);
+    final String start = _startDate == null
+        ? 'all'
+        : DateFormat('yyyy-MM-dd').format(_startDate!);
 
-    final String end =
-        _endDate == null
-            ? 'dates'
-            : DateFormat(
-                'yyyy-MM-dd',
-              ).format(_endDate!);
+    final String end = _endDate == null
+        ? 'dates'
+        : DateFormat('yyyy-MM-dd').format(_endDate!);
 
     return 'Sales_Report_${start}_to_$end.pdf';
   }
 
   String _businessDetailText() {
-    final BusinessModel? business =
-        _business;
+    final BusinessModel? business = _business;
 
     if (business == null) {
       return '';
     }
 
-    final List<String> details =
-        <String>[];
+    final List<String> details = <String>[];
 
-    if (business.businessType
-        .trim()
-        .isNotEmpty) {
-      details.add(
-        business.businessType.trim(),
-      );
+    if (business.businessType.trim().isNotEmpty) {
+      details.add(business.businessType.trim());
     }
 
-    if (business.address
-        .trim()
-        .isNotEmpty) {
-      details.add(
-        business.address.trim(),
-      );
+    if (business.address.trim().isNotEmpty) {
+      details.add(business.address.trim());
     }
 
-    if (business.mobile
-        .trim()
-        .isNotEmpty) {
-      details.add(
-        'Mobile: ${business.mobile.trim()}',
-      );
+    if (business.mobile.trim().isNotEmpty) {
+      details.add('Mobile: ${business.mobile.trim()}');
     }
 
-    if (business.email
-        .trim()
-        .isNotEmpty) {
-      details.add(
-        'Email: ${business.email.trim()}',
-      );
+    if (business.email.trim().isNotEmpty) {
+      details.add('Email: ${business.email.trim()}');
     }
 
-    if (business.gstNumber
-        .trim()
-        .isNotEmpty) {
-      details.add(
-        'GSTIN: ${business.gstNumber.trim()}',
-      );
+    if (business.gstNumber.trim().isNotEmpty) {
+      details.add('GSTIN: ${business.gstNumber.trim()}');
     }
 
     return details.join(' | ');
   }
 
   Future<void> _downloadPdf() async {
-    if (_business == null ||
-        _downloadingPdf) {
+    if (_business == null || _downloadingPdf) {
       return;
     }
 
@@ -2107,85 +1391,55 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     });
 
     try {
-      final List<SaleModel> sales =
-          _filteredSales;
+      final List<SaleModel> sales = _filteredSales;
 
-      final List<PaymentModel> payments =
-          _filteredPayments;
+      final List<PaymentModel> payments = _filteredPayments;
 
-      final pw.Document document =
-          pw.Document();
+      final pw.Document document = pw.Document();
 
-      final String businessName =
-          _business!.businessName
-                  .trim()
-                  .isEmpty
-              ? 'Business'
-              : _business!.businessName.trim();
+      final String businessName = _business!.businessName.trim().isEmpty
+          ? 'Business'
+          : _business!.businessName.trim();
 
-      final String businessDetails =
-          _businessDetailText();
+      final String businessDetails = _businessDetailText();
 
-      final pw.TextStyle titleStyle =
-          pw.TextStyle(
+      final pw.TextStyle titleStyle = pw.TextStyle(
         fontSize: 18,
-        fontWeight:
-            pw.FontWeight.bold,
+        fontWeight: pw.FontWeight.bold,
       );
 
-      final pw.TextStyle smallStyle =
-          pw.TextStyle(
+      final pw.TextStyle smallStyle = pw.TextStyle(
         fontSize: 8,
         color: PdfColors.grey700,
       );
 
       document.addPage(
         pw.MultiPage(
-          pageFormat:
-              PdfPageFormat.a4,
-          margin:
-              const pw.EdgeInsets.all(
-            28,
-          ),
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(28),
           header: (context) {
             return pw.Column(
-              crossAxisAlignment:
-                  pw.CrossAxisAlignment.start,
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 pw.Text(
                   businessName,
                   style: pw.TextStyle(
                     fontSize: 20,
-                    fontWeight:
-                        pw.FontWeight.bold,
+                    fontWeight: pw.FontWeight.bold,
                   ),
                 ),
-                if (businessDetails
-                    .isNotEmpty) ...[
+                if (businessDetails.isNotEmpty) ...[
                   pw.SizedBox(height: 4),
-                  pw.Text(
-                    businessDetails,
-                    style: smallStyle,
-                  ),
+                  pw.Text(businessDetails, style: smallStyle),
                 ],
                 pw.SizedBox(height: 7),
                 pw.Divider(),
                 pw.SizedBox(height: 5),
                 pw.Row(
-                  mainAxisAlignment:
-                      pw.MainAxisAlignment
-                          .spaceBetween,
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
-                    pw.Text(
-                      'Sales Report',
-                      style:
-                          titleStyle,
-                    ),
-                    pw.Text(
-                      _dateRangeText(),
-                      style:
-                          smallStyle,
-                    ),
+                    pw.Text('Sales Report', style: titleStyle),
+                    pw.Text(_dateRangeText(), style: smallStyle),
                   ],
                 ),
                 pw.SizedBox(height: 10),
@@ -2194,19 +1448,11 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
           },
           footer: (context) {
             return pw.Container(
-              margin:
-                  const pw.EdgeInsets.only(
-                top: 8,
-              ),
+              margin: const pw.EdgeInsets.only(top: 8),
               child: pw.Row(
-                mainAxisAlignment:
-                    pw.MainAxisAlignment
-                        .spaceBetween,
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Text(
-                    'Business Management App',
-                    style: smallStyle,
-                  ),
+                  pw.Text('Business Management App', style: smallStyle),
                   pw.Text(
                     'Page ${context.pageNumber} of ${context.pagesCount}',
                     style: smallStyle,
@@ -2218,20 +1464,10 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
           build: (context) {
             return [
               pw.Container(
-                padding:
-                    const pw.EdgeInsets.all(
-                  9,
-                ),
-                decoration:
-                    pw.BoxDecoration(
-                  border: pw.Border.all(
-                    color:
-                        PdfColors.grey300,
-                  ),
-                  borderRadius:
-                      pw.BorderRadius.circular(
-                    6,
-                  ),
+                padding: const pw.EdgeInsets.all(9),
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: PdfColors.grey300),
+                  borderRadius: pw.BorderRadius.circular(6),
                 ),
                 child: pw.Table(
                   columnWidths: const {
@@ -2245,37 +1481,19 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                       children: [
                         _pdfMetric(
                           'Total Sales',
-                          _pdfCurrency(
-                            _totalSales(
-                              sales,
-                            ),
-                          ),
+                          _pdfCurrency(_totalSales(sales)),
                         ),
                         _pdfMetric(
                           'Collected',
-                          _pdfCurrency(
-                            _totalCollected(
-                              sales,
-                              payments,
-                            ),
-                          ),
+                          _pdfCurrency(_totalCollected(sales, payments)),
                         ),
                         _pdfMetric(
                           'Outstanding',
-                          _pdfCurrency(
-                            _totalOutstanding(
-                              sales,
-                              payments,
-                            ),
-                          ),
+                          _pdfCurrency(_totalOutstanding(sales, payments)),
                         ),
                         _pdfMetric(
                           'Gross Profit',
-                          _pdfCurrency(
-                            _totalGrossProfit(
-                              sales,
-                            ),
-                          ),
+                          _pdfCurrency(_totalGrossProfit(sales)),
                         ),
                       ],
                     ),
@@ -2283,10 +1501,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                 ),
               ),
               pw.SizedBox(height: 16),
-              pw.Text(
-                'Invoice Details',
-                style: titleStyle,
-              ),
+              pw.Text('Invoice Details', style: titleStyle),
               pw.SizedBox(height: 8),
               if (sales.isEmpty)
                 pw.Text(
@@ -2294,8 +1509,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                   style: smallStyle,
                 )
               else
-                pw.TableHelper
-                    .fromTextArray(
+                pw.TableHelper.fromTextArray(
                   headers: const [
                     'Date',
                     'Invoice',
@@ -2305,79 +1519,44 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                     'Balance',
                     'Status',
                   ],
-                  data:
-                      sales.map(
-                    (sale) {
-                      final double
-                          balance =
-                          sale.total -
-                              sale.paidAmount;
+                  data: sales.map((sale) {
+                    final double balance = sale.total - sale.paidAmount;
 
-                      return [
-                        _date(
-                          sale.date,
-                        ),
-                        sale.invoiceNumber
-                                .trim()
-                                .isEmpty
-                            ? '-'
-                            : sale.invoiceNumber,
-                        sale.customerName
-                                .trim()
-                                .isEmpty
-                            ? 'Walk-in Customer'
-                            : sale.customerName,
-                        _pdfCurrency(
-                          sale.total,
-                        ),
-                        _pdfCurrency(
-                          sale.paidAmount,
-                        ),
-                        _pdfCurrency(
-                          balance > 0
-                              ? balance
-                              : 0,
-                        ),
-                        sale.paymentStatus,
-                      ];
-                    },
-                  ).toList(),
-                  headerStyle:
-                      pw.TextStyle(
+                    return [
+                      _date(sale.date),
+                      sale.invoiceNumber.trim().isEmpty
+                          ? '-'
+                          : sale.invoiceNumber,
+                      sale.customerName.trim().isEmpty
+                          ? 'Walk-in Customer'
+                          : sale.customerName,
+                      _pdfCurrency(sale.total),
+                      _pdfCurrency(sale.paidAmount),
+                      _pdfCurrency(balance > 0 ? balance : 0),
+                      sale.paymentStatus,
+                    ];
+                  }).toList(),
+                  headerStyle: pw.TextStyle(
                     fontSize: 7,
-                    fontWeight:
-                        pw.FontWeight.bold,
+                    fontWeight: pw.FontWeight.bold,
                   ),
-                  cellStyle:
-                      const pw.TextStyle(
-                    fontSize: 7,
+                  cellStyle: const pw.TextStyle(fontSize: 7),
+                  headerDecoration: const pw.BoxDecoration(
+                    color: PdfColors.grey200,
                   ),
-                  headerDecoration:
-                      const pw.BoxDecoration(
-                    color:
-                        PdfColors.grey200,
-                  ),
-                  border:
-                      pw.TableBorder.all(
-                    color:
-                        PdfColors.grey300,
+                  border: pw.TableBorder.all(
+                    color: PdfColors.grey300,
                     width: 0.5,
                   ),
-                  cellPadding:
-                      const pw.EdgeInsets
-                          .symmetric(
+                  cellPadding: const pw.EdgeInsets.symmetric(
                     horizontal: 5,
                     vertical: 5,
                   ),
                 ),
               pw.SizedBox(height: 18),
-              pw.Text(
-                'Customer-wise Sales',
-                style: titleStyle,
-              ),
+              pw.Text('Customer-wise Sales', style: titleStyle),
               pw.SizedBox(height: 8),
-              pw.TableHelper
-                  .fromTextArray(
+              pw.TableHelper.fromTextArray(
                 headers: const [
                   'Customer',
                   'Invoices',
@@ -2386,66 +1565,39 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                   'Outstanding',
                   'Profit',
                 ],
-                data: _customerWiseSales(
-                  sales,
-                  payments,
-                ).values.map(
-                  (customer) {
-                    return [
-                      customer.name,
-                      customer.invoiceCount
-                          .toString(),
-                      _pdfCurrency(
-                        customer.sales,
-                      ),
-                      _pdfCurrency(
-                        customer.collected,
-                      ),
-                      _pdfCurrency(
-                        customer.outstanding,
-                      ),
-                      _pdfCurrency(
-                        customer.profit,
-                      ),
-                    ];
-                  },
-                ).toList(),
-                headerStyle:
-                    pw.TextStyle(
+                data: _customerWiseSales(sales, payments).values.map((
+                  customer,
+                ) {
+                  return [
+                    customer.name,
+                    customer.invoiceCount.toString(),
+                    _pdfCurrency(customer.sales),
+                    _pdfCurrency(customer.collected),
+                    _pdfCurrency(customer.outstanding),
+                    _pdfCurrency(customer.profit),
+                  ];
+                }).toList(),
+                headerStyle: pw.TextStyle(
                   fontSize: 7,
-                  fontWeight:
-                      pw.FontWeight.bold,
+                  fontWeight: pw.FontWeight.bold,
                 ),
-                cellStyle:
-                    const pw.TextStyle(
-                  fontSize: 7,
+                cellStyle: const pw.TextStyle(fontSize: 7),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColors.grey200,
                 ),
-                headerDecoration:
-                    const pw.BoxDecoration(
-                  color:
-                      PdfColors.grey200,
-                ),
-                border:
-                    pw.TableBorder.all(
-                  color:
-                      PdfColors.grey300,
+                border: pw.TableBorder.all(
+                  color: PdfColors.grey300,
                   width: 0.5,
                 ),
-                cellPadding:
-                    const pw.EdgeInsets
-                        .symmetric(
+                cellPadding: const pw.EdgeInsets.symmetric(
                   horizontal: 5,
                   vertical: 5,
                 ),
               ),
               pw.SizedBox(height: 18),
-              pw.Text(
-                'Product-wise Sales',
-                style: titleStyle,
-              ),
+              pw.Text('Product-wise Sales', style: titleStyle),
               pw.SizedBox(height: 8),
-              pw.TableHelper
-                  .fromTextArray(
+              pw.TableHelper.fromTextArray(
                 headers: const [
                   'Product',
                   'Quantity',
@@ -2453,57 +1605,33 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                   'Cost',
                   'Profit',
                 ],
-                data: (_productWiseSales(
-                  sales,
-                ).values.toList()
-                      ..sort(
-                        (a, b) =>
-                            b.revenue.compareTo(
-                          a.revenue,
-                        ),
-                      ))
-                    .map(
-                  (product) {
-                    return [
-                      product.name,
-                      '${_number(product.quantity)} ${product.unit}'
-                          .trim(),
-                      _pdfCurrency(
-                        product.revenue,
-                      ),
-                      _pdfCurrency(
-                        product.cost,
-                      ),
-                      _pdfCurrency(
-                        product.profit,
-                      ),
-                    ];
-                  },
-                ).toList(),
-                headerStyle:
-                    pw.TextStyle(
+                data:
+                    (_productWiseSales(sales).values.toList()
+                          ..sort((a, b) => b.revenue.compareTo(a.revenue)))
+                        .map((product) {
+                          return [
+                            product.name,
+                            '${_number(product.quantity)} ${product.unit}'
+                                .trim(),
+                            _pdfCurrency(product.revenue),
+                            _pdfCurrency(product.cost),
+                            _pdfCurrency(product.profit),
+                          ];
+                        })
+                        .toList(),
+                headerStyle: pw.TextStyle(
                   fontSize: 7,
-                  fontWeight:
-                      pw.FontWeight.bold,
+                  fontWeight: pw.FontWeight.bold,
                 ),
-                cellStyle:
-                    const pw.TextStyle(
-                  fontSize: 7,
+                cellStyle: const pw.TextStyle(fontSize: 7),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColors.grey200,
                 ),
-                headerDecoration:
-                    const pw.BoxDecoration(
-                  color:
-                      PdfColors.grey200,
-                ),
-                border:
-                    pw.TableBorder.all(
-                  color:
-                      PdfColors.grey300,
+                border: pw.TableBorder.all(
+                  color: PdfColors.grey300,
                   width: 0.5,
                 ),
-                cellPadding:
-                    const pw.EdgeInsets
-                        .symmetric(
+                cellPadding: const pw.EdgeInsets.symmetric(
                   horizontal: 5,
                   vertical: 5,
                 ),
@@ -2513,46 +1641,34 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
         ),
       );
 
-      final Uint8List bytes =
-          Uint8List.fromList(
-        await document.save(),
-      );
+      final Uint8List bytes = Uint8List.fromList(await document.save());
 
-      final PublicSavedFile? result =
-          await PublicFileSaver().saveBytes(
+      final PublicSavedFile? result = await PublicFileSaver().saveBytes(
         bytes: bytes,
         fileName: _pdfFileName(),
         mimeType: 'application/pdf',
-        subDir:
-            'Business Management Reports',
+        subDir: 'Business Management Reports',
       );
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            result != null &&
-                    result.isSuccess
+            result != null && result.isSuccess
                 ? 'Sales Report PDF saved successfully.'
                 : 'PDF save was cancelled or failed.',
           ),
-          behavior:
-              SnackBarBehavior.fixed,
+          behavior: SnackBarBehavior.fixed,
         ),
       );
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            'Unable to create Sales Report PDF: $e',
-          ),
-          behavior:
-              SnackBarBehavior.fixed,
+          content: Text('Unable to create Sales Report PDF: $e'),
+          behavior: SnackBarBehavior.fixed,
         ),
       );
     } finally {
@@ -2564,34 +1680,20 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     }
   }
 
-  pw.Widget _pdfMetric(
-    String label,
-    String value,
-  ) {
+  pw.Widget _pdfMetric(String label, String value) {
     return pw.Padding(
-      padding:
-          const pw.EdgeInsets.all(5),
+      padding: const pw.EdgeInsets.all(5),
       child: pw.Column(
-        crossAxisAlignment:
-            pw.CrossAxisAlignment.start,
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
           pw.Text(
             label,
-            style:
-                const pw.TextStyle(
-              fontSize: 7,
-              color:
-                  PdfColors.grey700,
-            ),
+            style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey700),
           ),
           pw.SizedBox(height: 3),
           pw.Text(
             value,
-            style: pw.TextStyle(
-              fontSize: 9,
-              fontWeight:
-                  pw.FontWeight.bold,
-            ),
+            style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
           ),
         ],
       ),
@@ -2602,61 +1704,40 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   // ERROR
   // ===========================================================================
 
-  Widget _buildErrorState(
-    ThemeData theme,
-  ) {
+  Widget _buildErrorState(ThemeData theme) {
     return Center(
       child: SingleChildScrollView(
-        padding:
-            const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(24),
         child: ConstrainedBox(
-          constraints:
-              const BoxConstraints(
-            maxWidth: 520,
-          ),
+          constraints: const BoxConstraints(maxWidth: 520),
           child: _ReportCard(
             child: Column(
-              mainAxisSize:
-                  MainAxisSize.min,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 const Icon(
-                  Icons
-                      .error_outline_rounded,
+                  Icons.error_outline_rounded,
                   size: 52,
-                  color:
-                      AppColors.danger,
+                  color: AppColors.danger,
                 ),
                 const SizedBox(height: 12),
                 Text(
                   'Unable to load sales report',
-                  style: theme
-                      .textTheme
-                      .titleMedium
-                      ?.copyWith(
-                    fontWeight:
-                        FontWeight.w800,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
                   ),
-                  textAlign:
-                      TextAlign.center,
+                  textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  _errorMessage ??
-                      'Something went wrong.',
-                  style: theme
-                      .textTheme
-                      .bodyMedium,
-                  textAlign:
-                      TextAlign.center,
+                  _errorMessage ?? 'Something went wrong.',
+                  style: theme.textTheme.bodyMedium,
+                  textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 16),
                 ElevatedButton.icon(
                   onPressed: _loadReport,
-                  icon: const Icon(
-                    Icons.refresh_rounded,
-                  ),
-                  label:
-                      const Text('Retry'),
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Retry'),
                 ),
               ],
             ),
@@ -2671,31 +1752,19 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
 // DATE PRESET BUTTON
 // =============================================================================
 
-class _DatePresetButton
-    extends StatelessWidget {
+class _DatePresetButton extends StatelessWidget {
   final String label;
   final VoidCallback onPressed;
 
-  const _DatePresetButton({
-    required this.label,
-    required this.onPressed,
-  });
+  const _DatePresetButton({required this.label, required this.onPressed});
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     return OutlinedButton(
       onPressed: onPressed,
-      style:
-          OutlinedButton.styleFrom(
-        padding:
-            const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 10,
-        ),
-        visualDensity:
-            VisualDensity.compact,
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        visualDensity: VisualDensity.compact,
       ),
       child: Text(label),
     );
@@ -2772,45 +1841,27 @@ class _ProductSalesSummary {
 // REPORT CARD
 // =============================================================================
 
-class _ReportCard
-    extends StatelessWidget {
+class _ReportCard extends StatelessWidget {
   final Widget child;
 
-  const _ReportCard({
-    required this.child,
-  });
+  const _ReportCard({required this.child});
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     return Container(
       width: double.infinity,
-      padding:
-          const EdgeInsets.all(18),
-      decoration:
-          BoxDecoration(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
         color: theme.cardColor,
-        borderRadius:
-            BorderRadius.circular(
-          18,
-        ),
-        border: Border.all(
-          color:
-              theme.dividerColor,
-        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: theme.dividerColor),
         boxShadow: [
           BoxShadow(
-            color: Colors.black
-                .withValues(
-              alpha: 0.04,
-            ),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 18,
-            offset:
-                const Offset(0, 6),
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -2823,113 +1874,62 @@ class _ReportCard
 // SUMMARY CARD
 // =============================================================================
 
-class _SummaryCard
-    extends StatelessWidget {
+class _SummaryCard extends StatelessWidget {
   final _SummaryItem item;
 
-  const _SummaryCard({
-    required this.item,
-  });
+  const _SummaryCard({required this.item});
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     return _ReportCard(
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Container(
                 width: 42,
                 height: 42,
-                decoration:
-                    BoxDecoration(
-                  color: item.color
-                      .withValues(
-                    alpha: 0.12,
-                  ),
-                  borderRadius:
-                      BorderRadius.circular(
-                    12,
-                  ),
+                decoration: BoxDecoration(
+                  color: item.color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(
-                  item.icon,
-                  color:
-                      item.color,
-                  size: 21,
-                ),
+                child: Icon(item.icon, color: item.color, size: 21),
               ),
               const Spacer(),
               Icon(
-                Icons
-                    .arrow_outward_rounded,
+                Icons.arrow_outward_rounded,
                 size: 18,
-                color: theme
-                    .textTheme
-                    .bodySmall
-                    ?.color
-                    ?.withValues(
-                  alpha: 0.5,
-                ),
+                color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.5),
               ),
             ],
           ),
           const Spacer(),
           Text(
             item.title,
-            style: theme
-                .textTheme
-                .bodySmall
-                ?.copyWith(
-              fontWeight:
-                  FontWeight.w600,
-              color: theme
-                  .textTheme
-                  .bodySmall
-                  ?.color
-                  ?.withValues(
-                alpha: 0.7,
-              ),
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7),
             ),
           ),
           const SizedBox(height: 4),
           Text(
             item.value,
             maxLines: 1,
-            overflow:
-                TextOverflow.ellipsis,
-            style: theme
-                .textTheme
-                .titleMedium
-                ?.copyWith(
-              fontWeight:
-                  FontWeight.w800,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
             ),
           ),
           const SizedBox(height: 2),
           Text(
             item.subtitle,
             maxLines: 1,
-            overflow:
-                TextOverflow.ellipsis,
-            style: theme
-                .textTheme
-                .bodySmall
-                ?.copyWith(
-              color: theme
-                  .textTheme
-                  .bodySmall
-                  ?.color
-                  ?.withValues(
-                alpha: 0.6,
-              ),
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.6),
             ),
           ),
         ],
@@ -2942,8 +1942,7 @@ class _SummaryCard
 // SECTION HEADER
 // =============================================================================
 
-class _SectionHeader
-    extends StatelessWidget {
+class _SectionHeader extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
@@ -2955,65 +1954,37 @@ class _SectionHeader
   });
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     return Row(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
           width: 42,
           height: 42,
-          decoration:
-              BoxDecoration(
-            color: AppColors.primary
-                .withValues(
-              alpha: 0.10,
-            ),
-            borderRadius:
-                BorderRadius.circular(
-              12,
-            ),
+          decoration: BoxDecoration(
+            color: AppColors.primary.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(12),
           ),
-          child: Icon(
-            icon,
-            color:
-                AppColors.primary,
-            size: 21,
-          ),
+          child: Icon(icon, color: AppColors.primary, size: 21),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 title,
-                style: theme
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(
-                  fontWeight:
-                      FontWeight.w800,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
                 ),
               ),
               const SizedBox(height: 3),
               Text(
                 subtitle,
-                style: theme
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(
-                  color: theme
-                      .textTheme
-                      .bodySmall
-                      ?.color
-                      ?.withValues(
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.textTheme.bodySmall?.color?.withValues(
                     alpha: 0.65,
                   ),
                 ),
@@ -3030,8 +2001,7 @@ class _SectionHeader
 // STATUS CHIP
 // =============================================================================
 
-class _StatusChip
-    extends StatelessWidget {
+class _StatusChip extends StatelessWidget {
   final String label;
   final int count;
   final Color color;
@@ -3043,63 +2013,31 @@ class _StatusChip
   });
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     return Container(
-      padding:
-          const EdgeInsets.symmetric(
-        horizontal: 14,
-        vertical: 10,
-      ),
-      decoration:
-          BoxDecoration(
-        color:
-            color.withValues(
-          alpha: 0.10,
-        ),
-        borderRadius:
-            BorderRadius.circular(
-          12,
-        ),
-        border: Border.all(
-          color:
-              color.withValues(
-            alpha: 0.20,
-          ),
-        ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.20)),
       ),
       child: Row(
-        mainAxisSize:
-            MainAxisSize.min,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Container(
             width: 9,
             height: 9,
-            decoration:
-                BoxDecoration(
-              color: color,
-              shape:
-                  BoxShape.circle,
-            ),
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           const SizedBox(width: 8),
           Text(
             label,
-            style: TextStyle(
-              color: color,
-              fontWeight:
-                  FontWeight.w700,
-            ),
+            style: TextStyle(color: color, fontWeight: FontWeight.w700),
           ),
           const SizedBox(width: 8),
           Text(
             count.toString(),
-            style: TextStyle(
-              color: color,
-              fontWeight:
-                  FontWeight.w800,
-            ),
+            style: TextStyle(color: color, fontWeight: FontWeight.w800),
           ),
         ],
       ),
@@ -3111,14 +2049,10 @@ class _StatusChip
 // CUSTOMER TILE
 // =============================================================================
 
-class _CustomerSalesTile
-    extends StatelessWidget {
-  final _CustomerSalesSummary
-      summary;
+class _CustomerSalesTile extends StatelessWidget {
+  final _CustomerSalesSummary summary;
 
-  const _CustomerSalesTile({
-    required this.summary,
-  });
+  const _CustomerSalesTile({required this.summary});
 
   String _currency(double value) {
     return NumberFormat.currency(
@@ -3129,69 +2063,37 @@ class _CustomerSalesTile
   }
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     return Container(
-      margin:
-          const EdgeInsets.only(
-        bottom: 10,
-      ),
-      padding:
-          const EdgeInsets.all(14),
-      decoration:
-          BoxDecoration(
-        border: Border.all(
-          color:
-              theme.dividerColor,
-        ),
-        borderRadius:
-            BorderRadius.circular(
-          14,
-        ),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        border: Border.all(color: theme.dividerColor),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: LayoutBuilder(
-        builder: (
-          context,
-          constraints,
-        ) {
-          final bool compact =
-              constraints.maxWidth < 600;
+        builder: (context, constraints) {
+          final bool compact = constraints.maxWidth < 600;
 
-          final Widget customer =
-              Expanded(
+          final Widget customer = Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   summary.name,
                   maxLines: 1,
-                  overflow:
-                      TextOverflow.ellipsis,
-                  style: theme
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(
-                    fontWeight:
-                        FontWeight.w800,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   '${summary.invoiceCount} invoice${summary.invoiceCount == 1 ? '' : 's'}',
-                  style: theme
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(
-                    color: theme
-                        .textTheme
-                        .bodySmall
-                        ?.color
-                        ?.withValues(
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.textTheme.bodySmall?.color?.withValues(
                       alpha: 0.65,
                     ),
                   ),
@@ -3200,109 +2102,65 @@ class _CustomerSalesTile
             ),
           );
 
-          final Widget metrics =
-              compact
-                  ? Padding(
-                      padding:
-                          const EdgeInsets
-                              .only(
-                        top: 12,
+          final Widget metrics = compact
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Wrap(
+                    spacing: 18,
+                    runSpacing: 10,
+                    children: [
+                      _MiniMetric(
+                        label: 'Sales',
+                        value: _currency(summary.sales),
                       ),
-                      child: Wrap(
-                        spacing: 18,
-                        runSpacing: 10,
-                        children: [
-                          _MiniMetric(
-                            label: 'Sales',
-                            value:
-                                _currency(
-                              summary.sales,
-                            ),
-                          ),
-                          _MiniMetric(
-                            label: 'Collected',
-                            value:
-                                _currency(
-                              summary.collected,
-                            ),
-                          ),
-                          _MiniMetric(
-                            label:
-                                'Outstanding',
-                            value:
-                                _currency(
-                              summary.outstanding,
-                            ),
-                          ),
-                          _MiniMetric(
-                            label: 'Profit',
-                            value:
-                                _currency(
-                              summary.profit,
-                            ),
-                          ),
-                        ],
+                      _MiniMetric(
+                        label: 'Collected',
+                        value: _currency(summary.collected),
                       ),
-                    )
-                  : Row(
-                      mainAxisSize:
-                          MainAxisSize.min,
-                      children: [
-                        _MiniMetric(
-                          label: 'Sales',
-                          value:
-                              _currency(
-                            summary.sales,
-                          ),
-                        ),
-                        const SizedBox(
-                            width: 22),
-                        _MiniMetric(
-                          label: 'Collected',
-                          value:
-                              _currency(
-                            summary.collected,
-                          ),
-                        ),
-                        const SizedBox(
-                            width: 22),
-                        _MiniMetric(
-                          label:
-                              'Outstanding',
-                          value:
-                              _currency(
-                            summary.outstanding,
-                          ),
-                        ),
-                        const SizedBox(
-                            width: 22),
-                        _MiniMetric(
-                          label: 'Profit',
-                          value:
-                              _currency(
-                            summary.profit,
-                          ),
-                        ),
-                      ],
-                    );
+                      _MiniMetric(
+                        label: 'Outstanding',
+                        value: _currency(summary.outstanding),
+                      ),
+                      _MiniMetric(
+                        label: 'Profit',
+                        value: _currency(summary.profit),
+                      ),
+                    ],
+                  ),
+                )
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _MiniMetric(
+                      label: 'Sales',
+                      value: _currency(summary.sales),
+                    ),
+                    const SizedBox(width: 22),
+                    _MiniMetric(
+                      label: 'Collected',
+                      value: _currency(summary.collected),
+                    ),
+                    const SizedBox(width: 22),
+                    _MiniMetric(
+                      label: 'Outstanding',
+                      value: _currency(summary.outstanding),
+                    ),
+                    const SizedBox(width: 22),
+                    _MiniMetric(
+                      label: 'Profit',
+                      value: _currency(summary.profit),
+                    ),
+                  ],
+                );
 
           if (compact) {
             return Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children: [
-                customer,
-                metrics,
-              ],
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [customer, metrics],
             );
           }
 
-          return Row(
-            children: [
-              customer,
-              metrics,
-            ],
-          );
+          return Row(children: [customer, metrics]);
         },
       ),
     );
@@ -3313,14 +2171,10 @@ class _CustomerSalesTile
 // PRODUCT TILE
 // =============================================================================
 
-class _ProductSalesTile
-    extends StatelessWidget {
-  final _ProductSalesSummary
-      summary;
+class _ProductSalesTile extends StatelessWidget {
+  final _ProductSalesSummary summary;
 
-  const _ProductSalesTile({
-    required this.summary,
-  });
+  const _ProductSalesTile({required this.summary});
 
   String _currency(double value) {
     return NumberFormat.currency(
@@ -3331,49 +2185,27 @@ class _ProductSalesTile
   }
 
   String _number(double value) {
-    return NumberFormat(
-      '#,##0.##',
-      'en_IN',
-    ).format(value);
+    return NumberFormat('#,##0.##', 'en_IN').format(value);
   }
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     return Container(
-      margin:
-          const EdgeInsets.only(
-        bottom: 10,
-      ),
-      padding:
-          const EdgeInsets.all(14),
-      decoration:
-          BoxDecoration(
-        border: Border.all(
-          color:
-              theme.dividerColor,
-        ),
-        borderRadius:
-            BorderRadius.circular(
-          14,
-        ),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        border: Border.all(color: theme.dividerColor),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             summary.name,
-            style: theme
-                .textTheme
-                .bodyMedium
-                ?.copyWith(
-              fontWeight:
-                  FontWeight.w800,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w800,
             ),
           ),
           const SizedBox(height: 12),
@@ -3383,33 +2215,16 @@ class _ProductSalesTile
             children: [
               _MiniMetric(
                 label: 'Quantity',
-                value:
-                    '${_number(summary.quantity)} ${summary.unit}',
+                value: '${_number(summary.quantity)} ${summary.unit}',
               ),
-              _MiniMetric(
-                label: 'Revenue',
-                value:
-                    _currency(
-                  summary.revenue,
-                ),
-              ),
-              _MiniMetric(
-                label: 'Cost',
-                value:
-                    _currency(
-                  summary.cost,
-                ),
-              ),
+              _MiniMetric(label: 'Revenue', value: _currency(summary.revenue)),
+              _MiniMetric(label: 'Cost', value: _currency(summary.cost)),
               _MiniMetric(
                 label: 'Profit',
-                value:
-                    _currency(
-                  summary.profit,
-                ),
-                valueColor:
-                    summary.profit >= 0
-                        ? AppColors.success
-                        : AppColors.danger,
+                value: _currency(summary.profit),
+                valueColor: summary.profit >= 0
+                    ? AppColors.success
+                    : AppColors.danger,
               ),
             ],
           ),
@@ -3423,8 +2238,7 @@ class _ProductSalesTile
 // MINI METRIC
 // =============================================================================
 
-class _MiniMetric
-    extends StatelessWidget {
+class _MiniMetric extends StatelessWidget {
   final String label;
   final String value;
   final Color? valueColor;
@@ -3436,40 +2250,23 @@ class _MiniMetric
   });
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
-          style: theme
-              .textTheme
-              .labelSmall
-              ?.copyWith(
-            color: theme
-                .textTheme
-                .labelSmall
-                ?.color
-                ?.withValues(
-              alpha: 0.65,
-            ),
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.textTheme.labelSmall?.color?.withValues(alpha: 0.65),
           ),
         ),
         const SizedBox(height: 2),
         Text(
           value,
-          style: theme
-              .textTheme
-              .bodySmall
-              ?.copyWith(
-            fontWeight:
-                FontWeight.w800,
+          style: theme.textTheme.bodySmall?.copyWith(
+            fontWeight: FontWeight.w800,
             color: valueColor,
           ),
         ),
@@ -3482,15 +2279,11 @@ class _MiniMetric
 // INVOICE TILE
 // =============================================================================
 
-class _InvoiceTile
-    extends StatelessWidget {
+class _InvoiceTile extends StatelessWidget {
   final SaleModel sale;
-  final String Function(double)
-      currency;
-  final String Function(DateTime)
-      date;
-  final Color Function(String)
-      statusColor;
+  final String Function(double) currency;
+  final String Function(DateTime) date;
+  final Color Function(String) statusColor;
   final VoidCallback onTap;
 
   const _InvoiceTile({
@@ -3502,109 +2295,64 @@ class _InvoiceTile
   });
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
-    final Color color =
-        statusColor(
-      sale.paymentStatus,
-    );
+    final Color color = statusColor(sale.paymentStatus);
 
-    final double outstanding =
-        sale.total -
-            sale.paidAmount;
+    final double outstanding = sale.total - sale.paidAmount;
 
-    final String customer =
-        sale.customerName
-                .trim()
-                .isEmpty
-            ? 'Walk-in Customer'
-            : sale.customerName;
+    final String customer = sale.customerName.trim().isEmpty
+        ? 'Walk-in Customer'
+        : sale.customerName;
 
     return InkWell(
       onTap: onTap,
-      borderRadius:
-          BorderRadius.circular(
-        14,
-      ),
+      borderRadius: BorderRadius.circular(14),
       child: Container(
-        padding:
-            const EdgeInsets.all(14),
-        decoration:
-            BoxDecoration(
-          border: Border.all(
-            color:
-                theme.dividerColor,
-          ),
-          borderRadius:
-              BorderRadius.circular(
-            14,
-          ),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          border: Border.all(color: theme.dividerColor),
+          borderRadius: BorderRadius.circular(14),
         ),
         child: LayoutBuilder(
-          builder: (
-            context,
-            constraints,
-          ) {
-            final bool compact =
-                constraints.maxWidth < 650;
+          builder: (context, constraints) {
+            final bool compact = constraints.maxWidth < 650;
 
-            final Widget mainInfo =
-                Expanded(
+            final Widget mainInfo = Expanded(
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
                       Flexible(
                         child: Text(
-                          sale.invoiceNumber
-                                  .trim()
-                                  .isEmpty
+                          sale.invoiceNumber.trim().isEmpty
                               ? 'Invoice'
                               : sale.invoiceNumber,
                           maxLines: 1,
-                          overflow:
-                              TextOverflow.ellipsis,
-                          style: theme
-                              .textTheme
-                              .bodyMedium
-                              ?.copyWith(
-                            fontWeight:
-                                FontWeight.w800,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
                       ),
                       const SizedBox(width: 8),
                       Container(
-                        padding:
-                            const EdgeInsets
-                                .symmetric(
+                        padding: const EdgeInsets.symmetric(
                           horizontal: 8,
                           vertical: 4,
                         ),
-                        decoration:
-                            BoxDecoration(
-                          color:
-                              color.withValues(
-                            alpha: 0.10,
-                          ),
-                          borderRadius:
-                              BorderRadius.circular(
-                            8,
-                          ),
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
                           sale.paymentStatus,
                           style: TextStyle(
                             color: color,
                             fontSize: 11,
-                            fontWeight:
-                                FontWeight.w800,
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
                       ),
@@ -3614,17 +2362,9 @@ class _InvoiceTile
                   Text(
                     customer,
                     maxLines: 1,
-                    overflow:
-                        TextOverflow.ellipsis,
-                    style: theme
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(
-                      color: theme
-                          .textTheme
-                          .bodySmall
-                          ?.color
-                          ?.withValues(
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.textTheme.bodySmall?.color?.withValues(
                         alpha: 0.70,
                       ),
                     ),
@@ -3632,15 +2372,8 @@ class _InvoiceTile
                   const SizedBox(height: 3),
                   Text(
                     date(sale.date),
-                    style: theme
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(
-                      color: theme
-                          .textTheme
-                          .bodySmall
-                          ?.color
-                          ?.withValues(
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.textTheme.bodySmall?.color?.withValues(
                         alpha: 0.60,
                       ),
                     ),
@@ -3649,88 +2382,49 @@ class _InvoiceTile
               ),
             );
 
-            final Widget financials =
-                compact
-                    ? Padding(
-                        padding:
-                            const EdgeInsets
-                                .only(
-                          top: 12,
+            final Widget financials = compact
+                ? Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Wrap(
+                      spacing: 18,
+                      runSpacing: 10,
+                      children: [
+                        _MiniMetric(
+                          label: 'Total',
+                          value: currency(sale.total),
                         ),
-                        child: Wrap(
-                          spacing: 18,
-                          runSpacing: 10,
-                          children: [
-                            _MiniMetric(
-                              label: 'Total',
-                              value:
-                                  currency(
-                                sale.total,
-                              ),
-                            ),
-                            _MiniMetric(
-                              label: 'Paid',
-                              value:
-                                  currency(
-                                sale.paidAmount,
-                              ),
-                            ),
-                            _MiniMetric(
-                              label:
-                                  'Outstanding',
-                              value:
-                                  currency(
-                                outstanding > 0
-                                    ? outstanding
-                                    : 0,
-                              ),
-                            ),
-                          ],
+                        _MiniMetric(
+                          label: 'Paid',
+                          value: currency(sale.paidAmount),
                         ),
-                      )
-                    : Row(
-                        mainAxisSize:
-                            MainAxisSize.min,
-                        children: [
-                          _MiniMetric(
-                            label: 'Total',
-                            value:
-                                currency(
-                              sale.total,
-                            ),
-                          ),
-                          const SizedBox(
-                              width: 20),
-                          _MiniMetric(
-                            label: 'Paid',
-                            value:
-                                currency(
-                              sale.paidAmount,
-                            ),
-                          ),
-                          const SizedBox(
-                              width: 20),
-                          _MiniMetric(
-                            label:
-                                'Outstanding',
-                            value:
-                                currency(
-                              outstanding > 0
-                                  ? outstanding
-                                  : 0,
-                            ),
-                          ),
-                        ],
-                      );
+                        _MiniMetric(
+                          label: 'Outstanding',
+                          value: currency(outstanding > 0 ? outstanding : 0),
+                        ),
+                      ],
+                    ),
+                  )
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _MiniMetric(label: 'Total', value: currency(sale.total)),
+                      const SizedBox(width: 20),
+                      _MiniMetric(
+                        label: 'Paid',
+                        value: currency(sale.paidAmount),
+                      ),
+                      const SizedBox(width: 20),
+                      _MiniMetric(
+                        label: 'Outstanding',
+                        value: currency(outstanding > 0 ? outstanding : 0),
+                      ),
+                    ],
+                  );
 
             if (compact) {
               return Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  mainInfo,
-                  financials,
-                ],
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [mainInfo, financials],
               );
             }
 
@@ -3739,10 +2433,7 @@ class _InvoiceTile
                 mainInfo,
                 financials,
                 const SizedBox(width: 12),
-                const Icon(
-                  Icons
-                      .chevron_right_rounded,
-                ),
+                const Icon(Icons.chevron_right_rounded),
               ],
             );
           },
@@ -3756,8 +2447,7 @@ class _InvoiceTile
 // DETAIL INFO ROW
 // =============================================================================
 
-class _DetailInfoRow
-    extends StatelessWidget {
+class _DetailInfoRow extends StatelessWidget {
   final String label;
   final String value;
   final bool bold;
@@ -3771,33 +2461,19 @@ class _DetailInfoRow
   });
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     return Padding(
-      padding:
-          const EdgeInsets.symmetric(
-        vertical: 6,
-      ),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
             child: Text(
               label,
-              style: theme
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(
-                color: theme
-                    .textTheme
-                    .bodyMedium
-                    ?.color
-                    ?.withValues(
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.textTheme.bodyMedium?.color?.withValues(
                   alpha: 0.70,
                 ),
               ),
@@ -3807,18 +2483,10 @@ class _DetailInfoRow
           Flexible(
             child: Text(
               value,
-              textAlign:
-                  TextAlign.right,
-              style: theme
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(
-                fontWeight:
-                    bold
-                        ? FontWeight.w800
-                        : FontWeight.w600,
-                color:
-                    valueColor,
+              textAlign: TextAlign.right,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
+                color: valueColor,
               ),
             ),
           ),
@@ -3832,70 +2500,36 @@ class _DetailInfoRow
 // EMPTY
 // =============================================================================
 
-class _EmptyInline
-    extends StatelessWidget {
+class _EmptyInline extends StatelessWidget {
   final IconData icon;
   final String message;
 
-  const _EmptyInline({
-    required this.icon,
-    required this.message,
-  });
+  const _EmptyInline({required this.icon, required this.message});
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     return Container(
       width: double.infinity,
-      padding:
-          const EdgeInsets.symmetric(
-        vertical: 28,
-        horizontal: 18,
-      ),
-      decoration:
-          BoxDecoration(
-        border: Border.all(
-          color:
-              theme.dividerColor,
-        ),
-        borderRadius:
-            BorderRadius.circular(
-          14,
-        ),
+      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 18),
+      decoration: BoxDecoration(
+        border: Border.all(color: theme.dividerColor),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
         children: [
           Icon(
             icon,
             size: 38,
-            color: theme
-                .textTheme
-                .bodySmall
-                ?.color
-                ?.withValues(
-              alpha: 0.45,
-            ),
+            color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.45),
           ),
           const SizedBox(height: 10),
           Text(
             message,
-            textAlign:
-                TextAlign.center,
-            style: theme
-                .textTheme
-                .bodyMedium
-                ?.copyWith(
-              color: theme
-                  .textTheme
-                  .bodyMedium
-                  ?.color
-                  ?.withValues(
-                alpha: 0.65,
-              ),
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.65),
             ),
           ),
         ],
@@ -3908,51 +2542,30 @@ class _EmptyInline
 // FOOTER METRIC
 // =============================================================================
 
-class _FooterMetric
-    extends StatelessWidget {
+class _FooterMetric extends StatelessWidget {
   final String label;
   final String value;
 
-  const _FooterMetric({
-    required this.label,
-    required this.value,
-  });
+  const _FooterMetric({required this.label, required this.value});
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
-          style: theme
-              .textTheme
-              .labelSmall
-              ?.copyWith(
-            color: theme
-                .textTheme
-                .labelSmall
-                ?.color
-                ?.withValues(
-              alpha: 0.65,
-            ),
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.textTheme.labelSmall?.color?.withValues(alpha: 0.65),
           ),
         ),
         const SizedBox(height: 3),
         Text(
           value,
-          style: theme
-              .textTheme
-              .bodyMedium
-              ?.copyWith(
-            fontWeight:
-                FontWeight.w800,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w800,
           ),
         ),
       ],

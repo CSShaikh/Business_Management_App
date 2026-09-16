@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/app_number_format.dart';
 import '../../models/product_model.dart';
 import '../../models/stock_transaction_model.dart';
 import '../../providers/business_provider.dart';
@@ -2119,11 +2120,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   String _formatCurrency(
     double value,
   ) {
-    return NumberFormat.currency(
-      locale: 'en_IN',
-      symbol: '₹',
-      decimalDigits: 2,
-    ).format(value);
+    return AppNumberFormat.amount(value);
   }
 
   String _formatNumber(
@@ -2554,11 +2551,7 @@ class _StockHistorySheet
   String _formatCurrency(
     double value,
   ) {
-    return NumberFormat.currency(
-      locale: 'en_IN',
-      symbol: '₹',
-      decimalDigits: 2,
-    ).format(value);
+    return AppNumberFormat.amount(value);
   }
 
   String _formatNumber(

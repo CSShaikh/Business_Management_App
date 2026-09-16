@@ -5,13 +5,10 @@ import '../models/supplier_payment_model.dart';
 class SupplierPaymentRepository {
   final FirebaseFirestore _firestore;
 
-  SupplierPaymentRepository({
-    FirebaseFirestore? firestore,
-  }) : _firestore = firestore ?? FirebaseFirestore.instance;
+  SupplierPaymentRepository({FirebaseFirestore? firestore})
+    : _firestore = firestore ?? FirebaseFirestore.instance;
 
-  CollectionReference<Map<String, dynamic>> _payments(
-    String businessId,
-  ) {
+  CollectionReference<Map<String, dynamic>> _payments(String businessId) {
     final String normalizedBusinessId = businessId.trim();
 
     if (normalizedBusinessId.isEmpty) {
@@ -31,16 +28,20 @@ class SupplierPaymentRepository {
 
     final String businessId = payment.businessId.trim();
 
-    final DocumentReference<Map<String, dynamic>> document =
-        _payments(businessId).doc();
+    // Respect a caller-provided ID when one exists. This allows a payment
+    // transaction to be linked to its ledger entry before the payment document
+    // is committed, which prevents the new payment from reducing the payable
+    // balance before ledger validation.
+    final String requestedId = payment.id.trim();
+    final DocumentReference<Map<String, dynamic>> document = requestedId.isEmpty
+        ? _payments(businessId).doc()
+        : _payments(businessId).doc(requestedId);
 
     final SupplierPaymentModel paymentWithId = payment.copyWith(
       id: document.id,
     );
 
-    await document.set(
-      paymentWithId.toMap(),
-    );
+    await document.set(paymentWithId.toMap());
 
     return paymentWithId;
   }
@@ -55,10 +56,9 @@ class SupplierPaymentRepository {
       return null;
     }
 
-    final DocumentSnapshot<Map<String, dynamic>> snapshot =
-        await _payments(businessId)
-            .doc(normalizedPaymentId)
-            .get();
+    final DocumentSnapshot<Map<String, dynamic>> snapshot = await _payments(
+      businessId,
+    ).doc(normalizedPaymentId).get();
 
     if (!snapshot.exists) {
       return null;
@@ -70,14 +70,11 @@ class SupplierPaymentRepository {
   Future<List<SupplierPaymentModel>> getPayments({
     required String businessId,
   }) async {
-    final QuerySnapshot<Map<String, dynamic>> snapshot =
-        await _payments(businessId)
-            .orderBy('date', descending: true)
-            .get();
+    final QuerySnapshot<Map<String, dynamic>> snapshot = await _payments(
+      businessId,
+    ).orderBy('date', descending: true).get();
 
-    return snapshot.docs
-        .map(SupplierPaymentModel.fromFirestore)
-        .toList();
+    return snapshot.docs.map(SupplierPaymentModel.fromFirestore).toList();
   }
 
   Stream<List<SupplierPaymentModel>> watchPayments({
@@ -86,13 +83,9 @@ class SupplierPaymentRepository {
     return _payments(businessId)
         .orderBy('date', descending: true)
         .snapshots()
-        .map(
-          (QuerySnapshot<Map<String, dynamic>> snapshot) {
-            return snapshot.docs
-                .map(SupplierPaymentModel.fromFirestore)
-                .toList();
-          },
-        );
+        .map((QuerySnapshot<Map<String, dynamic>> snapshot) {
+          return snapshot.docs.map(SupplierPaymentModel.fromFirestore).toList();
+        });
   }
 
   Future<List<SupplierPaymentModel>> getSupplierPayments({
@@ -105,21 +98,15 @@ class SupplierPaymentRepository {
       return <SupplierPaymentModel>[];
     }
 
-    final QuerySnapshot<Map<String, dynamic>> snapshot =
-        await _payments(businessId)
-            .where(
-              'supplierId',
-              isEqualTo: normalizedSupplierId,
-            )
-            .get();
+    final QuerySnapshot<Map<String, dynamic>> snapshot = await _payments(
+      businessId,
+    ).where('supplierId', isEqualTo: normalizedSupplierId).get();
 
     final payments = snapshot.docs
         .map(SupplierPaymentModel.fromFirestore)
         .toList();
 
-    payments.sort(
-      (a, b) => b.date.compareTo(a.date),
-    );
+    payments.sort((a, b) => b.date.compareTo(a.date));
 
     return payments;
   }
@@ -131,35 +118,24 @@ class SupplierPaymentRepository {
     final String normalizedSupplierId = supplierId.trim();
 
     if (normalizedSupplierId.isEmpty) {
-      return Stream<List<SupplierPaymentModel>>.value(
-        <SupplierPaymentModel>[],
-      );
+      return Stream<List<SupplierPaymentModel>>.value(<SupplierPaymentModel>[]);
     }
 
     return _payments(businessId)
-        .where(
-          'supplierId',
-          isEqualTo: normalizedSupplierId,
-        )
+        .where('supplierId', isEqualTo: normalizedSupplierId)
         .snapshots()
-        .map(
-          (QuerySnapshot<Map<String, dynamic>> snapshot) {
-            final payments = snapshot.docs
-                .map(SupplierPaymentModel.fromFirestore)
-                .toList();
+        .map((QuerySnapshot<Map<String, dynamic>> snapshot) {
+          final payments = snapshot.docs
+              .map(SupplierPaymentModel.fromFirestore)
+              .toList();
 
-            payments.sort(
-              (a, b) => b.date.compareTo(a.date),
-            );
+          payments.sort((a, b) => b.date.compareTo(a.date));
 
-            return payments;
-          },
-        );
+          return payments;
+        });
   }
 
-  Future<void> updatePayment(
-    SupplierPaymentModel payment,
-  ) async {
+  Future<void> updatePayment(SupplierPaymentModel payment) async {
     _validatePayment(payment);
 
     final String paymentId = payment.id.trim();
@@ -170,11 +146,7 @@ class SupplierPaymentRepository {
       );
     }
 
-    await _payments(payment.businessId)
-        .doc(paymentId)
-        .update(
-          payment.toMap(),
-        );
+    await _payments(payment.businessId).doc(paymentId).update(payment.toMap());
   }
 
   Future<void> deletePayment({
@@ -184,65 +156,49 @@ class SupplierPaymentRepository {
     final String normalizedPaymentId = paymentId.trim();
 
     if (normalizedPaymentId.isEmpty) {
-      throw ArgumentError(
-        'Payment ID cannot be empty.',
-      );
+      throw ArgumentError('Payment ID cannot be empty.');
     }
 
-    await _payments(businessId)
-        .doc(normalizedPaymentId)
-        .delete();
+    await _payments(businessId).doc(normalizedPaymentId).delete();
   }
 
-  Future<double> getTotalPaid({
-    required String businessId,
-  }) async {
-    final List<SupplierPaymentModel> payments =
-        await getPayments(
+  Future<double> getTotalPaid({required String businessId}) async {
+    final List<SupplierPaymentModel> payments = await getPayments(
       businessId: businessId,
     );
 
-    return payments.fold<double>(
-      0,
-      (
-        double total,
-        SupplierPaymentModel payment,
-      ) {
-        return total + payment.amount;
-      },
-    );
+    return payments.fold<double>(0, (
+      double total,
+      SupplierPaymentModel payment,
+    ) {
+      return total + payment.amount;
+    });
   }
 
   Future<double> getSupplierTotalPaid({
     required String businessId,
     required String supplierId,
   }) async {
-    final List<SupplierPaymentModel> payments =
-        await getSupplierPayments(
+    final List<SupplierPaymentModel> payments = await getSupplierPayments(
       businessId: businessId,
       supplierId: supplierId,
     );
 
-    return payments.fold<double>(
-      0,
-      (
-        double total,
-        SupplierPaymentModel payment,
-      ) {
-        return total + payment.amount;
-      },
-    );
+    return payments.fold<double>(0, (
+      double total,
+      SupplierPaymentModel payment,
+    ) {
+      return total + payment.amount;
+    });
   }
 
   Future<List<SupplierPaymentModel>> searchPayments({
     required String businessId,
     required String query,
   }) async {
-    final String normalizedQuery =
-        query.trim().toLowerCase();
+    final String normalizedQuery = query.trim().toLowerCase();
 
-    final List<SupplierPaymentModel> payments =
-        await getPayments(
+    final List<SupplierPaymentModel> payments = await getPayments(
       businessId: businessId,
     );
 
@@ -250,67 +206,47 @@ class SupplierPaymentRepository {
       return payments;
     }
 
-    return payments.where(
-      (SupplierPaymentModel payment) {
-        final String supplierName =
-            payment.supplierName.toLowerCase();
+    return payments.where((SupplierPaymentModel payment) {
+      final String supplierName = payment.supplierName.toLowerCase();
 
-        final String supplierId =
-            payment.supplierId.toLowerCase();
+      final String supplierId = payment.supplierId.toLowerCase();
 
-        final String method =
-            payment.paymentMethod.toLowerCase();
+      final String method = payment.paymentMethod.toLowerCase();
 
-        final String reference =
-            payment.transactionReference.toLowerCase();
+      final String reference = payment.transactionReference.toLowerCase();
 
-        final String notes =
-            payment.notes.toLowerCase();
+      final String notes = payment.notes.toLowerCase();
 
-        final String amount =
-            payment.amount.toStringAsFixed(2);
+      final String amount = payment.amount.toStringAsFixed(2);
 
-        return supplierName.contains(normalizedQuery) ||
-            supplierId.contains(normalizedQuery) ||
-            method.contains(normalizedQuery) ||
-            reference.contains(normalizedQuery) ||
-            notes.contains(normalizedQuery) ||
-            amount.contains(normalizedQuery);
-      },
-    ).toList();
+      return supplierName.contains(normalizedQuery) ||
+          supplierId.contains(normalizedQuery) ||
+          method.contains(normalizedQuery) ||
+          reference.contains(normalizedQuery) ||
+          notes.contains(normalizedQuery) ||
+          amount.contains(normalizedQuery);
+    }).toList();
   }
 
-  void _validatePayment(
-    SupplierPaymentModel payment,
-  ) {
+  void _validatePayment(SupplierPaymentModel payment) {
     if (payment.businessId.trim().isEmpty) {
-      throw ArgumentError(
-        'Business ID cannot be empty.',
-      );
+      throw ArgumentError('Business ID cannot be empty.');
     }
 
     if (payment.supplierId.trim().isEmpty) {
-      throw ArgumentError(
-        'Supplier ID cannot be empty.',
-      );
+      throw ArgumentError('Supplier ID cannot be empty.');
     }
 
     if (payment.supplierName.trim().isEmpty) {
-      throw ArgumentError(
-        'Supplier name cannot be empty.',
-      );
+      throw ArgumentError('Supplier name cannot be empty.');
     }
 
     if (!payment.amount.isFinite || payment.amount <= 0) {
-      throw ArgumentError(
-        'Payment amount must be greater than zero.',
-      );
+      throw ArgumentError('Payment amount must be greater than zero.');
     }
 
     if (payment.paymentMethod.trim().isEmpty) {
-      throw ArgumentError(
-        'Payment method cannot be empty.',
-      );
+      throw ArgumentError('Payment method cannot be empty.');
     }
   }
 }

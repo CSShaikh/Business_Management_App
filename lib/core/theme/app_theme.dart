@@ -29,6 +29,84 @@ class AppTheme {
     ),
 
     // -------------------------------------------------------------------------
+    // DATE PICKER
+    // -------------------------------------------------------------------------
+
+    datePickerTheme: DatePickerThemeData(
+      backgroundColor: AppColors.lightSurface,
+      surfaceTintColor: Colors.transparent,
+      elevation: 8,
+      shadowColor: Colors.black26,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(28),
+      ),
+      headerBackgroundColor: AppColors.lightSurface,
+      headerForegroundColor: AppColors.lightTextPrimary,
+      headerHeadlineStyle: const TextStyle(
+        fontSize: 36,
+        fontWeight: FontWeight.w400,
+        letterSpacing: -0.5,
+      ),
+      headerHelpStyle: const TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w500,
+      ),
+      weekdayStyle: const TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+      ),
+      dayStyle: const TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+      ),
+      yearStyle: const TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w500,
+      ),
+      dayForegroundColor: WidgetStateProperty.resolveWith<Color?>(
+        (states) {
+          if (states.contains(WidgetState.selected)) {
+            return Colors.white;
+          }
+          if (states.contains(WidgetState.disabled)) {
+            return AppColors.lightTextSecondary.withValues(alpha: 0.55);
+          }
+          return AppColors.lightTextPrimary;
+        },
+      ),
+      dayBackgroundColor: WidgetStateProperty.resolveWith<Color?>(
+        (states) {
+          if (states.contains(WidgetState.selected)) {
+            return AppColors.primary;
+          }
+          return Colors.transparent;
+        },
+      ),
+      todayForegroundColor: const WidgetStatePropertyAll(
+        AppColors.primary,
+      ),
+      todayBackgroundColor: const WidgetStatePropertyAll(
+        Colors.transparent,
+      ),
+      todayBorder: const BorderSide(
+        color: AppColors.primary,
+        width: 1.2,
+      ),
+      rangeSelectionBackgroundColor: AppColors.primaryLight.withValues(alpha: 0.28),
+      dividerColor: AppColors.lightBorder,
+      cancelButtonStyle: ButtonStyle(
+        foregroundColor: const WidgetStatePropertyAll(
+          AppColors.primary,
+        ),
+      ),
+      confirmButtonStyle: ButtonStyle(
+        foregroundColor: const WidgetStatePropertyAll(
+          AppColors.primary,
+        ),
+      ),
+    ),
+
+    // -------------------------------------------------------------------------
     // FONT / TEXT
     // -------------------------------------------------------------------------
 
@@ -510,6 +588,84 @@ class AppTheme {
     ),
 
     // -------------------------------------------------------------------------
+    // DATE PICKER
+    // -------------------------------------------------------------------------
+
+    datePickerTheme: DatePickerThemeData(
+      backgroundColor: AppColors.darkSurface,
+      surfaceTintColor: Colors.transparent,
+      elevation: 8,
+      shadowColor: Colors.black26,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(28),
+      ),
+      headerBackgroundColor: AppColors.darkSurface,
+      headerForegroundColor: AppColors.darkTextPrimary,
+      headerHeadlineStyle: const TextStyle(
+        fontSize: 36,
+        fontWeight: FontWeight.w400,
+        letterSpacing: -0.5,
+      ),
+      headerHelpStyle: const TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w500,
+      ),
+      weekdayStyle: const TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+      ),
+      dayStyle: const TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+      ),
+      yearStyle: const TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w500,
+      ),
+      dayForegroundColor: WidgetStateProperty.resolveWith<Color?>(
+        (states) {
+          if (states.contains(WidgetState.selected)) {
+            return Colors.white;
+          }
+          if (states.contains(WidgetState.disabled)) {
+            return AppColors.darkTextSecondary.withValues(alpha: 0.55);
+          }
+          return AppColors.darkTextPrimary;
+        },
+      ),
+      dayBackgroundColor: WidgetStateProperty.resolveWith<Color?>(
+        (states) {
+          if (states.contains(WidgetState.selected)) {
+            return AppColors.primaryLight;
+          }
+          return Colors.transparent;
+        },
+      ),
+      todayForegroundColor: const WidgetStatePropertyAll(
+        AppColors.primaryLight,
+      ),
+      todayBackgroundColor: const WidgetStatePropertyAll(
+        Colors.transparent,
+      ),
+      todayBorder: const BorderSide(
+        color: AppColors.primaryLight,
+        width: 1.2,
+      ),
+      rangeSelectionBackgroundColor: AppColors.primaryLight.withValues(alpha: 0.24),
+      dividerColor: AppColors.darkBorder,
+      cancelButtonStyle: ButtonStyle(
+        foregroundColor: const WidgetStatePropertyAll(
+          AppColors.primaryLight,
+        ),
+      ),
+      confirmButtonStyle: ButtonStyle(
+        foregroundColor: const WidgetStatePropertyAll(
+          AppColors.primaryLight,
+        ),
+      ),
+    ),
+
+    // -------------------------------------------------------------------------
     // FONT / TEXT
     // -------------------------------------------------------------------------
 
@@ -965,4 +1121,4 @@ class AppTheme {
       iconColor: AppColors.darkTextSecondary,
     ),
   );
-}
+} 

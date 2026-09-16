@@ -8,115 +8,99 @@ import '../customers/add_customer_screen.dart';
 import '../customers/customer_screen.dart';
 import '../expenses/add_expense_screen.dart';
 import '../payments/add_payment_screen.dart';
-import '../payments/supplier_payment_screen.dart';
+import '../payments/add_supplier_payment_screen.dart';
+import '../payments/payment_screen.dart';
 import '../products/add_product_screen.dart';
 import '../products/product_screen.dart';
 import '../profile/profile_screen.dart';
 import '../purchases/add_purchase_screen.dart';
+import '../purchases/purchases_screen.dart';
 import '../reports/reports_screen.dart';
+import '../suppliers/suppliers_screen.dart';
 import '../sales/add_sale_screen.dart';
 import '../sales/sales_screen.dart';
+import '../expenses/expenses_screen.dart';
 import 'dashboard_home_screen.dart';
 
 class MainNavigationScreen extends StatefulWidget {
-  const MainNavigationScreen({
-    super.key,
-  });
+  const MainNavigationScreen({super.key});
 
   @override
-  State<MainNavigationScreen> createState() =>
-      _MainNavigationScreenState();
+  State<MainNavigationScreen> createState() => _MainNavigationScreenState();
 }
 
-class _MainNavigationScreenState
-    extends State<MainNavigationScreen> {
+class _MainNavigationScreenState extends State<MainNavigationScreen> {
   // ============================================================
-  // NAVIGATION INDEX
+  // MAIN NAVIGATION INDEX
   //
-  // 0 = Home
-  // 1 = Products
-  // 2 = Customers
-  // 3 = Sales
-  // 4 = Reports
-  // 5 = Profile
+  // IMPORTANT: These indexes are the single source of truth for
+  // both the navigation destinations and the IndexedStack.
+  // Never change one order without changing the other.
   // ============================================================
 
   static const int _homeIndex = 0;
   static const int _productsIndex = 1;
   static const int _customersIndex = 2;
   static const int _salesIndex = 3;
-  static const int _reportsIndex = 4;
-  static const int _profileIndex = 5;
+  static const int _purchasesIndex = 4;
+  static const int _suppliersIndex = 5;
+  static const int _paymentsIndex = 6;
+  static const int _expensesIndex = 7;
 
   int _currentIndex = _homeIndex;
 
   late final List<Widget> _screens;
+  late final List<GlobalKey<NavigatorState>> _navigatorKeys;
 
-  final BusinessRepository _businessRepository =
-      BusinessRepository();
+  final BusinessRepository _businessRepository = BusinessRepository();
 
   @override
   void initState() {
     super.initState();
 
-    // IMPORTANT:
-    // The order here MUST exactly match the NavigationBar
-    // destination order below.
+    // This order MUST exactly match the navigation destinations
+    // in _buildNavigationRail().
     _screens = const [
-      DashboardHomeScreen(), // 0 - Home
-      ProductsScreen(), // 1 - Products
-      CustomersScreen(), // 2 - Customers
-      SalesScreen(), // 3 - Sales
-      ReportsScreen(), // 4 - Reports
-      ProfileScreen(), // 5 - Profile
+      DashboardHomeScreen(), // 0
+      ProductsScreen(), // 1
+      CustomersScreen(), // 2
+      SalesScreen(), // 3
+      PurchasesScreen(), // 4
+      SuppliersScreen(), // 5
+      PaymentsScreen(), // 6
+      ExpensesScreen(), // 7
+      ReportsScreen(), // 8
+      ProfileScreen(), // 9
     ];
+
+    _navigatorKeys = List<GlobalKey<NavigatorState>>.generate(
+      _screens.length,
+      (_) => GlobalKey<NavigatorState>(),
+    );
   }
 
   // ============================================================
-  // BOTTOM NAVIGATION
+  // MAIN NAVIGATION
   // ============================================================
 
   void _onNavigationItemTapped(int index) {
-    if (!mounted) {
+    if (!mounted || index < 0 || index >= _screens.length) {
       return;
     }
 
-    switch (index) {
-      case _homeIndex:
-        _openHome();
-        break;
-
-      case _productsIndex:
-        _openProducts();
-        break;
-
-      case _customersIndex:
-        _openCustomers();
-        break;
-
-      case _salesIndex:
-        _openSales();
-        break;
-
-      case _reportsIndex:
-        _openReports();
-        break;
-
-      case _profileIndex:
-        _openProfile();
-        break;
-
-      default:
-        return;
+    // Direct index assignment is intentional. It prevents a
+    // navigation item from accidentally opening another section.
+    if (_currentIndex == index) {
+      return;
     }
+
+    setState(() {
+      _currentIndex = index;
+    });
   }
 
   void _setNavigationIndex(int index) {
-    if (!mounted) {
-      return;
-    }
-
-    if (index < 0 || index >= _screens.length) {
+    if (!mounted || index < 0 || index >= _screens.length) {
       return;
     }
 
@@ -129,29 +113,19 @@ class _MainNavigationScreenState
     });
   }
 
-  void _openHome() {
-    _setNavigationIndex(_homeIndex);
-  }
+  void _openProducts() => _setNavigationIndex(_productsIndex);
 
-  void _openProducts() {
-    _setNavigationIndex(_productsIndex);
-  }
+  void _openCustomers() => _setNavigationIndex(_customersIndex);
 
-  void _openCustomers() {
-    _setNavigationIndex(_customersIndex);
-  }
+  void _openSales() => _setNavigationIndex(_salesIndex);
 
-  void _openSales() {
-    _setNavigationIndex(_salesIndex);
-  }
+  void _openPurchases() => _setNavigationIndex(_purchasesIndex);
 
-  void _openReports() {
-    _setNavigationIndex(_reportsIndex);
-  }
+  void _openSuppliers() => _setNavigationIndex(_suppliersIndex);
 
-  void _openProfile() {
-    _setNavigationIndex(_profileIndex);
-  }
+  void _openPayments() => _setNavigationIndex(_paymentsIndex);
+
+  void _openExpenses() => _setNavigationIndex(_expensesIndex);
 
   // ============================================================
   // BUSINESS
@@ -161,18 +135,13 @@ class _MainNavigationScreenState
     final User? user = FirebaseAuth.instance.currentUser;
 
     if (user == null) {
-      _showMessage(
-        'Please login first.',
-        isError: true,
-      );
+      _showMessage('Please login first.', isError: true);
       return null;
     }
 
     try {
-      final BusinessModel? business =
-          await _businessRepository.getBusinessForOwner(
-        user.uid,
-      );
+      final BusinessModel? business = await _businessRepository
+          .getBusinessForOwner(user.uid);
 
       if (business == null) {
         _showMessage(
@@ -185,19 +154,13 @@ class _MainNavigationScreenState
       final String businessId = business.id.trim();
 
       if (businessId.isEmpty) {
-        _showMessage(
-          'Business ID is missing.',
-          isError: true,
-        );
+        _showMessage('Business ID is missing.', isError: true);
         return null;
       }
 
       return business;
     } catch (_) {
-      _showMessage(
-        'Unable to load business details.',
-        isError: true,
-      );
+      _showMessage('Unable to load business details.', isError: true);
       return null;
     }
   }
@@ -218,12 +181,7 @@ class _MainNavigationScreenState
       builder: (bottomSheetContext) {
         return SafeArea(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(
-              20,
-              8,
-              20,
-              24,
-            ),
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -231,31 +189,21 @@ class _MainNavigationScreenState
                 children: [
                   Text(
                     'Quick Add',
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleLarge
-                        ?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
+                    style: Theme.of(context).textTheme.titleLarge
+                        ?.copyWith(fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     'Choose what you want to add.',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurfaceVariant,
-                        ),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                   const SizedBox(height: 18),
 
                   // ==================================================
                   // ADD SALE
                   // ==================================================
-
                   _AddOptionTile(
                     icon: Icons.point_of_sale_rounded,
                     title: 'Add Sale',
@@ -270,7 +218,6 @@ class _MainNavigationScreenState
                   // ==================================================
                   // ADD PURCHASE
                   // ==================================================
-
                   _AddOptionTile(
                     icon: Icons.shopping_cart_rounded,
                     title: 'Add Purchase',
@@ -285,7 +232,6 @@ class _MainNavigationScreenState
                   // ==================================================
                   // CUSTOMER PAYMENT
                   // ==================================================
-
                   _AddOptionTile(
                     icon: Icons.payments_rounded,
                     title: 'Add Payment',
@@ -300,7 +246,6 @@ class _MainNavigationScreenState
                   // ==================================================
                   // SUPPLIER PAYMENT
                   // ==================================================
-
                   _AddOptionTile(
                     icon: Icons.account_balance_rounded,
                     title: 'Supplier Payment',
@@ -315,7 +260,6 @@ class _MainNavigationScreenState
                   // ==================================================
                   // ADD EXPENSE
                   // ==================================================
-
                   _AddOptionTile(
                     icon: Icons.receipt_long_rounded,
                     title: 'Add Expense',
@@ -330,7 +274,6 @@ class _MainNavigationScreenState
                   // ==================================================
                   // ADD CUSTOMER
                   // ==================================================
-
                   _AddOptionTile(
                     icon: Icons.person_add_alt_1_rounded,
                     title: 'Add Hotel / Customer',
@@ -345,7 +288,6 @@ class _MainNavigationScreenState
                   // ==================================================
                   // ADD PRODUCT
                   // ==================================================
-
                   _AddOptionTile(
                     icon: Icons.inventory_2_outlined,
                     title: 'Add Product',
@@ -374,11 +316,7 @@ class _MainNavigationScreenState
       return;
     }
 
-    await Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(
-        builder: (_) => const AddSaleScreen(),
-      ),
-    );
+    await _pushOnSection<bool>(_salesIndex, const AddSaleScreen());
 
     if (!mounted) {
       return;
@@ -398,17 +336,13 @@ class _MainNavigationScreenState
       return;
     }
 
-    await Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(
-        builder: (_) => const AddPurchaseScreen(),
-      ),
-    );
+    await _pushOnSection<bool>(_purchasesIndex, const AddPurchaseScreen());
 
     if (!mounted) {
       return;
     }
 
-    _openHome();
+    _openPurchases();
   }
 
   // ============================================================
@@ -420,17 +354,13 @@ class _MainNavigationScreenState
       return;
     }
 
-    await Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(
-        builder: (_) => const AddPaymentScreen(),
-      ),
-    );
+    await _pushOnSection<bool>(_paymentsIndex, const AddPaymentScreen());
 
     if (!mounted) {
       return;
     }
 
-    _openHome();
+    _openPayments();
   }
 
   // ============================================================
@@ -442,17 +372,16 @@ class _MainNavigationScreenState
       return;
     }
 
-    await Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(
-        builder: (_) => SupplierPaymentScreen(),
-      ),
+    await _pushOnSection<bool>(
+      _suppliersIndex,
+      const AddSupplierPaymentScreen(),
     );
 
     if (!mounted) {
       return;
     }
 
-    _openHome();
+    _openSuppliers();
   }
 
   // ============================================================
@@ -464,17 +393,13 @@ class _MainNavigationScreenState
       return;
     }
 
-    await Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(
-        builder: (_) => const AddExpenseScreen(),
-      ),
-    );
+    await _pushOnSection<bool>(_expensesIndex, const AddExpenseScreen());
 
     if (!mounted) {
       return;
     }
 
-    _openHome();
+    _openExpenses();
   }
 
   // ============================================================
@@ -486,8 +411,7 @@ class _MainNavigationScreenState
       return;
     }
 
-    final BusinessModel? business =
-        await _getCurrentBusiness();
+    final BusinessModel? business = await _getCurrentBusiness();
 
     if (!mounted || business == null) {
       return;
@@ -496,19 +420,13 @@ class _MainNavigationScreenState
     final String businessId = business.id.trim();
 
     if (businessId.isEmpty) {
-      _showMessage(
-        'Business ID is missing.',
-        isError: true,
-      );
+      _showMessage('Business ID is missing.', isError: true);
       return;
     }
 
-    await Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(
-        builder: (_) => AddCustomerScreen(
-          businessId: businessId,
-        ),
-      ),
+    await _pushOnSection<bool>(
+      _customersIndex,
+      AddCustomerScreen(businessId: businessId),
     );
 
     if (!mounted) {
@@ -527,8 +445,7 @@ class _MainNavigationScreenState
       return;
     }
 
-    final BusinessModel? business =
-        await _getCurrentBusiness();
+    final BusinessModel? business = await _getCurrentBusiness();
 
     if (!mounted || business == null) {
       return;
@@ -537,19 +454,13 @@ class _MainNavigationScreenState
     final String businessId = business.id.trim();
 
     if (businessId.isEmpty) {
-      _showMessage(
-        'Business ID is missing.',
-        isError: true,
-      );
+      _showMessage('Business ID is missing.', isError: true);
       return;
     }
 
-    await Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(
-        builder: (_) => AddProductScreen(
-          businessId: businessId,
-        ),
-      ),
+    await _pushOnSection<bool>(
+      _productsIndex,
+      AddProductScreen(businessId: businessId),
     );
 
     if (!mounted) {
@@ -559,20 +470,31 @@ class _MainNavigationScreenState
     _openProducts();
   }
 
+  Future<T?> _pushOnSection<T>(int index, Widget page) async {
+    if (!mounted || index < 0 || index >= _navigatorKeys.length) {
+      return null;
+    }
+
+    _setNavigationIndex(index);
+
+    final NavigatorState? navigator = _navigatorKeys[index].currentState;
+    if (navigator == null) {
+      return null;
+    }
+
+    return navigator.push<T>(MaterialPageRoute<T>(builder: (_) => page));
+  }
+
   // ============================================================
   // MESSAGE
   // ============================================================
 
-  void _showMessage(
-    String message, {
-    bool isError = false,
-  }) {
+  void _showMessage(String message, {bool isError = false}) {
     if (!mounted) {
       return;
     }
 
-    final ScaffoldMessengerState messenger =
-        ScaffoldMessenger.of(context);
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
 
     messenger
       ..hideCurrentSnackBar()
@@ -580,9 +502,7 @@ class _MainNavigationScreenState
         SnackBar(
           content: Text(message),
           behavior: SnackBarBehavior.floating,
-          backgroundColor: isError
-              ? Theme.of(context).colorScheme.error
-              : null,
+          backgroundColor: isError ? Theme.of(context).colorScheme.error : null,
         ),
       );
   }
@@ -593,169 +513,219 @@ class _MainNavigationScreenState
 
   @override
   Widget build(BuildContext context) {
-    // Defensive safety check.
-    //
-    // This guarantees IndexedStack never receives an invalid
-    // index even if the navigation state is changed unexpectedly.
     final int safeIndex =
-        (_currentIndex >= 0 &&
-                _currentIndex < _screens.length)
-            ? _currentIndex
-            : _homeIndex;
-
-    // ------------------------------------------------------------
-    // HERO-SAFE NAVIGATION SCREENS
-    //
-    // IndexedStack keeps all screens mounted. Some of those
-    // screens contain FloatingActionButtons, which themselves
-    // participate in Flutter's Hero system.
-    //
-    // Only the currently visible screen is allowed to participate
-    // in Hero animations. All inactive screens remain mounted
-    // for state preservation but their Hero widgets are disabled.
-    // ------------------------------------------------------------
-
-    final List<Widget> heroSafeScreens =
-        List<Widget>.generate(
-      _screens.length,
-      (int index) {
-        return HeroMode(
-          enabled: index == safeIndex,
-          child: _screens[index],
-        );
-      },
-    );
+        (_currentIndex >= 0 && _currentIndex < _screens.length)
+        ? _currentIndex
+        : _homeIndex;
 
     return Scaffold(
-      // ==========================================================
-      // CURRENT MAIN SCREEN
-      // ==========================================================
-
-      body: IndexedStack(
-        index: safeIndex,
-        children: heroSafeScreens,
-      ),
-
-      // ==========================================================
-      // CENTER ADD BUTTON
-      // ==========================================================
-
-      floatingActionButton: FloatingActionButton(
-        // Explicitly unique Hero tag.
-        //
-        // This FAB belongs to MainNavigationScreen and must never
-        // use Flutter's default FAB Hero tag.
-        heroTag: 'main_navigation_add_fab',
-        onPressed: _showAddOptions,
-        tooltip: 'Add',
-        child: const Icon(
-          Icons.add_rounded,
+      body: SafeArea(
+        child: Row(
+          children: [
+            _buildNavigationRail(selectedIndex: safeIndex),
+            const VerticalDivider(width: 1, thickness: 1),
+            Expanded(
+              child: IndexedStack(
+                index: safeIndex,
+                children: List<Widget>.generate(
+                  _screens.length,
+                  (int index) => Navigator(
+                    key: _navigatorKeys[index],
+                    onGenerateRoute: (RouteSettings settings) {
+                      return MaterialPageRoute<void>(
+                        settings: settings,
+                        builder: (_) => _screens[index],
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
+    );
+  }
 
-      floatingActionButtonLocation:
-          FloatingActionButtonLocation.centerDocked,
+  Widget _buildNavigationRail({required int selectedIndex}) {
+    final bool extended = MediaQuery.sizeOf(context).width >= 1200;
+    final double width = extended ? 220 : 104;
 
-      // ==========================================================
-      // BOTTOM NAVIGATION
-      // ==========================================================
+    const List<({IconData icon, IconData selectedIcon, String label})> items = [
+      (
+        icon: Icons.home_outlined,
+        selectedIcon: Icons.home_rounded,
+        label: 'Home',
+      ),
+      (
+        icon: Icons.inventory_2_outlined,
+        selectedIcon: Icons.inventory_2_rounded,
+        label: 'Products',
+      ),
+      (
+        icon: Icons.people_outline_rounded,
+        selectedIcon: Icons.people_rounded,
+        label: 'Customers',
+      ),
+      (
+        icon: Icons.point_of_sale_outlined,
+        selectedIcon: Icons.point_of_sale_rounded,
+        label: 'Sales',
+      ),
+      (
+        icon: Icons.shopping_cart_outlined,
+        selectedIcon: Icons.shopping_cart_rounded,
+        label: 'Purchases',
+      ),
+      (
+        icon: Icons.local_shipping_outlined,
+        selectedIcon: Icons.local_shipping_rounded,
+        label: 'Suppliers',
+      ),
+      (
+        icon: Icons.payments_outlined,
+        selectedIcon: Icons.payments_rounded,
+        label: 'Payments',
+      ),
+      (
+        icon: Icons.receipt_long_outlined,
+        selectedIcon: Icons.receipt_long_rounded,
+        label: 'Expenses',
+      ),
+      (
+        icon: Icons.bar_chart_outlined,
+        selectedIcon: Icons.bar_chart_rounded,
+        label: 'Reports',
+      ),
+      (
+        icon: Icons.person_outline_rounded,
+        selectedIcon: Icons.person_rounded,
+        label: 'Profile',
+      ),
+    ];
 
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: safeIndex,
-        onDestinationSelected: _onNavigationItemTapped,
-        destinations: const [
-          // ======================================================
-          // 0 - HOME
-          // ======================================================
+    return SizedBox(
+      width: width,
+      child: Material(
+        color: Theme.of(context).colorScheme.surface,
+        child: Column(
+          children: [
+            Expanded(
+              child: ListView.separated(
+                padding: const EdgeInsets.fromLTRB(8, 10, 8, 8),
+                itemCount: items.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 4),
+                itemBuilder: (context, index) {
+                  final item = items[index];
+                  final bool selected = index == selectedIndex;
+                  final Color active = Theme.of(context).colorScheme.primary;
+                  final Color inactive = Theme.of(context)
+                      .colorScheme
+                      .onSurfaceVariant;
 
-          NavigationDestination(
-            icon: Icon(
-              Icons.home_outlined,
+                  return Tooltip(
+                    message: item.label,
+                    waitDuration: const Duration(milliseconds: 350),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: () => _onNavigationItemTapped(index),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 160),
+                        constraints: const BoxConstraints(minHeight: 58),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: extended ? 16 : 4,
+                          vertical: 7,
+                        ),
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? active.withValues(alpha: 0.12)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: extended
+                            ? Row(
+                                children: [
+                                  Icon(
+                                    selected ? item.selectedIcon : item.icon,
+                                    color: selected ? active : inactive,
+                                    size: 25,
+                                  ),
+                                  const SizedBox(width: 14),
+                                  Expanded(
+                                    child: Text(
+                                      item.label,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .labelLarge
+                                          ?.copyWith(
+                                            fontWeight: selected
+                                                ? FontWeight.w700
+                                                : FontWeight.w600,
+                                            color: selected
+                                                ? active
+                                                : Theme.of(context)
+                                                      .colorScheme
+                                                      .onSurface,
+                                          ),
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    selected ? item.selectedIcon : item.icon,
+                                    color: selected ? active : inactive,
+                                    size: 23,
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    item.label,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    textAlign: TextAlign.center,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelSmall
+                                        ?.copyWith(
+                                          fontWeight: selected
+                                              ? FontWeight.w700
+                                              : FontWeight.w600,
+                                          color: selected
+                                              ? active
+                                              : Theme.of(context)
+                                                    .colorScheme
+                                                    .onSurface,
+                                        ),
+                                  ),
+                                ],
+                              ),
+                      ),
+                    ),
+                  );
+                },
+              ),
             ),
-            selectedIcon: Icon(
-              Icons.home_rounded,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 6, 8, 12),
+              child: Tooltip(
+                message: 'Quick Add',
+                child: FloatingActionButton.small(
+                  heroTag: 'main_navigation_rail_add_fab',
+                  onPressed: _showAddOptions,
+                  child: const Icon(Icons.add_rounded),
+                ),
+              ),
             ),
-            label: 'Home',
-          ),
-
-          // ======================================================
-          // 1 - PRODUCTS
-          // ======================================================
-
-          NavigationDestination(
-            icon: Icon(
-              Icons.inventory_2_outlined,
-            ),
-            selectedIcon: Icon(
-              Icons.inventory_2_rounded,
-            ),
-            label: 'Products',
-          ),
-
-          // ======================================================
-          // 2 - CUSTOMERS
-          // ======================================================
-
-          NavigationDestination(
-            icon: Icon(
-              Icons.people_outline_rounded,
-            ),
-            selectedIcon: Icon(
-              Icons.people_rounded,
-            ),
-            label: 'Customers',
-          ),
-
-          // ======================================================
-          // 3 - SALES
-          // ======================================================
-
-          NavigationDestination(
-            icon: Icon(
-              Icons.point_of_sale_outlined,
-            ),
-            selectedIcon: Icon(
-              Icons.point_of_sale_rounded,
-            ),
-            label: 'Sales',
-          ),
-
-          // ======================================================
-          // 4 - REPORTS
-          // ======================================================
-
-          NavigationDestination(
-            icon: Icon(
-              Icons.bar_chart_outlined,
-            ),
-            selectedIcon: Icon(
-              Icons.bar_chart_rounded,
-            ),
-            label: 'Reports',
-          ),
-
-          // ======================================================
-          // 5 - PROFILE
-          // ======================================================
-
-          NavigationDestination(
-            icon: Icon(
-              Icons.person_outline_rounded,
-            ),
-            selectedIcon: Icon(
-              Icons.person_rounded,
-            ),
-            label: 'Profile',
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
-
-// ============================================================
-// QUICK ADD TILE
-// ============================================================
 
 class _AddOptionTile extends StatelessWidget {
   final IconData icon;
@@ -775,36 +745,19 @@ class _AddOptionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: 4,
-        vertical: 2,
-      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
       leading: Container(
         width: 44,
         height: 44,
         decoration: BoxDecoration(
-          color: color.withValues(
-            alpha: 0.10,
-          ),
+          color: color.withValues(alpha: 0.10),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Icon(
-          icon,
-          color: color,
-        ),
+        child: Icon(icon, color: color),
       ),
-      title: Text(
-        title,
-        style: const TextStyle(
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-      subtitle: Text(
-        subtitle,
-      ),
-      trailing: const Icon(
-        Icons.chevron_right_rounded,
-      ),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+      subtitle: Text(subtitle),
+      trailing: const Icon(Icons.chevron_right_rounded),
       onTap: onTap,
     );
   }

@@ -4,17 +4,13 @@ import '../models/product_model.dart';
 import 'base_repository.dart';
 
 class ProductRepository extends BaseRepository {
-  ProductRepository({
-    super.firestore,
-  });
+  ProductRepository({super.firestore});
 
   // ---------------------------------------------------------------------------
   // Collection Reference
   // ---------------------------------------------------------------------------
 
-  CollectionReference<Map<String, dynamic>> _products(
-    String businessId,
-  ) {
+  CollectionReference<Map<String, dynamic>> _products(String businessId) {
     return firestore
         .collection('businesses')
         .doc(businessId)
@@ -25,23 +21,17 @@ class ProductRepository extends BaseRepository {
   // Create Product
   // ---------------------------------------------------------------------------
 
-  Future<ProductModel> createProduct(
-    ProductModel product,
-  ) async {
+  Future<ProductModel> createProduct(ProductModel product) async {
     final String businessId = product.businessId.trim();
 
     if (businessId.isEmpty) {
-      throw ArgumentError(
-        'Business ID cannot be empty.',
-      );
+      throw ArgumentError('Business ID cannot be empty.');
     }
 
     final String name = product.name.trim();
 
     if (name.isEmpty) {
-      throw ArgumentError(
-        'Product name cannot be empty.',
-      );
+      throw ArgumentError('Product name cannot be empty.');
     }
 
     _validateNumericValues(
@@ -51,13 +41,14 @@ class ProductRepository extends BaseRepository {
       minimumStock: product.minimumStock,
     );
 
-    final CollectionReference<Map<String, dynamic>> products =
-        _products(businessId);
+    final CollectionReference<Map<String, dynamic>> products = _products(
+      businessId,
+    );
 
     final DocumentReference<Map<String, dynamic>> document =
         product.id.trim().isEmpty
-            ? products.doc()
-            : products.doc(product.id.trim());
+        ? products.doc()
+        : products.doc(product.id.trim());
 
     final DateTime now = DateTime.now();
 
@@ -76,9 +67,7 @@ class ProductRepository extends BaseRepository {
       updatedAt: now,
     );
 
-    await document.set(
-      _toMap(productToSave),
-    );
+    await document.set(_toMap(productToSave));
 
     return productToSave;
   }
@@ -87,59 +76,44 @@ class ProductRepository extends BaseRepository {
   // Get Single Product
   // ---------------------------------------------------------------------------
 
-  Future<ProductModel?> getProduct(
-    String businessId,
-    String productId,
-  ) async {
+  Future<ProductModel?> getProduct(String businessId, String productId) async {
     final String normalizedBusinessId = businessId.trim();
     final String normalizedProductId = productId.trim();
 
-    if (normalizedBusinessId.isEmpty ||
-        normalizedProductId.isEmpty) {
+    if (normalizedBusinessId.isEmpty || normalizedProductId.isEmpty) {
       return null;
     }
 
-    final DocumentSnapshot<Map<String, dynamic>> snapshot =
-        await _products(normalizedBusinessId)
-            .doc(normalizedProductId)
-            .get();
+    final DocumentSnapshot<Map<String, dynamic>> snapshot = await _products(
+      normalizedBusinessId,
+    ).doc(normalizedProductId).get();
 
     if (!snapshot.exists || snapshot.data() == null) {
       return null;
     }
 
-    return _fromMap(
-      snapshot.data()!,
-      snapshot.id,
-      normalizedBusinessId,
-    );
+    return _fromMap(snapshot.data()!, snapshot.id, normalizedBusinessId);
   }
 
   // ---------------------------------------------------------------------------
   // Get All Products
   // ---------------------------------------------------------------------------
 
-  Future<List<ProductModel>> getProducts(
-    String businessId,
-  ) async {
+  Future<List<ProductModel>> getProducts(String businessId) async {
     final String normalizedBusinessId = businessId.trim();
 
     if (normalizedBusinessId.isEmpty) {
       return [];
     }
 
-    final QuerySnapshot<Map<String, dynamic>> snapshot =
-        await _products(normalizedBusinessId)
-            .orderBy('name')
-            .get();
+    final QuerySnapshot<Map<String, dynamic>> snapshot = await _products(
+      normalizedBusinessId,
+    ).orderBy('name').get();
 
     return snapshot.docs
         .map(
-          (document) => _fromMap(
-            document.data(),
-            document.id,
-            normalizedBusinessId,
-          ),
+          (document) =>
+              _fromMap(document.data(), document.id, normalizedBusinessId),
         )
         .toList();
   }
@@ -148,31 +122,23 @@ class ProductRepository extends BaseRepository {
   // Watch Products - Real Time
   // ---------------------------------------------------------------------------
 
-  Stream<List<ProductModel>> watchProducts(
-    String businessId,
-  ) {
+  Stream<List<ProductModel>> watchProducts(String businessId) {
     final String normalizedBusinessId = businessId.trim();
 
     if (normalizedBusinessId.isEmpty) {
       return const Stream<List<ProductModel>>.empty();
     }
 
-    return _products(normalizedBusinessId)
-        .orderBy('name')
-        .snapshots()
-        .map(
-          (snapshot) {
-            return snapshot.docs
-                .map(
-                  (document) => _fromMap(
-                    document.data(),
-                    document.id,
-                    normalizedBusinessId,
-                  ),
-                )
-                .toList();
-          },
-        );
+    return _products(normalizedBusinessId).orderBy('name').snapshots().map((
+      snapshot,
+    ) {
+      return snapshot.docs
+          .map(
+            (document) =>
+                _fromMap(document.data(), document.id, normalizedBusinessId),
+          )
+          .toList();
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -185,29 +151,21 @@ class ProductRepository extends BaseRepository {
   // product edit screen.
   // ---------------------------------------------------------------------------
 
-  Future<void> updateProduct(
-    ProductModel product,
-  ) async {
+  Future<void> updateProduct(ProductModel product) async {
     final String businessId = product.businessId.trim();
     final String productId = product.id.trim();
     final String name = product.name.trim();
 
     if (businessId.isEmpty) {
-      throw ArgumentError(
-        'Business ID cannot be empty.',
-      );
+      throw ArgumentError('Business ID cannot be empty.');
     }
 
     if (productId.isEmpty) {
-      throw ArgumentError(
-        'Product ID cannot be empty.',
-      );
+      throw ArgumentError('Product ID cannot be empty.');
     }
 
     if (name.isEmpty) {
-      throw ArgumentError(
-        'Product name cannot be empty.',
-      );
+      throw ArgumentError('Product name cannot be empty.');
     }
 
     _validateNumericValues(
@@ -217,16 +175,15 @@ class ProductRepository extends BaseRepository {
       minimumStock: product.minimumStock,
     );
 
-    final DocumentReference<Map<String, dynamic>> document =
-        _products(businessId).doc(productId);
+    final DocumentReference<Map<String, dynamic>> document = _products(
+      businessId,
+    ).doc(productId);
 
-    final DocumentSnapshot<Map<String, dynamic>> snapshot =
-        await document.get();
+    final DocumentSnapshot<Map<String, dynamic>> snapshot = await document
+        .get();
 
     if (!snapshot.exists || snapshot.data() == null) {
-      throw StateError(
-        'Product not found.',
-      );
+      throw StateError('Product not found.');
     }
 
     final ProductModel existingProduct = _fromMap(
@@ -258,37 +215,83 @@ class ProductRepository extends BaseRepository {
       updatedAt: DateTime.now(),
     );
 
-    await document.update(
-      _toMap(productToUpdate),
-    );
+    await document.update(_toMap(productToUpdate));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Update Purchase Price
+  //
+  // Purchase transactions update the product's latest purchase rate without
+  // overwriting any other product fields. This keeps inventory stock changes
+  // and product master data in sync while allowing the product listener to
+  // refresh the Products screen immediately.
+  // ---------------------------------------------------------------------------
+
+  Future<void> updatePurchasePrice({
+    required String businessId,
+    required String productId,
+    required double purchasePrice,
+  }) async {
+    final String normalizedBusinessId = businessId.trim();
+    final String normalizedProductId = productId.trim();
+
+    if (normalizedBusinessId.isEmpty) {
+      throw ArgumentError('Business ID cannot be empty.');
+    }
+
+    if (normalizedProductId.isEmpty) {
+      throw ArgumentError('Product ID cannot be empty.');
+    }
+
+    if (!purchasePrice.isFinite || purchasePrice < 0) {
+      throw ArgumentError(
+        'Purchase price must be a finite non-negative value.',
+      );
+    }
+
+    final DocumentReference<Map<String, dynamic>> document = _products(
+      normalizedBusinessId,
+    ).doc(normalizedProductId);
+
+    final DocumentSnapshot<Map<String, dynamic>> snapshot = await document
+        .get();
+
+    if (!snapshot.exists || snapshot.data() == null) {
+      throw StateError('Product not found.');
+    }
+
+    final Map<String, dynamic> data = snapshot.data()!;
+    final String storedBusinessId = (data['businessId'] ?? normalizedBusinessId)
+        .toString()
+        .trim();
+
+    if (storedBusinessId != normalizedBusinessId) {
+      throw StateError('Product does not belong to this business.');
+    }
+
+    await document.update({
+      'purchasePrice': purchasePrice,
+      'updatedAt': Timestamp.fromDate(DateTime.now()),
+    });
   }
 
   // ---------------------------------------------------------------------------
   // Delete Product
   // ---------------------------------------------------------------------------
 
-  Future<void> deleteProduct(
-    String businessId,
-    String productId,
-  ) async {
+  Future<void> deleteProduct(String businessId, String productId) async {
     final String normalizedBusinessId = businessId.trim();
     final String normalizedProductId = productId.trim();
 
     if (normalizedBusinessId.isEmpty) {
-      throw ArgumentError(
-        'Business ID cannot be empty.',
-      );
+      throw ArgumentError('Business ID cannot be empty.');
     }
 
     if (normalizedProductId.isEmpty) {
-      throw ArgumentError(
-        'Product ID cannot be empty.',
-      );
+      throw ArgumentError('Product ID cannot be empty.');
     }
 
-    await _products(normalizedBusinessId)
-        .doc(normalizedProductId)
-        .delete();
+    await _products(normalizedBusinessId).doc(normalizedProductId).delete();
   }
 
   // ---------------------------------------------------------------------------
@@ -304,24 +307,16 @@ class ProductRepository extends BaseRepository {
     final String normalizedProductId = productId.trim();
 
     if (normalizedBusinessId.isEmpty) {
-      throw ArgumentError(
-        'Business ID cannot be empty.',
-      );
+      throw ArgumentError('Business ID cannot be empty.');
     }
 
     if (normalizedProductId.isEmpty) {
-      throw ArgumentError(
-        'Product ID cannot be empty.',
-      );
+      throw ArgumentError('Product ID cannot be empty.');
     }
 
-    await _products(normalizedBusinessId)
-        .doc(normalizedProductId)
-        .update({
+    await _products(normalizedBusinessId).doc(normalizedProductId).update({
       'isActive': isActive,
-      'updatedAt': Timestamp.fromDate(
-        DateTime.now(),
-      ),
+      'updatedAt': Timestamp.fromDate(DateTime.now()),
     });
   }
 
@@ -344,15 +339,11 @@ class ProductRepository extends BaseRepository {
     final String normalizedProductId = productId.trim();
 
     if (normalizedBusinessId.isEmpty) {
-      throw ArgumentError(
-        'Business ID cannot be empty.',
-      );
+      throw ArgumentError('Business ID cannot be empty.');
     }
 
     if (normalizedProductId.isEmpty) {
-      throw ArgumentError(
-        'Product ID cannot be empty.',
-      );
+      throw ArgumentError('Product ID cannot be empty.');
     }
 
     if (!newStock.isFinite || newStock < 0) {
@@ -361,13 +352,9 @@ class ProductRepository extends BaseRepository {
       );
     }
 
-    await _products(normalizedBusinessId)
-        .doc(normalizedProductId)
-        .update({
+    await _products(normalizedBusinessId).doc(normalizedProductId).update({
       'currentStock': newStock,
-      'updatedAt': Timestamp.fromDate(
-        DateTime.now(),
-      ),
+      'updatedAt': Timestamp.fromDate(DateTime.now()),
     });
   }
 
@@ -382,64 +369,40 @@ class ProductRepository extends BaseRepository {
     String businessId,
     String query,
   ) async {
-    final List<ProductModel> products =
-        await getProducts(businessId);
+    final List<ProductModel> products = await getProducts(businessId);
 
-    final String searchText =
-        query.trim().toLowerCase();
+    final String searchText = query.trim().toLowerCase();
 
     if (searchText.isEmpty) {
       return products;
     }
 
-    return products.where(
-      (product) {
-        return product.name
-                .toLowerCase()
-                .contains(searchText) ||
-            product.category
-                .toLowerCase()
-                .contains(searchText) ||
-            product.unit
-                .toLowerCase()
-                .contains(searchText);
-      },
-    ).toList();
+    return products.where((product) {
+      return product.name.toLowerCase().contains(searchText) ||
+          product.category.toLowerCase().contains(searchText) ||
+          product.unit.toLowerCase().contains(searchText);
+    }).toList();
   }
 
   // ---------------------------------------------------------------------------
   // Get Active Products
   // ---------------------------------------------------------------------------
 
-  Future<List<ProductModel>> getActiveProducts(
-    String businessId,
-  ) async {
-    final List<ProductModel> products =
-        await getProducts(businessId);
+  Future<List<ProductModel>> getActiveProducts(String businessId) async {
+    final List<ProductModel> products = await getProducts(businessId);
 
-    return products
-        .where(
-          (product) => product.isActive,
-        )
-        .toList();
+    return products.where((product) => product.isActive).toList();
   }
 
   // ---------------------------------------------------------------------------
   // Get Low Stock Products
   // ---------------------------------------------------------------------------
 
-  Future<List<ProductModel>> getLowStockProducts(
-    String businessId,
-  ) async {
-    final List<ProductModel> products =
-        await getProducts(businessId);
+  Future<List<ProductModel>> getLowStockProducts(String businessId) async {
+    final List<ProductModel> products = await getProducts(businessId);
 
     return products
-        .where(
-          (product) =>
-              product.currentStock <=
-              product.minimumStock,
-        )
+        .where((product) => product.currentStock <= product.minimumStock)
         .toList();
   }
 
@@ -447,9 +410,7 @@ class ProductRepository extends BaseRepository {
   // Convert ProductModel -> Firestore Map
   // ---------------------------------------------------------------------------
 
-  Map<String, dynamic> _toMap(
-    ProductModel product,
-  ) {
+  Map<String, dynamic> _toMap(ProductModel product) {
     return {
       'id': product.id,
       'businessId': product.businessId,
@@ -461,12 +422,8 @@ class ProductRepository extends BaseRepository {
       'currentStock': product.currentStock,
       'minimumStock': product.minimumStock,
       'isActive': product.isActive,
-      'createdAt': Timestamp.fromDate(
-        product.createdAt,
-      ),
-      'updatedAt': Timestamp.fromDate(
-        product.updatedAt,
-      ),
+      'createdAt': Timestamp.fromDate(product.createdAt),
+      'updatedAt': Timestamp.fromDate(product.updatedAt),
     };
   }
 
@@ -481,28 +438,17 @@ class ProductRepository extends BaseRepository {
   ) {
     return ProductModel(
       id: data['id'] as String? ?? documentId,
-      businessId:
-          data['businessId'] as String? ?? businessId,
-      name:
-          data['name'] as String? ?? '',
-      category:
-          data['category'] as String? ?? '',
-      unit:
-          data['unit'] as String? ?? '',
-      purchasePrice:
-          _toDouble(data['purchasePrice']),
-      sellingPrice:
-          _toDouble(data['sellingPrice']),
-      currentStock:
-          _toDouble(data['currentStock']),
-      minimumStock:
-          _toDouble(data['minimumStock']),
-      isActive:
-          data['isActive'] as bool? ?? true,
-      createdAt:
-          dateFromFirestore(data['createdAt']),
-      updatedAt:
-          dateFromFirestore(data['updatedAt']),
+      businessId: data['businessId'] as String? ?? businessId,
+      name: data['name'] as String? ?? '',
+      category: data['category'] as String? ?? '',
+      unit: data['unit'] as String? ?? '',
+      purchasePrice: _toDouble(data['purchasePrice']),
+      sellingPrice: _toDouble(data['sellingPrice']),
+      currentStock: _toDouble(data['currentStock']),
+      minimumStock: _toDouble(data['minimumStock']),
+      isActive: data['isActive'] as bool? ?? true,
+      createdAt: dateFromFirestore(data['createdAt']),
+      updatedAt: dateFromFirestore(data['updatedAt']),
     );
   }
 
@@ -516,29 +462,25 @@ class ProductRepository extends BaseRepository {
     required double currentStock,
     required double minimumStock,
   }) {
-    if (!purchasePrice.isFinite ||
-        purchasePrice < 0) {
+    if (!purchasePrice.isFinite || purchasePrice < 0) {
       throw ArgumentError(
         'Purchase price must be a finite number greater than or equal to zero.',
       );
     }
 
-    if (!sellingPrice.isFinite ||
-        sellingPrice < 0) {
+    if (!sellingPrice.isFinite || sellingPrice < 0) {
       throw ArgumentError(
         'Selling price must be a finite number greater than or equal to zero.',
       );
     }
 
-    if (!currentStock.isFinite ||
-        currentStock < 0) {
+    if (!currentStock.isFinite || currentStock < 0) {
       throw ArgumentError(
         'Current stock must be a finite number greater than or equal to zero.',
       );
     }
 
-    if (!minimumStock.isFinite ||
-        minimumStock < 0) {
+    if (!minimumStock.isFinite || minimumStock < 0) {
       throw ArgumentError(
         'Minimum stock must be a finite number greater than or equal to zero.',
       );
@@ -549,9 +491,7 @@ class ProductRepository extends BaseRepository {
   // Safe Number Conversion
   // ---------------------------------------------------------------------------
 
-  double _toDouble(
-    dynamic value,
-  ) {
+  double _toDouble(dynamic value) {
     if (value is num) {
       final double result = value.toDouble();
 
@@ -563,11 +503,9 @@ class ProductRepository extends BaseRepository {
     }
 
     if (value is String) {
-      final double? result =
-          double.tryParse(value);
+      final double? result = double.tryParse(value);
 
-      if (result != null &&
-          result.isFinite) {
+      if (result != null && result.isFinite) {
         return result;
       }
     }

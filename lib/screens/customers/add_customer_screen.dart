@@ -8,17 +8,12 @@ class AddCustomerScreen extends StatefulWidget {
   final String businessId;
   final CustomerModel? customer;
 
-  const AddCustomerScreen({
-    super.key,
-    required this.businessId,
-    this.customer,
-  });
+  const AddCustomerScreen({super.key, required this.businessId, this.customer});
 
   bool get isEditMode => customer != null;
 
   @override
-  State<AddCustomerScreen> createState() =>
-      _AddCustomerScreenState();
+  State<AddCustomerScreen> createState() => _AddCustomerScreenState();
 }
 
 class _AddCustomerScreenState extends State<AddCustomerScreen> {
@@ -42,33 +37,21 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
 
     final customer = widget.customer;
 
-    _nameController = TextEditingController(
-      text: customer?.name ?? '',
-    );
+    _nameController = TextEditingController(text: customer?.name ?? '');
 
     _ownerNameController = TextEditingController(
       text: customer?.ownerName ?? '',
     );
 
-    _mobileController = TextEditingController(
-      text: customer?.mobile ?? '',
-    );
+    _mobileController = TextEditingController(text: customer?.mobile ?? '');
 
-    _emailController = TextEditingController(
-      text: customer?.email ?? '',
-    );
+    _emailController = TextEditingController(text: customer?.email ?? '');
 
-    _addressController = TextEditingController(
-      text: customer?.address ?? '',
-    );
+    _addressController = TextEditingController(text: customer?.address ?? '');
 
-    _gstController = TextEditingController(
-      text: customer?.gstNumber ?? '',
-    );
+    _gstController = TextEditingController(text: customer?.gstNumber ?? '');
 
-    _notesController = TextEditingController(
-      text: customer?.notes ?? '',
-    );
+    _notesController = TextEditingController(text: customer?.notes ?? '');
   }
 
   @override
@@ -100,10 +83,7 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
     final businessId = widget.businessId.trim();
 
     if (businessId.isEmpty) {
-      _showMessage(
-        'Business information is missing.',
-        isError: true,
-      );
+      _showMessage('Business information is missing.', isError: true);
       return;
     }
 
@@ -130,9 +110,7 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
             : 'Customer added successfully.',
       );
 
-      await Future.delayed(
-        const Duration(milliseconds: 400),
-      );
+      await Future.delayed(const Duration(milliseconds: 400));
 
       if (!mounted) {
         return;
@@ -144,10 +122,7 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
         return;
       }
 
-      _showMessage(
-        'Unable to save customer: ${_cleanError(e)}',
-        isError: true,
-      );
+      _showMessage('Unable to save customer: ${_cleanError(e)}', isError: true);
     } finally {
       if (mounted) {
         setState(() {
@@ -186,8 +161,7 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
       throw StateError('Customer ID is missing.');
     }
 
-    final existingBusinessId =
-        existingCustomer.businessId.trim();
+    final existingBusinessId = existingCustomer.businessId.trim();
 
     final businessId = existingBusinessId.isNotEmpty
         ? existingBusinessId
@@ -211,9 +185,7 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
       updatedAt: now,
     );
 
-    await _customerRepository.updateCustomer(
-      updatedCustomer,
-    );
+    await _customerRepository.updateCustomer(updatedCustomer);
   }
 
   String _cleanError(Object error) {
@@ -226,10 +198,7 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
     return message;
   }
 
-  void _showMessage(
-    String message, {
-    bool isError = false,
-  }) {
+  void _showMessage(String message, {bool isError = false}) {
     if (!mounted) {
       return;
     }
@@ -239,8 +208,7 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
       ..showSnackBar(
         SnackBar(
           content: Text(message),
-          backgroundColor:
-              isError ? AppColors.danger : AppColors.success,
+          backgroundColor: isError ? AppColors.danger : AppColors.success,
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -250,11 +218,7 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          widget.isEditMode
-              ? 'Edit Customer'
-              : 'Add Customer',
-        ),
+        title: Text(widget.isEditMode ? 'Edit Customer' : 'Add Customer'),
       ),
       body: SafeArea(
         child: LayoutBuilder(
@@ -263,9 +227,7 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
 
             return Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  maxWidth: 1000,
-                ),
+                constraints: const BoxConstraints(maxWidth: 1000),
                 child: SingleChildScrollView(
                   padding: EdgeInsets.symmetric(
                     horizontal: isWide ? 32 : 16,
@@ -274,25 +236,18 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
                   child: Form(
                     key: _formKey,
                     child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildPageHeader(),
                         const SizedBox(height: 20),
 
-                        _buildBasicInformationCard(
-                          isWide,
-                        ),
+                        _buildBasicInformationCard(isWide),
                         const SizedBox(height: 16),
 
-                        _buildContactInformationCard(
-                          isWide,
-                        ),
+                        _buildContactInformationCard(isWide),
                         const SizedBox(height: 16),
 
-                        _buildBusinessInformationCard(
-                          isWide,
-                        ),
+                        _buildBusinessInformationCard(isWide),
                         const SizedBox(height: 16),
 
                         _buildNotesCard(),
@@ -318,10 +273,7 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [
-            AppColors.primary,
-            AppColors.secondary,
-          ],
+          colors: [AppColors.primary, AppColors.secondary],
         ),
         borderRadius: BorderRadius.circular(20),
       ),
@@ -331,9 +283,7 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
             width: 52,
             height: 52,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(
-                alpha: 0.16,
-              ),
+              color: Colors.white.withValues(alpha: 0.16),
               borderRadius: BorderRadius.circular(15),
             ),
             child: const Icon(
@@ -345,13 +295,10 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
           const SizedBox(width: 15),
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  widget.isEditMode
-                      ? 'Update Customer'
-                      : 'Add New Customer',
+                  widget.isEditMode ? 'Update Customer' : 'Add New Customer',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 20,
@@ -364,9 +311,7 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
                       ? 'Update customer information and contact details'
                       : 'Add a customer to manage sales and payments',
                   style: TextStyle(
-                    color: Colors.white.withValues(
-                      alpha: 0.82,
-                    ),
+                    color: Colors.white.withValues(alpha: 0.82),
                     fontSize: 13,
                   ),
                 ),
@@ -382,42 +327,39 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
     return _FormCard(
       title: 'Basic Information',
       icon: Icons.person_outline_rounded,
-      child: _responsiveFields(
-        isWide,
-        [
-          _buildTextField(
-            controller: _nameController,
-            label: 'Customer Name',
-            hint: 'e.g. Taj Hotel',
-            icon: Icons.business_outlined,
-            required: true,
-            validator: (value) {
-              final name = value?.trim() ?? '';
+      child: _responsiveFields(isWide, [
+        _buildTextField(
+          controller: _nameController,
+          label: 'Customer Name',
+          hint: 'e.g. Taj Hotel',
+          icon: Icons.business_outlined,
+          required: true,
+          validator: (value) {
+            final name = value?.trim() ?? '';
 
-              if (name.isEmpty) {
-                return 'Please enter customer name';
-              }
+            if (name.isEmpty) {
+              return 'Please enter customer name';
+            }
 
-              if (name.length < 2) {
-                return 'Name is too short';
-              }
+            if (name.length < 2) {
+              return 'Name is too short';
+            }
 
-              if (name.length > 100) {
-                return 'Name is too long';
-              }
+            if (name.length > 100) {
+              return 'Name is too long';
+            }
 
-              return null;
-            },
-          ),
-          _buildTextField(
-            controller: _ownerNameController,
-            label: 'Owner Name',
-            hint: 'e.g. Rahul Sharma',
-            icon: Icons.person_outline_rounded,
-            maxLength: 100,
-          ),
-        ],
-      ),
+            return null;
+          },
+        ),
+        _buildTextField(
+          controller: _ownerNameController,
+          label: 'Owner Name',
+          hint: 'e.g. Rahul Sharma',
+          icon: Icons.person_outline_rounded,
+          maxLength: 100,
+        ),
+      ]),
     );
   }
 
@@ -425,71 +367,62 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
     return _FormCard(
       title: 'Contact Information',
       icon: Icons.contact_phone_outlined,
-      child: _responsiveFields(
-        isWide,
-        [
-          _buildTextField(
-            controller: _mobileController,
-            label: 'Mobile Number',
-            hint: 'Enter mobile number',
-            icon: Icons.phone_outlined,
-            keyboardType: TextInputType.phone,
-            maxLength: 15,
-            validator: (value) {
-              final mobile = value?.trim() ?? '';
+      child: _responsiveFields(isWide, [
+        _buildTextField(
+          controller: _mobileController,
+          label: 'Mobile Number',
+          hint: 'Enter mobile number',
+          icon: Icons.phone_outlined,
+          keyboardType: TextInputType.phone,
+          maxLength: 15,
+          validator: (value) {
+            final mobile = value?.trim() ?? '';
 
-              if (mobile.isEmpty) {
-                return null;
-              }
-
-              final digits = mobile.replaceAll(
-                RegExp(r'\D'),
-                '',
-              );
-
-              if (digits.length < 10 ||
-                  digits.length > 15) {
-                return 'Enter a valid mobile number';
-              }
-
+            if (mobile.isEmpty) {
               return null;
-            },
-          ),
-          _buildTextField(
-            controller: _emailController,
-            label: 'Email Address',
-            hint: 'customer@example.com',
-            icon: Icons.email_outlined,
-            keyboardType: TextInputType.emailAddress,
-            maxLength: 150,
-            validator: (value) {
-              final email = value?.trim() ?? '';
+            }
 
-              if (email.isEmpty) {
-                return null;
-              }
+            final digits = mobile.replaceAll(RegExp(r'\D'), '');
 
-              final emailRegex = RegExp(
-                r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
-              );
+            if (digits.length < 10 || digits.length > 15) {
+              return 'Enter a valid mobile number';
+            }
 
-              if (!emailRegex.hasMatch(email)) {
-                return 'Enter a valid email address';
-              }
+            return null;
+          },
+        ),
+        _buildTextField(
+          controller: _emailController,
+          label: 'Email Address',
+          hint: 'customer@example.com',
+          icon: Icons.email_outlined,
+          keyboardType: TextInputType.emailAddress,
+          maxLength: 150,
+          validator: (value) {
+            final email = value?.trim() ?? '';
 
+            if (email.isEmpty) {
               return null;
-            },
-          ),
-          _buildTextField(
-            controller: _addressController,
-            label: 'Address',
-            hint: 'Enter complete address',
-            icon: Icons.location_on_outlined,
-            maxLines: 3,
-            maxLength: 300,
-          ),
-        ],
-      ),
+            }
+
+            final emailRegex = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+
+            if (!emailRegex.hasMatch(email)) {
+              return 'Enter a valid email address';
+            }
+
+            return null;
+          },
+        ),
+        _buildTextField(
+          controller: _addressController,
+          label: 'Address',
+          hint: 'Enter complete address',
+          icon: Icons.location_on_outlined,
+          maxLines: 3,
+          maxLength: 300,
+        ),
+      ]),
     );
   }
 
@@ -497,41 +430,35 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
     return _FormCard(
       title: 'Business Information',
       icon: Icons.receipt_long_outlined,
-      child: _responsiveFields(
-        isWide,
-        [
-          _buildTextField(
-            controller: _gstController,
-            label: 'GST Number',
-            hint: 'Optional',
-            icon: Icons.receipt_long_rounded,
-            textCapitalization:
-                TextCapitalization.characters,
-            maxLength: 15,
-            validator: (value) {
-              final gst = value?.trim().toUpperCase() ?? '';
+      child: _responsiveFields(isWide, [
+        _buildTextField(
+          controller: _gstController,
+          label: 'GST Number',
+          hint: 'Optional',
+          icon: Icons.receipt_long_rounded,
+          textCapitalization: TextCapitalization.characters,
+          maxLength: 15,
+          validator: (value) {
+            final gst = value?.trim().toUpperCase() ?? '';
 
-              if (gst.isEmpty) {
-                return null;
-              }
-
-              if (gst.length != 15) {
-                return 'GST number should contain 15 characters';
-              }
-
-              final gstRegex = RegExp(
-                r'^[0-9A-Z]{15}$',
-              );
-
-              if (!gstRegex.hasMatch(gst)) {
-                return 'Enter a valid GST number';
-              }
-
+            if (gst.isEmpty) {
               return null;
-            },
-          ),
-        ],
-      ),
+            }
+
+            if (gst.length != 15) {
+              return 'GST number should contain 15 characters';
+            }
+
+            final gstRegex = RegExp(r'^[0-9A-Z]{15}$');
+
+            if (!gstRegex.hasMatch(gst)) {
+              return 'Enter a valid GST number';
+            }
+
+            return null;
+          },
+        ),
+      ]),
     );
   }
 
@@ -542,8 +469,7 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
       child: _buildTextField(
         controller: _notesController,
         label: 'Additional Notes',
-        hint:
-            'Add any additional information about this customer',
+        hint: 'Add any additional information about this customer',
         icon: Icons.notes_outlined,
         maxLines: 5,
         maxLength: 500,
@@ -575,24 +501,20 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
           _isSaving
               ? 'Saving...'
               : widget.isEditMode
-                  ? 'Update Customer'
-                  : 'Save Customer',
+              ? 'Update Customer'
+              : 'Save Customer',
         ),
       ),
     );
   }
 
-  Widget _responsiveFields(
-    bool isWide,
-    List<Widget> fields,
-  ) {
+  Widget _responsiveFields(bool isWide, List<Widget> fields) {
     if (!isWide) {
       return Column(
         children: [
           for (int i = 0; i < fields.length; i++) ...[
             fields[i],
-            if (i < fields.length - 1)
-              const SizedBox(height: 16),
+            if (i < fields.length - 1) const SizedBox(height: 16),
           ],
         ],
       );
@@ -605,9 +527,7 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
         final isSingleField = fields.length == 1;
 
         return SizedBox(
-          width: isSingleField
-              ? double.infinity
-              : 450,
+          width: isSingleField ? double.infinity : 450,
           child: field,
         );
       }).toList(),
@@ -621,8 +541,7 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
     required IconData icon,
     bool required = false,
     TextInputType? keyboardType,
-    TextCapitalization textCapitalization =
-        TextCapitalization.none,
+    TextCapitalization textCapitalization = TextCapitalization.none,
     int maxLines = 1,
     int? maxLength,
     String? Function(String?)? validator,
@@ -662,8 +581,7 @@ class _FormCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(18),
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
@@ -671,17 +589,10 @@ class _FormCard extends StatelessWidget {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(
-                      alpha: 0.10,
-                    ),
-                    borderRadius:
-                        BorderRadius.circular(11),
+                    color: AppColors.primary.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(11),
                   ),
-                  child: Icon(
-                    icon,
-                    color: AppColors.primary,
-                    size: 21,
-                  ),
+                  child: Icon(icon, color: AppColors.primary, size: 21),
                 ),
                 const SizedBox(width: 11),
                 Text(

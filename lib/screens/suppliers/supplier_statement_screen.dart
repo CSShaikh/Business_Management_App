@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import '../../core/widgets/app_date_picker.dart';
 
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
@@ -8,6 +9,7 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/app_number_format.dart';
 import '../../models/purchase_model.dart';
 import '../../models/supplier_model.dart';
 import '../../providers/business_provider.dart';
@@ -77,15 +79,17 @@ class _SupplierStatementScreenState extends State<SupplierStatementScreen> {
   double _paid(List<PurchaseModel> list) => list.fold(0, (v, p) => v + p.paidAmount);
   double _pending(List<PurchaseModel> list) => list.fold(0, (v, p) => v + (p.total - p.paidAmount).clamp(0, double.infinity));
 
-  String _money(double value) => '₹${value.toStringAsFixed(2)}';
+  String _money(double value) => AppNumberFormat.amount(value);
   String _date(DateTime d) => '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
   Future<void> _pickRange() async {
     final now = DateTime.now();
     final initialStart = _startDate ?? DateTime(now.year, now.month, now.day);
     final initialEnd = _endDate ?? initialStart;
-    final range = await showDateRangePicker(
+    final range = await AppDatePicker.showDateRangePicker(
       context: context,
+      
+      initialEntryMode: DatePickerEntryMode.calendar,
       firstDate: DateTime(2000),
       lastDate: DateTime(now.year + 2, 12, 31),
       initialDateRange: DateTimeRange(

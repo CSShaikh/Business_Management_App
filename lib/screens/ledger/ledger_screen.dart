@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import '../../core/widgets/app_date_picker.dart';
 
 import '../../core/services/customer_statement_pdf_service.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/app_number_format.dart';
 import '../../models/business_model.dart';
 import '../../models/customer_model.dart';
 import '../../models/ledger_transaction_model.dart';
@@ -314,8 +316,10 @@ class _LedgerScreenState extends State<LedgerScreen> {
         now;
 
     final DateTime? selected =
-        await showDatePicker(
+        await AppDatePicker.showDatePicker(
       context: context,
+      
+      initialEntryMode: DatePickerEntryMode.calendar,
       firstDate: DateTime(2020),
       lastDate: DateTime(now.year + 5),
       initialDate: initialDate.isAfter(now)
@@ -354,8 +358,10 @@ class _LedgerScreenState extends State<LedgerScreen> {
         now;
 
     final DateTime? selected =
-        await showDatePicker(
+        await AppDatePicker.showDatePicker(
       context: context,
+      
+      initialEntryMode: DatePickerEntryMode.calendar,
       firstDate: DateTime(2020),
       lastDate: DateTime(now.year + 5),
       initialDate: initialDate.isAfter(now)
@@ -2257,14 +2263,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
   String _formatCurrency(
     double value,
   ) {
-    final NumberFormat format =
-        NumberFormat.currency(
-      locale: 'en_IN',
-      symbol: '₹',
-      decimalDigits: 2,
-    );
-
-    return format.format(value);
+    return AppNumberFormat.amount(value);
   }
 
   String _formatDate(
