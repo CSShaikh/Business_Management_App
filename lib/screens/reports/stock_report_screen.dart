@@ -1,15 +1,13 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-
-import '../../core/widgets/app_date_picker.dart';
-
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:public_file_saver/public_file_saver.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/widgets/app_date_picker.dart';
 import '../../models/business_model.dart';
 import '../../models/product_model.dart';
 import '../../repositories/business_repository.dart';
@@ -688,7 +686,7 @@ class _StockReportScreenState extends State<StockReportScreen> {
         crossAxisCount: isDesktop ? 4 : 2,
         crossAxisSpacing: 14,
         mainAxisSpacing: 14,
-        childAspectRatio: isDesktop ? 1.85 : 1.48,
+        mainAxisExtent: 180,
       ),
       itemBuilder: (context, index) {
         return _SummaryCard(item: items[index]);
