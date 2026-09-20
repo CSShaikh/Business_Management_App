@@ -1,6 +1,11 @@
+import 'dart:typed_data';
+
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/storage/local_logo_storage.dart';
+import '../../core/storage/local_signature_storage.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/business_model.dart';
 import '../../repositories/auth_repository.dart';
@@ -26,6 +31,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isSavingBusiness = false;
 
   BusinessModel? _business;
+  Uint8List? _businessLogoBytes;
   String? _businessError;
 
   User? get _user => _authRepository.currentUser;
@@ -106,12 +112,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final BusinessModel? business = await _businessRepository
           .getBusinessForOwner(refreshedUser.uid);
 
+      Uint8List? localLogo;
+      if (business != null && business.id.trim().isNotEmpty) {
+        try {
+          localLogo = await LocalLogoStorage.read(
+            businessId: business.id.trim(),
+          );
+        } catch (_) {
+          localLogo = null;
+        }
+      }
+
       if (!mounted) {
         return;
       }
 
       setState(() {
         _business = business;
+        _businessLogoBytes = localLogo;
         _isLoadingBusiness = false;
       });
     } on FirebaseException catch (e) {
@@ -416,58 +434,60 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ],
       ),
-      body: AppResponsivePage(child: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: _loadBusiness,
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.fromLTRB(
-              isWide ? 28 : 16,
-              20,
-              isWide ? 28 : 16,
-              28,
-            ),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 900),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _buildProfileHeader(theme, colors),
-                    const SizedBox(height: 20),
-                    _buildBusinessSummary(theme, colors),
-                    const SizedBox(height: 20),
-                    _buildAccountInformation(theme, colors),
-                    const SizedBox(height: 20),
-                    _buildBusinessManagement(theme, colors),
-                    const SizedBox(height: 20),
-                    _buildSecuritySection(theme, colors),
-                    const SizedBox(height: 20),
-                    _buildLogoutCard(theme, colors),
-                    const SizedBox(height: 26),
-                    Text(
-                      'Business Management App',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colors.onSurfaceVariant,
-                        fontWeight: FontWeight.w600,
+      body: AppResponsivePage(
+        child: SafeArea(
+          child: RefreshIndicator(
+            onRefresh: _loadBusiness,
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: EdgeInsets.fromLTRB(
+                isWide ? 28 : 16,
+                20,
+                isWide ? 28 : 16,
+                28,
+              ),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 900),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _buildProfileHeader(theme, colors),
+                      const SizedBox(height: 20),
+                      _buildBusinessSummary(theme, colors),
+                      const SizedBox(height: 20),
+                      _buildAccountInformation(theme, colors),
+                      const SizedBox(height: 20),
+                      _buildBusinessManagement(theme, colors),
+                      const SizedBox(height: 20),
+                      _buildSecuritySection(theme, colors),
+                      const SizedBox(height: 20),
+                      _buildLogoutCard(theme, colors),
+                      const SizedBox(height: 26),
+                      Text(
+                        'Business Management App',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Manage your business securely and efficiently.',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colors.onSurfaceVariant,
+                      const SizedBox(height: 6),
+                      Text(
+                        'Manage your business securely and efficiently.',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
         ),
-      )),
+      ),
     );
   }
 
@@ -513,11 +533,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ],
               ),
-              child: const Icon(
-                Icons.business_center_rounded,
-                color: Colors.white,
-                size: 38,
-              ),
+              child:
+                  _businessLogoBytes != null && _businessLogoBytes!.isNotEmpty
+                  ? ClipOval(
+                      child: Image.memory(
+                        _businessLogoBytes!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => const Icon(
+                          Icons.business_center_rounded,
+                          color: Colors.white,
+                          size: 38,
+                        ),
+                      ),
+                    )
+                  : const Icon(
+                      Icons.business_center_rounded,
+                      color: Colors.white,
+                      size: 38,
+                    ),
             ),
             const SizedBox(width: 18),
             Expanded(
@@ -933,6 +966,13 @@ class _BusinessProfileSheetState extends State<_BusinessProfileSheet> {
 
   late String _businessType;
 
+  Uint8List? _logoBytes;
+  bool _logoChanged = false;
+  bool _logoRemoved = false;
+  Uint8List? _signatureBytes;
+  bool _signatureChanged = false;
+  bool _signatureRemoved = false;
+
   final List<String> _businessTypes = [
     'Retail',
     'Wholesale',
@@ -969,6 +1009,130 @@ class _BusinessProfileSheetState extends State<_BusinessProfileSheet> {
     _businessType = _businessTypes.contains(existingType)
         ? existingType
         : 'Other';
+
+    _loadLocalLogo();
+  }
+
+  Future<void> _loadLocalLogo() async {
+    final String businessId = widget.business.id.trim();
+    if (businessId.isEmpty) {
+      return;
+    }
+
+    try {
+      final Uint8List? bytes = await LocalLogoStorage.read(
+        businessId: businessId,
+      );
+
+      if (!mounted || bytes == null || bytes.isEmpty) {
+        return;
+      }
+
+      setState(() {
+        _logoBytes = bytes;
+      });
+    } catch (_) {
+      // A missing/corrupt local logo should never block profile editing.
+    }
+
+    try {
+      final Uint8List? bytes = await LocalSignatureStorage.read(
+        businessId: businessId,
+      );
+
+      if (!mounted || bytes == null || bytes.isEmpty) {
+        return;
+      }
+
+      setState(() {
+        _signatureBytes = bytes;
+      });
+    } catch (_) {
+      // A missing/corrupt signature should never block profile editing.
+    }
+  }
+
+  Future<void> _pickLogo() async {
+    try {
+      final PlatformFile? file = await FilePicker.pickFile(
+        type: FileType.image,
+      );
+
+      if (!mounted || file == null) {
+        return;
+      }
+
+      final Uint8List bytes = await file.readAsBytes();
+
+      if (bytes.isEmpty) {
+        _showLocalLogoMessage('Could not read the selected logo.');
+        return;
+      }
+
+      setState(() {
+        _logoBytes = bytes;
+        _logoChanged = true;
+        _logoRemoved = false;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      _showLocalLogoMessage('Could not select the logo. Please try again.');
+    }
+  }
+
+  void _removeLogo() {
+    setState(() {
+      _logoBytes = null;
+      _logoChanged = true;
+      _logoRemoved = true;
+    });
+  }
+
+  Future<void> _pickSignature() async {
+    try {
+      final PlatformFile? file = await FilePicker.pickFile(
+        type: FileType.image,
+      );
+
+      if (!mounted || file == null) {
+        return;
+      }
+
+      final Uint8List bytes = await file.readAsBytes();
+      if (bytes.isEmpty) {
+        _showLocalLogoMessage('Could not read the selected signature.');
+        return;
+      }
+
+      setState(() {
+        _signatureBytes = bytes;
+        _signatureChanged = true;
+        _signatureRemoved = false;
+      });
+    } catch (_) {
+      if (mounted) {
+        _showLocalLogoMessage(
+          'Could not select the signature. Please try again.',
+        );
+      }
+    }
+  }
+
+  void _removeSignature() {
+    setState(() {
+      _signatureBytes = null;
+      _signatureChanged = true;
+      _signatureRemoved = true;
+    });
+  }
+
+  void _showLocalLogoMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -987,6 +1151,39 @@ class _BusinessProfileSheetState extends State<_BusinessProfileSheet> {
       return;
     }
 
+    final String businessId = widget.business.id.trim();
+
+    try {
+      if (_logoChanged && businessId.isNotEmpty) {
+        if (_logoRemoved || _logoBytes == null || _logoBytes!.isEmpty) {
+          await LocalLogoStorage.delete(businessId: businessId);
+        } else {
+          await LocalLogoStorage.save(
+            businessId: businessId,
+            bytes: _logoBytes!,
+          );
+        }
+      }
+
+      if (_signatureChanged && businessId.isNotEmpty) {
+        if (_signatureRemoved ||
+            _signatureBytes == null ||
+            _signatureBytes!.isEmpty) {
+          await LocalSignatureStorage.delete(businessId: businessId);
+        } else {
+          await LocalSignatureStorage.save(
+            businessId: businessId,
+            bytes: _signatureBytes!,
+          );
+        }
+      }
+    } catch (_) {
+      _showLocalLogoMessage(
+        'Logo could not be saved on this device. Other changes were not saved.',
+      );
+      return;
+    }
+
     final BusinessModel updated = BusinessModel(
       id: widget.business.id,
       ownerId: widget.business.ownerId,
@@ -997,7 +1194,8 @@ class _BusinessProfileSheetState extends State<_BusinessProfileSheet> {
       gstNumber: _gstController.text.trim(),
       ownerName: _ownerNameController.text.trim(),
       businessType: _businessType,
-      logoUrl: widget.business.logoUrl,
+      // Logo is stored locally on the current device/computer.
+      logoUrl: '',
       createdAt: widget.business.createdAt,
       updatedAt: DateTime.now(),
     );
@@ -1077,6 +1275,171 @@ class _BusinessProfileSheetState extends State<_BusinessProfileSheet> {
                         ),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 20),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: colors.surfaceContainerHighest.withValues(
+                        alpha: 0.45,
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: colors.outlineVariant),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 82,
+                          height: 82,
+                          clipBehavior: Clip.antiAlias,
+                          decoration: BoxDecoration(
+                            color: colors.surface,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: colors.outlineVariant),
+                          ),
+                          child: _logoBytes == null
+                              ? Icon(
+                                  Icons.business_rounded,
+                                  size: 40,
+                                  color: colors.primary,
+                                )
+                              : Image.memory(_logoBytes!, fit: BoxFit.contain),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Business Logo',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Saved only on this device/computer and used on your bills.',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: colors.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  OutlinedButton.icon(
+                                    onPressed: _pickLogo,
+                                    icon: const Icon(
+                                      Icons.upload_rounded,
+                                      size: 18,
+                                    ),
+                                    label: Text(
+                                      _logoBytes == null
+                                          ? 'Add Logo'
+                                          : 'Change Logo',
+                                    ),
+                                  ),
+                                  if (_logoBytes != null)
+                                    TextButton.icon(
+                                      onPressed: _removeLogo,
+                                      icon: const Icon(
+                                        Icons.delete_outline_rounded,
+                                        size: 18,
+                                      ),
+                                      label: const Text('Remove'),
+                                    ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: colors.surfaceContainerHighest.withValues(
+                        alpha: 0.45,
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: colors.outlineVariant),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 82,
+                          height: 62,
+                          clipBehavior: Clip.antiAlias,
+                          decoration: BoxDecoration(
+                            color: colors.surface,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: colors.outlineVariant),
+                          ),
+                          child: _signatureBytes == null
+                              ? Icon(
+                                  Icons.draw_outlined,
+                                  size: 34,
+                                  color: colors.primary,
+                                )
+                              : Image.memory(
+                                  _signatureBytes!,
+                                  fit: BoxFit.contain,
+                                ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Authorised Signature',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Saved on this device/computer and used on bills.',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: colors.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  OutlinedButton.icon(
+                                    onPressed: _pickSignature,
+                                    icon: const Icon(
+                                      Icons.draw_rounded,
+                                      size: 18,
+                                    ),
+                                    label: Text(
+                                      _signatureBytes == null
+                                          ? 'Add Signature'
+                                          : 'Change Signature',
+                                    ),
+                                  ),
+                                  if (_signatureBytes != null)
+                                    TextButton.icon(
+                                      onPressed: _removeSignature,
+                                      icon: const Icon(
+                                        Icons.delete_outline_rounded,
+                                        size: 18,
+                                      ),
+                                      label: const Text('Remove'),
+                                    ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 24),
                   _buildTextField(

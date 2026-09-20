@@ -1,10 +1,11 @@
 import 'dart:typed_data';
 
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 
+import '../../core/storage/local_logo_storage.dart';
+import '../../core/storage/local_signature_storage.dart';
 import '../../models/business_model.dart';
 import '../../repositories/business_repository.dart';
 import '../dashboard/dashboard_screen.dart';
@@ -37,9 +38,9 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
 
   bool _isLoading = false;
 
-  XFile? _logoFile;
-  Uint8List? _logoPreviewBytes;
-  bool _isUploadingLogo = false;
+  Uint8List? _logoBytes;
+  String _logoFileName = '';
+  Uint8List? _signatureBytes;
 
   final List<String> _businessTypes = const [
     'Spices & Food',
@@ -89,66 +90,94 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
     super.dispose();
   }
 
-  Future<void> _pickBusinessLogo() async {
-    if (_isLoading || _isUploadingLogo) return;
+  // ===========================================================================
+  // LOCAL BUSINESS LOGO
+  // ===========================================================================
+
+  Future<void> _pickLogo() async {
+    if (_isLoading) {
+      return;
+    }
 
     try {
-      final ImagePicker picker = ImagePicker();
-      final XFile? file = await picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 88,
-        maxWidth: 1600,
-        maxHeight: 1600,
+      final PlatformFile? file = await FilePicker.pickFile(
+        type: FileType.image,
       );
 
-      if (file == null) return;
+      if (!mounted || file == null) {
+        return;
+      }
 
       final Uint8List bytes = await file.readAsBytes();
-      if (bytes.isEmpty) return;
 
-      if (bytes.length > 5 * 1024 * 1024) {
-        _showMessage('Logo image should be under 5 MB.', isError: true);
+      if (bytes.isEmpty) {
+        _showMessage('Could not read the selected logo.', isError: true);
         return;
       }
 
       setState(() {
-        _logoFile = file;
-        _logoPreviewBytes = bytes;
+        _logoBytes = bytes;
+        _logoFileName = file.name;
       });
-    } catch (e) {
-      _showMessage('Unable to select logo image.', isError: true);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      _showMessage(
+        'Could not select the logo. Please try again.',
+        isError: true,
+      );
     }
   }
 
-  Future<String> _uploadBusinessLogo(String ownerId) async {
-    if (_logoFile == null || _logoPreviewBytes == null) return '';
-
-    setState(() => _isUploadingLogo = true);
-    try {
-      final String extension = _logoFile!.name.toLowerCase().contains('.')
-          ? _logoFile!.name.split('.').last.toLowerCase()
-          : 'jpg';
-      final String contentType = extension == 'png'
-          ? 'image/png'
-          : extension == 'webp'
-              ? 'image/webp'
-              : 'image/jpeg';
-
-      final Reference ref = FirebaseStorage.instance
-          .ref()
-          .child('business_logos')
-          .child(ownerId)
-          .child('logo_${DateTime.now().millisecondsSinceEpoch}.$extension');
-
-      final UploadTask task = ref.putData(
-        _logoPreviewBytes!,
-        SettableMetadata(contentType: contentType),
-      );
-      await task;
-      return await ref.getDownloadURL();
-    } finally {
-      if (mounted) setState(() => _isUploadingLogo = false);
+  void _removeLogo() {
+    if (_isLoading) {
+      return;
     }
+
+    setState(() {
+      _logoBytes = null;
+      _logoFileName = '';
+    });
+  }
+
+  Future<void> _pickSignature() async {
+    if (_isLoading) {
+      return;
+    }
+
+    try {
+      final PlatformFile? file = await FilePicker.pickFile(
+        type: FileType.image,
+      );
+
+      if (!mounted || file == null) {
+        return;
+      }
+
+      final Uint8List bytes = await file.readAsBytes();
+      if (bytes.isEmpty) {
+        _showMessage('Could not read the selected signature.', isError: true);
+        return;
+      }
+
+      setState(() => _signatureBytes = bytes);
+    } catch (_) {
+      if (mounted) {
+        _showMessage(
+          'Could not select the signature. Please try again.',
+          isError: true,
+        );
+      }
+    }
+  }
+
+  void _removeSignature() {
+    if (_isLoading) {
+      return;
+    }
+    setState(() => _signatureBytes = null);
   }
 
   // ===========================================================================
@@ -212,14 +241,6 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
       }
 
       // -----------------------------------------------------------------------
-      // Upload optional business logo before creating the business document.
-      // -----------------------------------------------------------------------
-      String logoUrl = '';
-      if (_logoPreviewBytes != null) {
-        logoUrl = await _uploadBusinessLogo(user.uid);
-      }
-
-      // -----------------------------------------------------------------------
       // Create business model.
       //
       // The repository generates the actual Firestore document ID.
@@ -237,7 +258,6 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
         gstNumber: _gstController.text.trim(),
         ownerName: _ownerNameController.text.trim(),
         businessType: _businessType,
-        logoUrl: logoUrl,
         createdAt: now,
         updatedAt: now,
       );
@@ -257,6 +277,41 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
       if (savedBusinessId.trim().isEmpty) {
         _showMessage('Business was not created correctly.', isError: true);
         return;
+      }
+
+      // The logo is intentionally device-local. It is saved inside the app's
+      // private storage on Android/iOS/Windows/macOS/Linux, so a setup on one
+      // device does not overwrite or depend on another device's logo.
+      if (_logoBytes != null && _logoBytes!.isNotEmpty) {
+        try {
+          await LocalLogoStorage.save(
+            businessId: savedBusinessId,
+            bytes: _logoBytes!,
+          );
+        } catch (_) {
+          if (mounted) {
+            _showMessage(
+              'Business saved, but the logo could not be stored on this device.',
+              isError: true,
+            );
+          }
+        }
+      }
+
+      if (_signatureBytes != null && _signatureBytes!.isNotEmpty) {
+        try {
+          await LocalSignatureStorage.save(
+            businessId: savedBusinessId,
+            bytes: _signatureBytes!,
+          );
+        } catch (_) {
+          if (mounted) {
+            _showMessage(
+              'Business saved, but the signature could not be stored on this device.',
+              isError: true,
+            );
+          }
+        }
       }
 
       // -----------------------------------------------------------------------
@@ -403,55 +458,15 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
                     const SizedBox(height: 12),
 
                     // -----------------------------------------------------------------
-                    // BUSINESS LOGO
+                    // ICON
                     // -----------------------------------------------------------------
-                    Center(
-                      child: Column(
-                        children: [
-                          InkWell(
-                            onTap: _pickBusinessLogo,
-                            borderRadius: BorderRadius.circular(28),
-                            child: Container(
-                              width: 104,
-                              height: 104,
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.primary.withValues(alpha: 0.08),
-                                borderRadius: BorderRadius.circular(28),
-                                border: Border.all(
-                                  color: theme.colorScheme.primary.withValues(alpha: 0.25),
-                                ),
-                              ),
-                              clipBehavior: Clip.antiAlias,
-                              child: _logoPreviewBytes == null
-                                  ? Icon(
-                                      Icons.add_a_photo_rounded,
-                                      size: 36,
-                                      color: theme.colorScheme.primary,
-                                    )
-                                  : Image.memory(
-                                      _logoPreviewBytes!,
-                                      fit: BoxFit.cover,
-                                    ),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          TextButton.icon(
-                            onPressed: _pickBusinessLogo,
-                            icon: const Icon(Icons.upload_rounded, size: 18),
-                            label: Text(_logoPreviewBytes == null ? 'Add Business Logo' : 'Change Logo'),
-                          ),
-                          Text(
-                            'Optional • PNG, JPG or WEBP • up to 5 MB',
-                            textAlign: TextAlign.center,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ),
+                    Icon(
+                      Icons.storefront_rounded,
+                      size: 54,
+                      color: theme.colorScheme.primary,
                     ),
 
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 18),
 
                     // -----------------------------------------------------------------
                     // TITLE
@@ -475,6 +490,199 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
                     ),
 
                     const SizedBox(height: 32),
+
+                    // -----------------------------------------------------------------
+                    // BUSINESS LOGO
+                    // -----------------------------------------------------------------
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surfaceContainerHighest
+                            .withValues(alpha: 0.45),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: theme.colorScheme.outlineVariant,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 82,
+                            height: 82,
+                            clipBehavior: Clip.antiAlias,
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.surface,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: theme.colorScheme.outlineVariant,
+                              ),
+                            ),
+                            child: _logoBytes == null
+                                ? Icon(
+                                    Icons.business_rounded,
+                                    size: 40,
+                                    color: theme.colorScheme.primary,
+                                  )
+                                : Image.memory(
+                                    _logoBytes!,
+                                    fit: BoxFit.contain,
+                                  ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Business Logo',
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _logoBytes == null
+                                      ? 'Add your logo for invoices and bills.'
+                                      : (_logoFileName.isEmpty
+                                            ? 'Logo selected'
+                                            : _logoFileName),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    OutlinedButton.icon(
+                                      onPressed: _isLoading ? null : _pickLogo,
+                                      icon: const Icon(
+                                        Icons.upload_rounded,
+                                        size: 18,
+                                      ),
+                                      label: Text(
+                                        _logoBytes == null
+                                            ? 'Add Logo'
+                                            : 'Change Logo',
+                                      ),
+                                    ),
+                                    if (_logoBytes != null)
+                                      TextButton.icon(
+                                        onPressed: _isLoading
+                                            ? null
+                                            : _removeLogo,
+                                        icon: const Icon(
+                                          Icons.delete_outline_rounded,
+                                          size: 18,
+                                        ),
+                                        label: const Text('Remove'),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 18),
+
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surfaceContainerHighest
+                            .withValues(alpha: 0.45),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: theme.colorScheme.outlineVariant,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 82,
+                            height: 62,
+                            clipBehavior: Clip.antiAlias,
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.surface,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: theme.colorScheme.outlineVariant,
+                              ),
+                            ),
+                            child: _signatureBytes == null
+                                ? Icon(
+                                    Icons.draw_outlined,
+                                    size: 34,
+                                    color: theme.colorScheme.primary,
+                                  )
+                                : Image.memory(
+                                    _signatureBytes!,
+                                    fit: BoxFit.contain,
+                                  ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Authorised Signature',
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Add your signature for professional bills/invoices.',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    OutlinedButton.icon(
+                                      onPressed: _isLoading
+                                          ? null
+                                          : _pickSignature,
+                                      icon: const Icon(
+                                        Icons.draw_rounded,
+                                        size: 18,
+                                      ),
+                                      label: Text(
+                                        _signatureBytes == null
+                                            ? 'Add Signature'
+                                            : 'Change Signature',
+                                      ),
+                                    ),
+                                    if (_signatureBytes != null)
+                                      TextButton.icon(
+                                        onPressed: _isLoading
+                                            ? null
+                                            : _removeSignature,
+                                        icon: const Icon(
+                                          Icons.delete_outline_rounded,
+                                          size: 18,
+                                        ),
+                                        label: const Text('Remove'),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 18),
 
                     // -----------------------------------------------------------------
                     // BUSINESS NAME
@@ -652,7 +860,7 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
                     SizedBox(
                       height: 54,
                       child: FilledButton.icon(
-                        onPressed: (_isLoading || _isUploadingLogo) ? null : _saveBusiness,
+                        onPressed: _isLoading ? null : _saveBusiness,
                         icon: _isLoading
                             ? const SizedBox(
                                 width: 20,

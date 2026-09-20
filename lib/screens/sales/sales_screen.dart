@@ -1,12 +1,18 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:printing/printing.dart';
 
+import '../../core/services/professional_sales_bill_pdf_service.dart';
 import '../../core/services/sale_stock_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/business_model.dart';
+import '../../models/customer_model.dart';
 import '../../models/ledger_transaction_model.dart';
 import '../../models/sale_model.dart';
 import '../../repositories/business_repository.dart';
+import '../../repositories/customer_repository.dart';
 import '../../repositories/sale_repository.dart';
 import '../../services/ledger/ledger_service.dart';
 import 'add_sale_screen.dart';
@@ -22,6 +28,8 @@ class _SalesScreenState extends State<SalesScreen> {
   final BusinessRepository _businessRepository = BusinessRepository();
 
   final SaleRepository _saleRepository = SaleRepository();
+
+  final CustomerRepository _customerRepository = CustomerRepository();
 
   final SaleStockService _saleStockService = SaleStockService();
 
@@ -214,6 +222,85 @@ class _SalesScreenState extends State<SalesScreen> {
   // SALE DETAILS
   // ===========================================================================
 
+  Future<CustomerModel?> _loadSaleCustomer(SaleModel sale) async {
+    final BusinessModel? business = _business;
+    if (business == null || sale.customerId.trim().isEmpty) {
+      return null;
+    }
+
+    try {
+      return await _customerRepository.getCustomer(
+        businessId: business.id,
+        customerId: sale.customerId,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _printSaleInvoice(SaleModel sale) async {
+    final BusinessModel? business = _business;
+    if (business == null) {
+      _showMessage('Business information is not available.', isError: true);
+      return;
+    }
+
+    try {
+      final CustomerModel? customer = await _loadSaleCustomer(sale);
+      final Uint8List bytes =
+          await ProfessionalSalesBillPdfService.generateSingleSale(
+            business: business,
+            sale: sale,
+            customer: customer,
+          );
+
+      await Printing.layoutPdf(
+        name:
+            'Invoice_${sale.invoiceNumber.trim().isEmpty ? sale.id : sale.invoiceNumber}.pdf',
+        onLayout: (_) async => bytes,
+      );
+    } catch (e) {
+      if (mounted) {
+        _showMessage(
+          'Unable to prepare invoice: ${_cleanError(e)}',
+          isError: true,
+        );
+      }
+    }
+  }
+
+  Future<void> _shareSaleInvoice(SaleModel sale) async {
+    final BusinessModel? business = _business;
+    if (business == null) {
+      _showMessage('Business information is not available.', isError: true);
+      return;
+    }
+
+    try {
+      final CustomerModel? customer = await _loadSaleCustomer(sale);
+      final Uint8List bytes =
+          await ProfessionalSalesBillPdfService.generateSingleSale(
+            business: business,
+            sale: sale,
+            customer: customer,
+          );
+
+      final String number = sale.invoiceNumber.trim().isEmpty
+          ? sale.id.trim()
+          : sale.invoiceNumber.trim();
+      final String fileName = 'Invoice_${number.isEmpty ? 'Sale' : number}.pdf';
+
+      await Printing.sharePdf(bytes: bytes, filename: fileName);
+    } catch (e) {
+      if (mounted) {
+        _showMessage(
+          'Unable to share invoice: ${_cleanError(e)}',
+          isError: true,
+        );
+      }
+    }
+  }
+
   void _showSaleDetails(SaleModel sale) {
     showModalBottomSheet<void>(
       context: context,
@@ -358,6 +445,32 @@ class _SalesScreenState extends State<SalesScreen> {
                     tax: sale.tax,
                     total: sale.total,
                     paid: sale.paidAmount,
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            _printSaleInvoice(sale);
+                          },
+                          icon: const Icon(Icons.print_outlined),
+                          label: const Text('Print Bill'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: () {
+                            _shareSaleInvoice(sale);
+                          },
+                          icon: const Icon(Icons.share_outlined),
+                          label: const Text('Share Bill'),
+                        ),
+                      ),
+                    ],
                   ),
 
                   const SizedBox(height: 16),

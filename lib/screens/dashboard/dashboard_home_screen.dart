@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/storage/local_logo_storage.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/app_number_format.dart';
 import 'dashboard_detail_screen.dart';
@@ -58,6 +60,7 @@ class _DashboardHomeScreenState extends State<DashboardHomeScreen> {
   final ProductRepository _productRepository = ProductRepository();
 
   BusinessModel? _business;
+  Uint8List? _businessLogoBytes;
 
   bool _loading = true;
   String? _errorMessage;
@@ -300,6 +303,13 @@ class _DashboardHomeScreenState extends State<DashboardHomeScreen> {
         throw Exception('Business ID is missing.');
       }
 
+      Uint8List? localLogo;
+      try {
+        localLogo = await LocalLogoStorage.read(businessId: businessId);
+      } catch (_) {
+        localLogo = null;
+      }
+
       _watchDashboardData(businessId);
 
       final results = await Future.wait<dynamic>([
@@ -395,6 +405,7 @@ class _DashboardHomeScreenState extends State<DashboardHomeScreen> {
 
       setState(() {
         _business = business;
+        _businessLogoBytes = localLogo;
 
         _todaySales = todaySales;
         _todayPurchase = todayPurchase;
@@ -709,11 +720,11 @@ class _DashboardHomeScreenState extends State<DashboardHomeScreen> {
               color: Colors.white.withValues(alpha: 0.14),
               borderRadius: BorderRadius.circular(16),
             ),
-            child: (_business?.logoUrl.trim().isNotEmpty == true)
+            child: _businessLogoBytes != null && _businessLogoBytes!.isNotEmpty
                 ? ClipRRect(
                     borderRadius: BorderRadius.circular(16),
-                    child: Image.network(
-                      _business!.logoUrl.trim(),
+                    child: Image.memory(
+                      _businessLogoBytes!,
                       fit: BoxFit.cover,
                       errorBuilder: (_, _, _) => const Icon(
                         Icons.dashboard_rounded,

@@ -1,25 +1,31 @@
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../../core/storage/local_logo_storage.dart';
 import '../../models/business_model.dart';
 
 class BusinessPdfBranding {
   BusinessPdfBranding._();
 
+  /// Loads the logo saved on the current device/computer.
+  ///
+  /// The logo is intentionally local. A logo selected on Android remains on
+  /// that Android device; a logo selected on Windows remains on that PC.
   static Future<pw.MemoryImage?> loadLogo(BusinessModel business) async {
     try {
-      final String url = business.logoUrl.trim();
-      if (url.isNotEmpty) {
-        final Uint8List? bytes = await FirebaseStorage.instance
-            .refFromURL(url)
-            .getData(4 * 1024 * 1024);
+      final String businessId = business.id.trim();
+      if (businessId.isNotEmpty) {
+        final Uint8List? bytes = await LocalLogoStorage.read(
+          businessId: businessId,
+        );
         if (bytes != null && bytes.isNotEmpty) {
           return pw.MemoryImage(bytes);
         }
       }
-    } catch (_) {}
+    } catch (_) {
+      // Fall back to the built-in app icon.
+    }
 
     try {
       final ByteData data = await rootBundle.load('assets/icon/app_icon.png');
