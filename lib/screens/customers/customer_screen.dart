@@ -8,7 +8,6 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/services/customer_sales_bill_pdf_service.dart';
-import '../../core/services/customer_statement_pdf_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/business_model.dart';
 import '../../models/customer_model.dart';
@@ -418,7 +417,6 @@ class _CustomersScreenState extends State<CustomersScreen> {
             await _printCustomerStatement(
               business: business,
               customer: customer,
-              transactions: transactions,
               customerSales: customerSales,
             );
           },
@@ -428,7 +426,6 @@ class _CustomersScreenState extends State<CustomersScreen> {
             await _shareCustomerStatement(
               business: business,
               customer: customer,
-              transactions: transactions,
               customerSales: customerSales,
             );
           },
@@ -438,66 +435,116 @@ class _CustomersScreenState extends State<CustomersScreen> {
   }
 
   // ============================================================
-  // PRINT CUSTOMER STATEMENT
+  // PRINT CUSTOMER STATEMENT AS PROFESSIONAL SALES BILL
   // ============================================================
 
   Future<void> _printCustomerStatement({
     required BusinessModel business,
     required CustomerModel customer,
-    required List<LedgerTransactionModel> transactions,
     required List<SaleModel> customerSales,
   }) async {
     try {
-      await CustomerStatementPdfService.printStatement(
-        business: business,
-        customer: customer,
-        transactions: transactions,
-        customerSales: customerSales,
+      if (customerSales.isEmpty) {
+        throw StateError('No sales found for this customer.');
+      }
+
+      final List<SaleModel> sales = List<SaleModel>.from(customerSales)
+        ..sort((a, b) => a.date.compareTo(b.date));
+
+      final DateTime fromDate = DateTime(
+        sales.first.date.toLocal().year,
+        sales.first.date.toLocal().month,
+        sales.first.date.toLocal().day,
+      );
+      final DateTime toDate = DateTime(
+        sales.last.date.toLocal().year,
+        sales.last.date.toLocal().month,
+        sales.last.date.toLocal().day,
       );
 
-      if (!mounted) {
-        return;
-      }
+      final Uint8List pdfBytes = await _generateCustomerSalesBillPdf(
+        business: business,
+        customer: customer,
+        sales: sales,
+        fromDate: fromDate,
+        toDate: toDate,
+      );
 
-      _showMessage('Customer statement sent to print.');
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
+      final String fileName =
+          'Customer_Statement_Bill_${_safeFileName(customer.name)}_${_dateForFile(fromDate)}_${_dateForFile(toDate)}.pdf';
 
-      _showMessage('Unable to print customer statement.', isError: true);
+      await Printing.layoutPdf(name: fileName, onLayout: (_) async => pdfBytes);
+
+      if (mounted) {
+        _showMessage('Customer statement bill sent to print.');
+      }
+    } catch (e) {
+      if (mounted) {
+        _showMessage(
+          'Unable to print customer statement bill: ${_cleanError(e)}',
+          isError: true,
+        );
+      }
     }
   }
 
   // ============================================================
-  // SHARE CUSTOMER STATEMENT
+  // SHARE CUSTOMER STATEMENT AS PROFESSIONAL SALES BILL
   // ============================================================
 
   Future<void> _shareCustomerStatement({
     required BusinessModel business,
     required CustomerModel customer,
-    required List<LedgerTransactionModel> transactions,
     required List<SaleModel> customerSales,
   }) async {
     try {
-      await CustomerStatementPdfService.shareStatement(
-        business: business,
-        customer: customer,
-        transactions: transactions,
-        customerSales: customerSales,
+      if (customerSales.isEmpty) {
+        throw StateError('No sales found for this customer.');
+      }
+
+      final List<SaleModel> sales = List<SaleModel>.from(customerSales)
+        ..sort((a, b) => a.date.compareTo(b.date));
+
+      final DateTime fromDate = DateTime(
+        sales.first.date.toLocal().year,
+        sales.first.date.toLocal().month,
+        sales.first.date.toLocal().day,
+      );
+      final DateTime toDate = DateTime(
+        sales.last.date.toLocal().year,
+        sales.last.date.toLocal().month,
+        sales.last.date.toLocal().day,
       );
 
-      if (!mounted) {
-        return;
-      }
+      final Uint8List pdfBytes = await _generateCustomerSalesBillPdf(
+        business: business,
+        customer: customer,
+        sales: sales,
+        fromDate: fromDate,
+        toDate: toDate,
+      );
 
-      _showMessage('Customer statement is ready to share.');
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
+      final String fileName =
+          'Customer_Statement_Bill_${_safeFileName(customer.name)}_${_dateForFile(fromDate)}_${_dateForFile(toDate)}.pdf';
 
-      _showMessage('Unable to share customer statement.', isError: true);
+      await Printing.sharePdf(
+        bytes: pdfBytes,
+        filename: fileName,
+        subject: 'Customer Statement Bill - ${customer.name.trim()}',
+        body:
+            'Professional customer sales bill for ${customer.name.trim()} (${_formatDate(fromDate)} to ${_formatDate(toDate)}).',
+      );
+
+      if (mounted) {
+        _showMessage('Customer statement bill is ready to share.');
+      }
+    } catch (e) {
+      if (mounted) {
+        _showMessage(
+          'Unable to share customer statement bill: ${_cleanError(e)}',
+          isError: true,
+        );
+      }
     }
   }
 
@@ -610,13 +657,29 @@ class _CustomersScreenState extends State<CustomersScreen> {
               const SizedBox(height: 4),
               Text('Pending: ${_formatCurrency(pending)}'),
               const SizedBox(height: 14),
-              const Text('Choose PDF or image to send to the customer.'),
+              const Text(
+                'The selected sales will use the same professional invoice format for print, PDF sharing, and image sharing.',
+              ),
             ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
               child: const Text('Cancel'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () async {
+                Navigator.of(dialogContext).pop();
+                await _printCustomerSalesBill(
+                  business: business,
+                  customer: customer,
+                  sales: selectedSales,
+                  fromDate: fromDate,
+                  toDate: toDate,
+                );
+              },
+              icon: const Icon(Icons.print_outlined),
+              label: const Text('Print Bill'),
             ),
             OutlinedButton.icon(
               onPressed: () async {
@@ -630,7 +693,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                 );
               },
               icon: const Icon(Icons.picture_as_pdf_outlined),
-              label: const Text('Send PDF'),
+              label: const Text('Share PDF'),
             ),
             FilledButton.icon(
               onPressed: () async {
@@ -644,7 +707,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                 );
               },
               icon: const Icon(Icons.image_outlined),
-              label: const Text('Send Image'),
+              label: const Text('Share Image'),
             ),
           ],
         );
@@ -666,6 +729,40 @@ class _CustomersScreenState extends State<CustomersScreen> {
       fromDate: fromDate,
       toDate: toDate,
     );
+  }
+
+  Future<void> _printCustomerSalesBill({
+    required BusinessModel business,
+    required CustomerModel customer,
+    required List<SaleModel> sales,
+    required DateTime fromDate,
+    required DateTime toDate,
+  }) async {
+    try {
+      final Uint8List pdfBytes = await _generateCustomerSalesBillPdf(
+        business: business,
+        customer: customer,
+        sales: sales,
+        fromDate: fromDate,
+        toDate: toDate,
+      );
+
+      final String fileName =
+          'Customer_Sales_Bill_${_safeFileName(customer.name)}_${_dateForFile(fromDate)}_${_dateForFile(toDate)}.pdf';
+
+      await Printing.layoutPdf(name: fileName, onLayout: (_) async => pdfBytes);
+
+      if (mounted) {
+        _showMessage('Customer sales bill sent to print.');
+      }
+    } catch (e) {
+      if (mounted) {
+        _showMessage(
+          'Unable to print customer sales bill: ${_cleanError(e)}',
+          isError: true,
+        );
+      }
+    }
   }
 
   Future<void> _shareCustomerSalesBillPdf({
@@ -848,7 +945,9 @@ class _CustomersScreenState extends State<CustomersScreen> {
       return Scaffold(
         backgroundColor: theme.scaffoldBackgroundColor,
         appBar: AppBar(title: const Text('Customers & Hotels')),
-        body: AppResponsivePage(child: const Center(child: CircularProgressIndicator())),
+        body: AppResponsivePage(
+          child: const Center(child: CircularProgressIndicator()),
+        ),
       );
     }
 
@@ -874,7 +973,9 @@ class _CustomersScreenState extends State<CustomersScreen> {
           return Scaffold(
             backgroundColor: theme.scaffoldBackgroundColor,
             appBar: AppBar(title: const Text('Customers & Hotels')),
-            body: AppResponsivePage(child: const Center(child: CircularProgressIndicator())),
+            body: AppResponsivePage(
+              child: const Center(child: CircularProgressIndicator()),
+            ),
           );
         }
 
@@ -883,7 +984,9 @@ class _CustomersScreenState extends State<CustomersScreen> {
           return Scaffold(
             backgroundColor: theme.scaffoldBackgroundColor,
             appBar: AppBar(title: const Text('Customers & Hotels')),
-            body: AppResponsivePage(child: _buildCustomerError(theme, customerProvider.errorMessage!)),
+            body: AppResponsivePage(
+              child: _buildCustomerError(theme, customerProvider.errorMessage!),
+            ),
           );
         }
 
@@ -906,52 +1009,57 @@ class _CustomersScreenState extends State<CustomersScreen> {
               const SizedBox(width: 4),
             ],
           ),
-          body: AppResponsivePage(child: RefreshIndicator(
-            onRefresh: _refresh,
-            child: CustomScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              slivers: [
-                SliverToBoxAdapter(
-                  child: _buildHeader(theme, customers.length),
-                ),
-                SliverToBoxAdapter(child: _buildSummaryCards(theme, customers)),
-                SliverToBoxAdapter(child: _buildSearchBar(theme)),
-                if (filteredCustomers.isEmpty)
-                  SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: _buildEmptyState(
-                      theme,
-                      isSearchResult: _searchQuery.trim().isNotEmpty,
-                    ),
-                  )
-                else
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-                    sliver: SliverList(
-                      delegate: SliverChildBuilderDelegate((context, index) {
-                        final CustomerModel customer = filteredCustomers[index];
-
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: _CustomerCard(
-                            customer: customer,
-                            onEdit: () {
-                              _openEditCustomer(customer);
-                            },
-                            onDelete: () {
-                              _deleteCustomer(customer);
-                            },
-                            onStatement: () {
-                              _openCustomerStatement(customer);
-                            },
-                          ),
-                        );
-                      }, childCount: filteredCustomers.length),
-                    ),
+          body: AppResponsivePage(
+            child: RefreshIndicator(
+              onRefresh: _refresh,
+              child: CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: _buildHeader(theme, customers.length),
                   ),
-              ],
+                  SliverToBoxAdapter(
+                    child: _buildSummaryCards(theme, customers),
+                  ),
+                  SliverToBoxAdapter(child: _buildSearchBar(theme)),
+                  if (filteredCustomers.isEmpty)
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: _buildEmptyState(
+                        theme,
+                        isSearchResult: _searchQuery.trim().isNotEmpty,
+                      ),
+                    )
+                  else
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+                      sliver: SliverList(
+                        delegate: SliverChildBuilderDelegate((context, index) {
+                          final CustomerModel customer =
+                              filteredCustomers[index];
+
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _CustomerCard(
+                              customer: customer,
+                              onEdit: () {
+                                _openEditCustomer(customer);
+                              },
+                              onDelete: () {
+                                _deleteCustomer(customer);
+                              },
+                              onStatement: () {
+                                _openCustomerStatement(customer);
+                              },
+                            ),
+                          );
+                        }, childCount: filteredCustomers.length),
+                      ),
+                    ),
+                ],
+              ),
             ),
-          )),
+          ),
           floatingActionButton: FloatingActionButton.extended(
             onPressed: _openAddCustomer,
             icon: const Icon(Icons.add_rounded),
@@ -1745,14 +1853,14 @@ class _CustomerStatementDialog extends StatelessWidget {
             await onShare();
           },
           icon: const Icon(Icons.share_outlined),
-          label: const Text('Share'),
+          label: const Text('Share Statement'),
         ),
         FilledButton.icon(
           onPressed: () async {
             await onPrint();
           },
           icon: const Icon(Icons.print_outlined),
-          label: const Text('Print'),
+          label: const Text('Print Statement'),
         ),
       ],
     );

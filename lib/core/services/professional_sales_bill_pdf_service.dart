@@ -524,7 +524,7 @@ class ProfessionalSalesBillPdfService {
       pw.TableRow(
         decoration: pw.BoxDecoration(color: lightBlue),
         children: <pw.Widget>[
-          _cell('ITEMS', primary, bold: true),
+          _cell('ITEMS / DATE', primary, bold: true),
           _cell('QTY.', primary, bold: true, center: true),
           _cell('RATE', primary, bold: true, right: true),
           _cell('AMOUNT', primary, bold: true, right: true),
@@ -532,28 +532,93 @@ class ProfessionalSalesBillPdfService {
       ),
     ];
 
-    int number = 1;
+    // Customer statement bills can contain multiple sales on different dates.
+    // Keep every date as one numbered table row and put ALL products sold on
+    // that date inside that same row. This prevents one sale date from being
+    // scattered across many unrelated rows.
+    final Map<String, List<SaleModel>> salesByDate =
+        <String, List<SaleModel>>{};
+
     for (final SaleModel sale in sales) {
-      for (final SaleItemModel item in sale.items) {
+      final String dateKey =
+          '${sale.date.year.toString().padLeft(4, '0')}-'
+          '${sale.date.month.toString().padLeft(2, '0')}-'
+          '${sale.date.day.toString().padLeft(2, '0')}';
+      salesByDate.putIfAbsent(dateKey, () => <SaleModel>[]).add(sale);
+    }
+
+    int number = 1;
+    for (final List<SaleModel> dateSales in salesByDate.values) {
+      final List<SaleItemModel> items = dateSales
+          .expand((SaleModel sale) => sale.items)
+          .toList(growable: false);
+
+      if (items.isEmpty) {
         rows.add(
           pw.TableRow(
             children: <pw.Widget>[
-              _cell('$number. ${_safe(item.productName, 'Product')}', text),
-              _cell(
-                '${_number(item.quantity)} ${item.unit.trim()}',
+              _dateGroupCell(
+                '${number++}. ${_formatDate(dateSales.first.date)}',
+                const <String>['No items'],
                 text,
-                center: true,
+                boldDate: true,
               ),
-              _cell(_currency(item.sellingRate), text, right: true),
-              _cell(_currency(item.total), text, right: true),
+              _dateGroupCell('', const <String>['-'], text, center: true),
+              _dateGroupCell('', const <String>['-'], text, right: true),
+              _dateGroupCell('', const <String>['-'], text, right: true),
             ],
           ),
         );
-        number++;
+        continue;
       }
+
+      rows.add(
+        pw.TableRow(
+          children: <pw.Widget>[
+            _dateGroupCell(
+              '${number++}. ${_formatDate(dateSales.first.date)}',
+              items
+                  .map(
+                    (SaleItemModel item) =>
+                        '• ${_safe(item.productName, 'Product')}',
+                  )
+                  .toList(growable: false),
+              text,
+              boldDate: true,
+            ),
+            _dateGroupCell(
+              '',
+              items
+                  .map(
+                    (SaleItemModel item) =>
+                        '${_number(item.quantity)} ${item.unit.trim()}'.trim(),
+                  )
+                  .toList(growable: false),
+              text,
+              center: true,
+            ),
+            _dateGroupCell(
+              '',
+              items
+                  .map((SaleItemModel item) => _currency(item.sellingRate))
+                  .toList(growable: false),
+              text,
+              right: true,
+            ),
+            _dateGroupCell(
+              '',
+              items
+                  .map((SaleItemModel item) => _currency(item.total))
+                  .toList(growable: false),
+              text,
+              right: true,
+            ),
+          ],
+        ),
+      );
     }
 
-    if (rows.length == 1) {
+    if (salesByDate.isEmpty) {
       rows.add(
         pw.TableRow(
           children: <pw.Widget>[
@@ -575,6 +640,68 @@ class ProfessionalSalesBillPdfService {
         3: pw.FixedColumnWidth(82),
       },
       children: rows,
+    );
+  }
+
+  static pw.Widget _dateGroupCell(
+    String dateLabel,
+    List<String> lines,
+    PdfColor color, {
+    bool boldDate = false,
+    bool center = false,
+    bool right = false,
+  }) {
+    final pw.Alignment alignment = center
+        ? pw.Alignment.center
+        : right
+        ? pw.Alignment.centerRight
+        : pw.Alignment.centerLeft;
+
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+      child: pw.Column(
+        crossAxisAlignment: center
+            ? pw.CrossAxisAlignment.center
+            : right
+            ? pw.CrossAxisAlignment.end
+            : pw.CrossAxisAlignment.start,
+        children: <pw.Widget>[
+          if (dateLabel.isNotEmpty)
+            pw.Align(
+              alignment: alignment,
+              child: pw.Text(
+                dateLabel,
+                style: pw.TextStyle(
+                  fontSize: 8.8,
+                  color: color,
+                  fontWeight: boldDate
+                      ? pw.FontWeight.bold
+                      : pw.FontWeight.normal,
+                ),
+              ),
+            )
+          else
+            pw.SizedBox(height: 11),
+          if (dateLabel.isNotEmpty && lines.isNotEmpty) pw.SizedBox(height: 3),
+          ...lines.map(
+            (String value) => pw.Align(
+              alignment: alignment,
+              child: pw.Padding(
+                padding: const pw.EdgeInsets.only(top: 2),
+                child: pw.Text(
+                  value,
+                  textAlign: center
+                      ? pw.TextAlign.center
+                      : right
+                      ? pw.TextAlign.right
+                      : pw.TextAlign.left,
+                  style: pw.TextStyle(fontSize: 8.6, color: color),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -614,8 +741,8 @@ class ProfessionalSalesBillPdfService {
     bool bold = false,
   }) {
     return pw.Container(
-      color: background,
       decoration: pw.BoxDecoration(
+        color: background,
         border: pw.Border.all(color: border, width: 0.5),
       ),
       padding: const pw.EdgeInsets.symmetric(horizontal: 9, vertical: 7),
