@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/customer_model.dart';
 import '../../repositories/customer_repository.dart';
+import '../../core/widgets/app_responsive_page.dart';
 
 class AddCustomerScreen extends StatefulWidget {
   final String businessId;
@@ -220,17 +221,18 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
       appBar: AppBar(
         title: Text(widget.isEditMode ? 'Edit Customer' : 'Add Customer'),
       ),
-      body: SafeArea(
+      body: AppResponsivePage(child: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
             final isWide = constraints.maxWidth >= 900;
+            final horizontalPadding = constraints.maxWidth < 420 ? 12.0 : 16.0;
 
             return Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 1000),
                 child: SingleChildScrollView(
                   padding: EdgeInsets.symmetric(
-                    horizontal: isWide ? 32 : 16,
+                    horizontal: isWide ? 32 : horizontalPadding,
                     vertical: 20,
                   ),
                   child: Form(
@@ -263,7 +265,7 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
             );
           },
         ),
-      ),
+      )),
     );
   }
 
@@ -299,9 +301,9 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
               children: [
                 Text(
                   widget.isEditMode ? 'Update Customer' : 'Add New Customer',
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: Colors.white,
-                    fontSize: 20,
+                    fontSize: MediaQuery.sizeOf(context).width < 420 ? 18 : 20,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -312,7 +314,7 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
                       : 'Add a customer to manage sales and payments',
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.82),
-                    fontSize: 13,
+                    fontSize: MediaQuery.sizeOf(context).width < 420 ? 12 : 13,
                   ),
                 ),
               ],
@@ -579,7 +581,9 @@ class _FormCard extends StatelessWidget {
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: EdgeInsets.all(
+          MediaQuery.sizeOf(context).width < 420 ? 14 : 18,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -595,11 +599,14 @@ class _FormCard extends StatelessWidget {
                   child: Icon(icon, color: AppColors.primary, size: 21),
                 ),
                 const SizedBox(width: 11),
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
+                Expanded(
+                  child: Text(
+                    title,
+                    softWrap: true,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ],

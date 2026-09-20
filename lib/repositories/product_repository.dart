@@ -63,6 +63,8 @@ class ProductRepository extends BaseRepository {
       currentStock: product.currentStock,
       minimumStock: product.minimumStock,
       isActive: product.isActive,
+      supplierId: product.supplierId.trim(),
+      supplierName: product.supplierName.trim(),
       createdAt: product.createdAt,
       updatedAt: now,
     );
@@ -208,6 +210,8 @@ class ProductRepository extends BaseRepository {
 
       minimumStock: product.minimumStock,
       isActive: product.isActive,
+      supplierId: product.supplierId.trim().isEmpty ? existingProduct.supplierId : product.supplierId.trim(),
+      supplierName: product.supplierName.trim().isEmpty ? existingProduct.supplierName : product.supplierName.trim(),
 
       // Preserve original creation timestamp.
       createdAt: existingProduct.createdAt,
@@ -273,6 +277,57 @@ class ProductRepository extends BaseRepository {
       'purchasePrice': purchasePrice,
       'updatedAt': Timestamp.fromDate(DateTime.now()),
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // SUPPLIER-SPECIFIC PRODUCT VARIANT
+  // ---------------------------------------------------------------------------
+
+  Future<ProductModel?> findSupplierVariant({
+    required String businessId,
+    required String productName,
+    required String supplierId,
+  }) async {
+    final String id = businessId.trim();
+    final String name = productName.trim().toLowerCase();
+    final String supplier = supplierId.trim();
+    if (id.isEmpty || name.isEmpty || supplier.isEmpty) return null;
+
+    final List<ProductModel> products = await getProducts(id);
+    for (final ProductModel product in products) {
+      if (product.name.trim().toLowerCase() == name &&
+          product.supplierId.trim() == supplier) {
+        return product;
+      }
+    }
+    return null;
+  }
+
+  Future<ProductModel> createSupplierVariant({
+    required ProductModel baseProduct,
+    required String supplierId,
+    required String supplierName,
+    required double purchasePrice,
+  }) async {
+    final DateTime now = DateTime.now();
+    return createProduct(
+      ProductModel(
+        id: '',
+        businessId: baseProduct.businessId,
+        name: baseProduct.name,
+        category: baseProduct.category,
+        unit: baseProduct.unit,
+        purchasePrice: purchasePrice,
+        sellingPrice: baseProduct.sellingPrice,
+        currentStock: 0,
+        minimumStock: baseProduct.minimumStock,
+        isActive: true,
+        supplierId: supplierId.trim(),
+        supplierName: supplierName.trim(),
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -422,6 +477,8 @@ class ProductRepository extends BaseRepository {
       'currentStock': product.currentStock,
       'minimumStock': product.minimumStock,
       'isActive': product.isActive,
+      'supplierId': product.supplierId,
+      'supplierName': product.supplierName,
       'createdAt': Timestamp.fromDate(product.createdAt),
       'updatedAt': Timestamp.fromDate(product.updatedAt),
     };
@@ -447,6 +504,8 @@ class ProductRepository extends BaseRepository {
       currentStock: _toDouble(data['currentStock']),
       minimumStock: _toDouble(data['minimumStock']),
       isActive: data['isActive'] as bool? ?? true,
+      supplierId: data['supplierId']?.toString() ?? '',
+      supplierName: data['supplierName']?.toString() ?? '',
       createdAt: dateFromFirestore(data['createdAt']),
       updatedAt: dateFromFirestore(data['updatedAt']),
     );

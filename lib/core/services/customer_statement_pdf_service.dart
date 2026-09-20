@@ -7,6 +7,8 @@ import 'package:printing/printing.dart';
 import '../../models/business_model.dart';
 import '../../models/customer_model.dart';
 import '../../models/ledger_transaction_model.dart';
+import '../../models/sale_model.dart';
+import 'business_pdf_branding.dart';
 
 class CustomerStatementPdfService {
   CustomerStatementPdfService._();
@@ -19,16 +21,40 @@ class CustomerStatementPdfService {
     required BusinessModel business,
     required CustomerModel customer,
     required List<LedgerTransactionModel> transactions,
+    List<SaleModel> customerSales = const <SaleModel>[],
     DateTime? fromDate,
     DateTime? toDate,
   }) async {
     final pw.Document document = pw.Document();
+    final pw.MemoryImage? logo = await BusinessPdfBranding.loadLogo(business);
 
-    final List<LedgerTransactionModel> sortedTransactions =
-        List<LedgerTransactionModel>.from(transactions)
-          ..sort(
-            (a, b) => a.date.compareTo(b.date),
-          );
+    final List<LedgerTransactionModel> sortedTransactions = List<LedgerTransactionModel>.from(transactions);
+    final Set<String> saleReferences = sortedTransactions
+        .where((t) => t.transactionType.trim().toUpperCase() == 'SALE')
+        .map((t) => t.referenceId.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet();
+
+    for (final SaleModel sale in customerSales) {
+      if (sale.id.trim().isEmpty || saleReferences.contains(sale.id.trim())) continue;
+      sortedTransactions.add(
+        LedgerTransactionModel(
+          id: 'pdf_sale_${sale.id}',
+          businessId: sale.businessId,
+          customerId: sale.customerId,
+          customerName: sale.customerName,
+          transactionType: 'SALE',
+          amount: sale.total,
+          balanceBefore: 0,
+          balanceAfter: sale.pendingAmount,
+          referenceId: sale.id,
+          date: sale.date,
+          notes: sale.invoiceNumber.trim().isEmpty ? 'Sale' : 'Invoice ${sale.invoiceNumber.trim()}',
+          createdAt: sale.createdAt,
+        ),
+      );
+    }
+    sortedTransactions.sort((a, b) => a.date.compareTo(b.date));
 
     double totalSales = 0;
     double totalPayments = 0;
@@ -113,6 +139,21 @@ class CustomerStatementPdfService {
               mainAxisAlignment:
                   pw.MainAxisAlignment.spaceBetween,
               children: [
+                pw.Container(
+                  width: 58,
+                  height: 58,
+                  padding: const pw.EdgeInsets.all(5),
+                  decoration: pw.BoxDecoration(
+                    border: pw.Border.all(color: primaryColor, width: 1),
+                    borderRadius: pw.BorderRadius.circular(8),
+                  ),
+                  child: logo == null
+                      ? pw.Center(
+                          child: pw.Text('LOGO', style: pw.TextStyle(fontSize: 8, color: primaryColor)),
+                        )
+                      : pw.Image(logo, fit: pw.BoxFit.contain),
+                ),
+                pw.SizedBox(width: 12),
                 pw.Expanded(
                   child: pw.Column(
                     crossAxisAlignment:
@@ -525,16 +566,7 @@ class CustomerStatementPdfService {
                             _transactionLabel(type),
                           ),
                           _bodyCell(
-                            transaction.notes
-                                    .trim()
-                                    .isNotEmpty
-                                ? transaction.notes
-                                    .trim()
-                                : transaction.referenceId
-                                        .trim()
-                                        .isNotEmpty
-                                    ? 'Ref: ${transaction.referenceId.trim()}'
-                                    : '-',
+                            _statementDescription(transaction, customerSales),
                           ),
                           _bodyCell(
                             debit > 0
@@ -652,6 +684,7 @@ class CustomerStatementPdfService {
     required BusinessModel business,
     required CustomerModel customer,
     required List<LedgerTransactionModel> transactions,
+    List<SaleModel> customerSales = const <SaleModel>[],
     DateTime? fromDate,
     DateTime? toDate,
   }) async {
@@ -660,6 +693,7 @@ class CustomerStatementPdfService {
       business: business,
       customer: customer,
       transactions: transactions,
+      customerSales: customerSales,
       fromDate: fromDate,
       toDate: toDate,
     );
@@ -679,6 +713,7 @@ class CustomerStatementPdfService {
     required BusinessModel business,
     required CustomerModel customer,
     required List<LedgerTransactionModel> transactions,
+    List<SaleModel> customerSales = const <SaleModel>[],
     DateTime? fromDate,
     DateTime? toDate,
   }) async {
@@ -687,6 +722,7 @@ class CustomerStatementPdfService {
       business: business,
       customer: customer,
       transactions: transactions,
+      customerSales: customerSales,
       fromDate: fromDate,
       toDate: toDate,
     );
@@ -708,6 +744,30 @@ class CustomerStatementPdfService {
   // ===========================================================================
   // PDF HELPERS
   // ===========================================================================
+
+  static String _statementDescription(
+    LedgerTransactionModel transaction,
+    List<SaleModel> sales,
+  ) {
+    if (transaction.transactionType.trim().toUpperCase() == 'SALE') {
+      for (final SaleModel sale in sales) {
+        if (sale.id.trim() == transaction.referenceId.trim()) {
+          final String products = sale.items.map((item) =>
+              '${item.productName} × ${_formatNumber(item.quantity)} @ ${_formatCurrency(item.sellingRate)}'
+          ).join(', ');
+          if (products.isNotEmpty) return products;
+        }
+      }
+    }
+    if (transaction.notes.trim().isNotEmpty) return transaction.notes.trim();
+    if (transaction.referenceId.trim().isNotEmpty) return 'Ref: ${transaction.referenceId.trim()}';
+    return _transactionLabel(transaction.transactionType.trim().toUpperCase());
+  }
+
+  static String _formatNumber(double value) {
+    if (value == value.roundToDouble()) return value.toInt().toString();
+    return value.toStringAsFixed(2);
+  }
 
   static pw.Widget _infoRow(
     String label,

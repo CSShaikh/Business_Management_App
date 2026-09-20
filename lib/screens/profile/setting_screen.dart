@@ -3,21 +3,18 @@ import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../providers/theme_provider.dart';
+import '../../core/widgets/app_responsive_page.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({
-    super.key,
-  });
+  const SettingsScreen({super.key});
 
   @override
-  State<SettingsScreen> createState() =>
-      _SettingsScreenState();
+  State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
   void _selectThemeMode(ThemeMode mode) {
-    final ThemeProvider themeProvider =
-        context.read<ThemeProvider>();
+    final ThemeProvider themeProvider = context.read<ThemeProvider>();
 
     if (themeProvider.themeMode == mode) {
       return;
@@ -25,9 +22,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     themeProvider.setThemeMode(mode);
 
-    _showMessage(
-      '${_themeModeLabel(mode)} theme selected.',
-    );
+    _showMessage('${_themeModeLabel(mode)} theme selected.');
   }
 
   String _themeModeLabel(ThemeMode mode) {
@@ -56,10 +51,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          behavior: SnackBarBehavior.floating,
-        ),
+        SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
       );
   }
 
@@ -68,60 +60,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final ThemeData theme = Theme.of(context);
     final ColorScheme colors = theme.colorScheme;
 
-    final ThemeProvider themeProvider =
-        context.watch<ThemeProvider>();
+    final ThemeProvider themeProvider = context.watch<ThemeProvider>();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Settings'),
-      ),
-      body: SafeArea(
+      appBar: AppBar(title: const Text('Settings')),
+      body: AppResponsivePage(child: SafeArea(
         child: LayoutBuilder(
-          builder: (
-            BuildContext context,
-            BoxConstraints constraints,
-          ) {
-            final bool isWide =
-                constraints.maxWidth >= 800;
+          builder: (BuildContext context, BoxConstraints constraints) {
+            final bool isWide = constraints.maxWidth >= 800;
 
             return SingleChildScrollView(
               padding: EdgeInsets.all(
-                isWide ? 28 : 16,
+                isWide
+                    ? 28
+                    : constraints.maxWidth < 380
+                    ? 12
+                    : 16,
               ),
               child: Center(
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(
-                    maxWidth: 900,
-                  ),
+                  constraints: const BoxConstraints(maxWidth: 900),
                   child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.stretch,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      _buildHeader(
-                        theme,
-                        colors,
-                      ),
+                      _buildHeader(theme, colors),
                       const SizedBox(height: 20),
-                      _buildAppearanceSection(
-                        theme,
-                        colors,
-                        themeProvider,
-                      ),
+                      _buildAppearanceSection(theme, colors, themeProvider),
                       const SizedBox(height: 20),
-                      _buildBusinessPreferencesSection(
-                        theme,
-                        colors,
-                      ),
+                      _buildBusinessPreferencesSection(theme, colors),
                       const SizedBox(height: 20),
-                      _buildApplicationSection(
-                        theme,
-                        colors,
-                      ),
+                      _buildApplicationSection(theme, colors),
                       const SizedBox(height: 20),
-                      _buildAboutSection(
-                        theme,
-                        colors,
-                      ),
+                      _buildAboutSection(theme, colors),
                       const SizedBox(height: 24),
                     ],
                   ),
@@ -130,30 +100,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
             );
           },
         ),
-      ),
+      )),
     );
   }
 
-  Widget _buildHeader(
-    ThemeData theme,
-    ColorScheme colors,
-  ) {
+  Widget _buildHeader(ThemeData theme, ColorScheme colors) {
+    final double width = MediaQuery.sizeOf(context).width;
+    final bool compact = width < 380;
+
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(22),
+        padding: EdgeInsets.all(compact ? 14 : 22),
         child: Row(
-          crossAxisAlignment:
-              CrossAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Container(
-              width: 56,
-              height: 56,
+              width: compact ? 46 : 56,
+              height: compact ? 46 : 56,
               decoration: BoxDecoration(
-                color: AppColors.primary.withValues(
-                  alpha: 0.10,
-                ),
-                borderRadius:
-                    BorderRadius.circular(16),
+                color: AppColors.primary.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(16),
               ),
               child: const Icon(
                 Icons.settings_rounded,
@@ -161,31 +127,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 size: 29,
               ),
             ),
-            const SizedBox(width: 16),
+            SizedBox(width: compact ? 10 : 16),
             Expanded(
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     'App Settings',
-                    style: theme
-                        .textTheme
-                        .titleLarge
-                        ?.copyWith(
-                      fontWeight:
-                          FontWeight.w800,
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                   const SizedBox(height: 5),
                   Text(
                     'Manage your application preferences.',
-                    style: theme
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(
-                      color:
-                          colors.onSurfaceVariant,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: colors.onSurfaceVariant,
                     ),
                   ),
                 ],
@@ -204,29 +161,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
   ) {
     return _SettingsSectionCard(
       title: 'Appearance',
-      subtitle:
-          'Customize how the application looks.',
+      subtitle: 'Customize how the application looks.',
       icon: Icons.palette_outlined,
       children: [
         Text(
           'Theme',
-          style:
-              theme.textTheme.titleMedium?.copyWith(
+          style: theme.textTheme.titleMedium?.copyWith(
             fontWeight: FontWeight.w700,
           ),
         ),
         const SizedBox(height: 6),
         Text(
           'Choose whether the app follows your device theme or uses a fixed theme.',
-          style:
-              theme.textTheme.bodySmall?.copyWith(
+          style: theme.textTheme.bodySmall?.copyWith(
             color: colors.onSurfaceVariant,
           ),
         ),
         const SizedBox(height: 14),
         RadioGroup<ThemeMode>(
-          groupValue:
-              themeProvider.themeMode,
+          groupValue: themeProvider.themeMode,
           onChanged: (ThemeMode? value) {
             if (value != null) {
               _selectThemeMode(value);
@@ -234,26 +187,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           },
           child: Column(
             children: [
-              _buildThemeOption(
-                theme,
-                colors,
-                themeProvider,
-                ThemeMode.system,
-              ),
+              _buildThemeOption(theme, colors, themeProvider, ThemeMode.system),
               const SizedBox(height: 10),
-              _buildThemeOption(
-                theme,
-                colors,
-                themeProvider,
-                ThemeMode.light,
-              ),
+              _buildThemeOption(theme, colors, themeProvider, ThemeMode.light),
               const SizedBox(height: 10),
-              _buildThemeOption(
-                theme,
-                colors,
-                themeProvider,
-                ThemeMode.dark,
-              ),
+              _buildThemeOption(theme, colors, themeProvider, ThemeMode.dark),
             ],
           ),
         ),
@@ -267,34 +205,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ThemeProvider themeProvider,
     ThemeMode mode,
   ) {
-    final bool selected =
-        themeProvider.themeMode == mode;
+    final bool selected = themeProvider.themeMode == mode;
 
     return InkWell(
       onTap: () {
         _selectThemeMode(mode);
       },
-      borderRadius:
-          BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(14),
       child: AnimatedContainer(
-        duration:
-            const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 13,
-        ),
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
         decoration: BoxDecoration(
           color: selected
-              ? AppColors.primary.withValues(
-                  alpha: 0.08,
-                )
+              ? AppColors.primary.withValues(alpha: 0.08)
               : colors.surface,
-          borderRadius:
-              BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: selected
-                ? AppColors.primary
-                : colors.outlineVariant,
+            color: selected ? AppColors.primary : colors.outlineVariant,
             width: selected ? 1.5 : 1,
           ),
         ),
@@ -305,64 +232,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
               height: 42,
               decoration: BoxDecoration(
                 color: selected
-                    ? AppColors.primary
-                        .withValues(alpha: 0.12)
-                    : colors
-                        .surfaceContainerHighest,
-                borderRadius:
-                    BorderRadius.circular(12),
+                    ? AppColors.primary.withValues(alpha: 0.12)
+                    : colors.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
                 _themeModeIcon(mode),
-                color: selected
-                    ? AppColors.primary
-                    : colors.onSurfaceVariant,
+                color: selected ? AppColors.primary : colors.onSurfaceVariant,
                 size: 22,
               ),
             ),
             const SizedBox(width: 13),
             Expanded(
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     _themeModeLabel(mode),
-                    style: theme
-                        .textTheme
-                        .titleSmall
-                        ?.copyWith(
-                      fontWeight:
-                          FontWeight.w700,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                   const SizedBox(height: 3),
                   Text(
                     _themeModeDescription(mode),
-                    style: theme
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(
-                      color:
-                          colors.onSurfaceVariant,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colors.onSurfaceVariant,
                     ),
                   ),
                 ],
               ),
             ),
             const SizedBox(width: 10),
-            Radio<ThemeMode>(
-              value: mode,
-            ),
+            Radio<ThemeMode>(value: mode),
           ],
         ),
       ),
     );
   }
 
-  String _themeModeDescription(
-    ThemeMode mode,
-  ) {
+  String _themeModeDescription(ThemeMode mode) {
     switch (mode) {
       case ThemeMode.system:
         return 'Automatically follow your device theme.';
@@ -373,14 +282,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Widget _buildBusinessPreferencesSection(
-    ThemeData theme,
-    ColorScheme colors,
-  ) {
+  Widget _buildBusinessPreferencesSection(ThemeData theme, ColorScheme colors) {
     return _SettingsSectionCard(
       title: 'Business Preferences',
-      subtitle:
-          'Preferences that affect daily business operations.',
+      subtitle: 'Preferences that affect daily business operations.',
       icon: Icons.business_center_outlined,
       children: [
         _buildPreferenceTile(
@@ -388,8 +293,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           colors: colors,
           icon: Icons.currency_rupee_rounded,
           title: 'Currency',
-          subtitle:
-              'Currency used throughout the application.',
+          subtitle: 'Currency used throughout the application.',
           value: 'Indian Rupee (₹)',
           onTap: () {
             _showMessage(
@@ -403,13 +307,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           colors: colors,
           icon: Icons.receipt_long_outlined,
           title: 'Invoice Settings',
-          subtitle:
-              'Manage invoice numbering and invoice preferences.',
+          subtitle: 'Manage invoice numbering and invoice preferences.',
           value: 'Manage',
           onTap: () {
-            _showMessage(
-              'Invoice settings will be connected here.',
-            );
+            _showMessage('Invoice settings will be connected here.');
           },
         ),
         const Divider(height: 24),
@@ -418,42 +319,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
           colors: colors,
           icon: Icons.percent_rounded,
           title: 'Tax / GST',
-          subtitle:
-              'Configure tax and GST preferences for sales.',
+          subtitle: 'Configure tax and GST preferences for sales.',
           value: 'Manage',
           onTap: () {
-            _showMessage(
-              'Tax and GST settings will be connected here.',
-            );
+            _showMessage('Tax and GST settings will be connected here.');
           },
         ),
       ],
     );
   }
 
-  Widget _buildApplicationSection(
-    ThemeData theme,
-    ColorScheme colors,
-  ) {
+  Widget _buildApplicationSection(ThemeData theme, ColorScheme colors) {
     return _SettingsSectionCard(
       title: 'Application',
-      subtitle:
-          'General application preferences.',
+      subtitle: 'General application preferences.',
       icon: Icons.tune_rounded,
       children: [
         _buildPreferenceTile(
           theme: theme,
           colors: colors,
-          icon:
-              Icons.notifications_none_rounded,
+          icon: Icons.notifications_none_rounded,
           title: 'Notifications',
-          subtitle:
-              'Manage application notification preferences.',
+          subtitle: 'Manage application notification preferences.',
           value: 'Manage',
           onTap: () {
-            _showMessage(
-              'Notification settings will be connected here.',
-            );
+            _showMessage('Notification settings will be connected here.');
           },
         ),
         const Divider(height: 24),
@@ -462,13 +352,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           colors: colors,
           icon: Icons.language_rounded,
           title: 'Language',
-          subtitle:
-              'Choose the language used by the application.',
+          subtitle: 'Choose the language used by the application.',
           value: 'English',
           onTap: () {
-            _showMessage(
-              'Language selection will be connected here.',
-            );
+            _showMessage('Language selection will be connected here.');
           },
         ),
         const Divider(height: 24),
@@ -477,49 +364,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
           colors: colors,
           icon: Icons.backup_outlined,
           title: 'Backup & Restore',
-          subtitle:
-              'Manage business data backup and restore options.',
+          subtitle: 'Manage business data backup and restore options.',
           value: 'Manage',
           onTap: () {
-            _showMessage(
-              'Backup and restore will be connected here.',
-            );
+            _showMessage('Backup and restore will be connected here.');
           },
         ),
       ],
     );
   }
 
-  Widget _buildAboutSection(
-    ThemeData theme,
-    ColorScheme colors,
-  ) {
+  Widget _buildAboutSection(ThemeData theme, ColorScheme colors) {
     return _SettingsSectionCard(
       title: 'About',
-      subtitle:
-          'Application information.',
+      subtitle: 'Application information.',
       icon: Icons.info_outline_rounded,
       children: [
-        _buildInfoRow(
-          theme,
-          colors,
-          'Application',
-          'Business Management App',
-        ),
+        _buildInfoRow(theme, colors, 'Application', 'Business Management App'),
         const SizedBox(height: 14),
-        _buildInfoRow(
-          theme,
-          colors,
-          'Version',
-          '1.0.0',
-        ),
+        _buildInfoRow(theme, colors, 'Version', '1.0.0'),
         const SizedBox(height: 14),
-        _buildInfoRow(
-          theme,
-          colors,
-          'Platform',
-          'Flutter',
-        ),
+        _buildInfoRow(theme, colors, 'Platform', 'Flutter'),
       ],
     );
   }
@@ -530,33 +395,57 @@ class _SettingsScreenState extends State<SettingsScreen> {
     String title,
     String value,
   ) {
-    return Row(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Text(
-            title,
-            style:
-                theme.textTheme.bodyMedium?.copyWith(
-              color:
-                  colors.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool compact = constraints.maxWidth < 380;
+
+        if (compact) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colors.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                value,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          );
+        }
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colors.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
-          ),
-        ),
-        const SizedBox(width: 16),
-        Flexible(
-          child: Text(
-            value,
-            textAlign: TextAlign.end,
-            style:
-                theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w700,
+            const SizedBox(width: 16),
+            Flexible(
+              child: Text(
+                value,
+                textAlign: TextAlign.end,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ),
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
 
@@ -571,79 +460,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius:
-          BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(12),
       child: Padding(
-        padding:
-            const EdgeInsets.symmetric(
-          vertical: 4,
-        ),
+        padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(
           children: [
             Container(
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: AppColors.primary
-                    .withValues(alpha: 0.08),
-                borderRadius:
-                    BorderRadius.circular(12),
+                color: AppColors.primary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(
-                icon,
-                color: AppColors.primary,
-                size: 22,
-              ),
+              child: Icon(icon, color: AppColors.primary, size: 22),
             ),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     title,
-                    style: theme
-                        .textTheme
-                        .titleSmall
-                        ?.copyWith(
-                      fontWeight:
-                          FontWeight.w700,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                   const SizedBox(height: 3),
                   Text(
                     subtitle,
-                    style: theme
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(
-                      color:
-                          colors.onSurfaceVariant,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colors.onSurfaceVariant,
                     ),
                   ),
                 ],
               ),
             ),
             const SizedBox(width: 10),
-            Text(
-              value,
-              textAlign: TextAlign.end,
-              style: theme
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(
-                color: AppColors.primary,
-                fontWeight:
-                    FontWeight.w700,
+            Flexible(
+              child: Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.end,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
             const SizedBox(width: 4),
-            Icon(
-              Icons.chevron_right_rounded,
-              color:
-                  colors.onSurfaceVariant,
-            ),
+            Icon(Icons.chevron_right_rounded, color: colors.onSurfaceVariant),
           ],
         ),
       ),
@@ -651,8 +517,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 }
 
-class _SettingsSectionCard
-    extends StatelessWidget {
+class _SettingsSectionCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final IconData icon;
@@ -667,64 +532,44 @@ class _SettingsSectionCard
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme =
-        Theme.of(context);
+    final ThemeData theme = Theme.of(context);
 
-    final ColorScheme colors =
-        theme.colorScheme;
+    final ColorScheme colors = theme.colorScheme;
 
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.stretch,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: AppColors.secondary
-                        .withValues(alpha: 0.10),
-                    borderRadius:
-                        BorderRadius.circular(12),
+                    color: AppColors.secondary.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(
-                    icon,
-                    color:
-                        AppColors.secondary,
-                    size: 22,
-                  ),
+                  child: Icon(icon, color: AppColors.secondary, size: 22),
                 ),
                 const SizedBox(width: 13),
                 Expanded(
                   child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         title,
-                        style: theme
-                            .textTheme
-                            .titleMedium
-                            ?.copyWith(
-                          fontWeight:
-                              FontWeight.w800,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         subtitle,
-                        style: theme
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(
-                          color:
-                              colors.onSurfaceVariant,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
                         ),
                       ),
                     ],

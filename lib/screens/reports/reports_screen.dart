@@ -24,6 +24,7 @@ import 'stock_report_screen.dart';
 import 'supplier_report_screen.dart';
 import 'purchase_report_screen.dart';
 import 'sales_report_screen.dart';
+import '../../core/widgets/app_responsive_page.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -57,6 +58,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
   bool _isRefreshing = false;
 
   String? _errorMessage;
+
+  String _selectedPeriod = 'Today';
 
   @override
   void initState() {
@@ -226,20 +229,48 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
   }
 
+  DateTime _periodStart() {
+    final DateTime now = DateTime.now();
+    if (_selectedPeriod == 'Weekly') {
+      return DateTime(now.year, now.month, now.day).subtract(const Duration(days: 6));
+    }
+    if (_selectedPeriod == 'Monthly') {
+      return DateTime(now.year, now.month, 1);
+    }
+    return DateTime(now.year, now.month, now.day);
+  }
+
+  bool _inSelectedPeriod(DateTime date) {
+    final DateTime start = _periodStart();
+    final DateTime end = DateTime.now();
+    final DateTime local = date.toLocal();
+    return !local.isBefore(start) && local.isBefore(end.add(const Duration(days: 1)));
+  }
+
+  List<SaleModel> get _periodSales => _sales.where((item) => _inSelectedPeriod(item.date)).toList(growable: false);
+  List<PurchaseModel> get _periodPurchases => _purchases.where((item) => _inSelectedPeriod(item.date)).toList(growable: false);
+  List<ExpenseModel> get _periodExpenses => _expenses.where((item) => _inSelectedPeriod(item.date)).toList(growable: false);
+  List<PaymentModel> get _periodPayments => _payments.where((item) => _inSelectedPeriod(item.date)).toList(growable: false);
+
+  void _selectPeriod(String period) {
+    if (_selectedPeriod == period) return;
+    setState(() => _selectedPeriod = period);
+  }
+
   // ===========================================================================
   // CALCULATIONS
   // ===========================================================================
 
   double get _totalSales {
-    return _sales.fold<double>(0, (sum, sale) => sum + sale.total);
+    return _periodSales.fold<double>(0, (sum, sale) => sum + sale.total);
   }
 
   double get _totalPurchases {
-    return _purchases.fold<double>(0, (sum, purchase) => sum + purchase.total);
+    return _periodPurchases.fold<double>(0, (sum, purchase) => sum + purchase.total);
   }
 
   double get _totalExpenses {
-    return _expenses.fold<double>(0, (sum, expense) => sum + expense.amount);
+    return _periodExpenses.fold<double>(0, (sum, expense) => sum + expense.amount);
   }
 
   /// Total customer receipts across the available sales/payment records.
@@ -250,12 +281,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
   ///
   /// Both are intentionally included here.
   double get _totalPayments {
-    final double salePayments = _sales.fold<double>(
+    final double salePayments = _periodSales.fold<double>(
       0,
       (sum, sale) => sum + sale.paidAmount,
     );
 
-    final double separatePayments = _payments.fold<double>(
+    final double separatePayments = _periodPayments.fold<double>(
       0,
       (sum, payment) => sum + payment.amount,
     );
@@ -273,7 +304,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   /// Gross profit is based on the actual invoice total
   /// minus the actual cost of goods sold.
   double get _grossProfit {
-    return _sales.fold<double>(
+    return _periodSales.fold<double>(
       0,
       (sum, sale) => sum + (sale.total - _saleCost(sale)),
     );
@@ -402,7 +433,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       return Scaffold(
         backgroundColor: theme.scaffoldBackgroundColor,
         appBar: AppBar(title: const Text('Reports')),
-        body: const Center(child: CircularProgressIndicator()),
+        body: AppResponsivePage(child: const Center(child: CircularProgressIndicator())),
       );
     }
 
@@ -410,7 +441,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       return Scaffold(
         backgroundColor: theme.scaffoldBackgroundColor,
         appBar: AppBar(title: const Text('Reports')),
-        body: Center(
+        body: AppResponsivePage(child: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
@@ -438,7 +469,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
               ],
             ),
           ),
-        ),
+        )),
       );
     }
 
@@ -465,7 +496,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           const SizedBox(width: 6),
         ],
       ),
-      body: RefreshIndicator(
+      body: AppResponsivePage(child: RefreshIndicator(
         onRefresh: _refresh,
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -481,10 +512,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       _buildHeader(theme, isDesktop),
+                      const SizedBox(height: 14),
+                      _buildPeriodSelector(theme),
                       const SizedBox(height: 18),
                       _buildOverview(theme, isDesktop),
                       const SizedBox(height: 22),
                       _buildQuickSummary(theme),
+                      const SizedBox(height: 18),
+                      _buildPeriodDetails(theme),
                       const SizedBox(height: 22),
                       _buildReportGrid(theme),
                       const SizedBox(height: 22),
@@ -495,6 +530,39 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   ),
                 ),
               ),
+            );
+          },
+        ),
+      )),
+    );
+  }
+
+  Widget _buildPeriodSelector(ThemeData theme) {
+    return Card(
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final List<String> periods = const ['Today', 'Weekly', 'Monthly'];
+            return Row(
+              children: periods.map((period) {
+                final bool selected = _selectedPeriod == period;
+                return Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: FilledButton.tonal(
+                      onPressed: () => _selectPeriod(period),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: selected ? theme.colorScheme.primary : null,
+                        foregroundColor: selected ? theme.colorScheme.onPrimary : null,
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                      ),
+                      child: Text(period),
+                    ),
+                  ),
+                );
+              }).toList(),
             );
           },
         ),
@@ -630,7 +698,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         _sectionTitle(
           theme,
           'Overview',
-          'High-level business performance',
+          '$_selectedPeriod business performance',
           Icons.dashboard_rounded,
         ),
         const SizedBox(height: 12),
@@ -737,7 +805,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         _sectionTitle(
           theme,
           'Quick Summary',
-          'Current business position',
+          '$_selectedPeriod business position',
           Icons.dashboard_customize_rounded,
         ),
         const SizedBox(height: 12),
@@ -820,6 +888,49 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildPeriodDetails(ThemeData theme) {
+    final List<_PeriodDetail> details = [
+      _PeriodDetail('Sales', _periodSales.length, _currency(_totalSales), Icons.point_of_sale_rounded, AppColors.success),
+      _PeriodDetail('Purchases', _periodPurchases.length, _currency(_totalPurchases), Icons.shopping_bag_rounded, AppColors.primary),
+      _PeriodDetail('Expenses', _periodExpenses.length, _currency(_totalExpenses), Icons.receipt_long_rounded, AppColors.warning),
+      _PeriodDetail('Received', _periodPayments.length, _currency(_totalPayments), Icons.payments_rounded, AppColors.info),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionTitle(theme, '$_selectedPeriod Details', 'Complete transaction totals for the selected period', Icons.view_column_rounded),
+        const SizedBox(height: 12),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final int columns = constraints.maxWidth >= 900 ? 4 : constraints.maxWidth >= 560 ? 2 : 1;
+            final double gap = 10;
+            final double width = (constraints.maxWidth - (gap * (columns - 1))) / columns;
+            return Wrap(
+              spacing: gap,
+              runSpacing: gap,
+              children: details.map((item) => SizedBox(width: width, child: Card(
+                margin: EdgeInsets.zero,
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Row(children: [
+                    Icon(item.icon, color: item.color),
+                    const SizedBox(width: 10),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(item.title, style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 3),
+                      Text(item.amount, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
+                    ])),
+                    Text('${item.count}', style: theme.textTheme.titleSmall?.copyWith(color: item.color, fontWeight: FontWeight.w900)),
+                  ]),
+                ),
+              ))).toList(),
+            );
+          },
+        ),
+      ],
     );
   }
 
@@ -1174,6 +1285,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
 // =============================================================================
 // DATA CLASSES
 // =============================================================================
+
+class _PeriodDetail {
+  final String title;
+  final int count;
+  final String amount;
+  final IconData icon;
+  final Color color;
+  const _PeriodDetail(this.title, this.count, this.amount, this.icon, this.color);
+}
 
 class _MetricItem {
   final String title;

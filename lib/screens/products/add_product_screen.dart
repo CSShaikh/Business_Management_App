@@ -4,16 +4,13 @@ import 'package:firebase_core/firebase_core.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/product_model.dart';
 import '../../repositories/product_repository.dart';
+import '../../core/widgets/app_responsive_page.dart';
 
 class AddProductScreen extends StatefulWidget {
   final ProductModel? product;
   final String businessId;
 
-  const AddProductScreen({
-    super.key,
-    required this.businessId,
-    this.product,
-  });
+  const AddProductScreen({super.key, required this.businessId, this.product});
 
   bool get isEditMode => product != null;
 
@@ -46,6 +43,11 @@ class _AddProductScreenState extends State<AddProductScreen> {
     'Box',
     'Packet',
     'Dozen',
+    'Quantity',
+    'Liquid',
+    'Feet',
+    'Inch',
+    'Meter',
     'Other',
   ];
 
@@ -55,6 +57,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
     'Grocery',
     'Food',
     'Beverages',
+    'Liquid',
+    'Service',
+    'Electronics',
+    'Pipe',
     'Other',
   ];
 
@@ -70,16 +76,13 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
       _selectedUnit = product.unit;
 
-      _purchasePriceController.text =
-          product.purchasePrice.toStringAsFixed(2);
+      _purchasePriceController.text = product.purchasePrice.toStringAsFixed(2);
 
-      _sellingPriceController.text =
-          product.sellingPrice.toStringAsFixed(2);
+      _sellingPriceController.text = product.sellingPrice.toStringAsFixed(2);
 
       _stockController.text = _formatStock(product.currentStock);
 
-      _minimumStockController.text =
-          _formatStock(product.minimumStock);
+      _minimumStockController.text = _formatStock(product.minimumStock);
 
       _isActive = product.isActive;
 
@@ -123,10 +126,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
     final String businessId = widget.businessId.trim();
 
     if (businessId.isEmpty) {
-      _showMessage(
-        'Business information is missing.',
-        isError: true,
-      );
+      _showMessage('Business information is missing.', isError: true);
       return;
     }
 
@@ -144,67 +144,41 @@ class _AddProductScreenState extends State<AddProductScreen> {
       final String name = _nameController.text.trim();
       final String category = _categoryController.text.trim();
 
-      final double purchasePrice = _parseDouble(
-        _purchasePriceController.text,
-      );
+      final double purchasePrice = _parseDouble(_purchasePriceController.text);
 
-      final double sellingPrice = _parseDouble(
-        _sellingPriceController.text,
-      );
+      final double sellingPrice = _parseDouble(_sellingPriceController.text);
 
-      final double currentStock = _parseDouble(
-        _stockController.text,
-      );
+      final double currentStock = _parseDouble(_stockController.text);
 
-      final double minimumStock = _parseDouble(
-        _minimumStockController.text,
-      );
+      final double minimumStock = _parseDouble(_minimumStockController.text);
 
       if (purchasePrice < 0) {
-        _showMessage(
-          'Purchase price cannot be negative.',
-          isError: true,
-        );
+        _showMessage('Purchase price cannot be negative.', isError: true);
         return;
       }
 
       if (sellingPrice < 0) {
-        _showMessage(
-          'Selling price cannot be negative.',
-          isError: true,
-        );
+        _showMessage('Selling price cannot be negative.', isError: true);
         return;
       }
 
       if (currentStock < 0) {
-        _showMessage(
-          'Current stock cannot be negative.',
-          isError: true,
-        );
+        _showMessage('Current stock cannot be negative.', isError: true);
         return;
       }
 
       if (!currentStock.isFinite) {
-        _showMessage(
-          'Current stock must be a valid number.',
-          isError: true,
-        );
+        _showMessage('Current stock must be a valid number.', isError: true);
         return;
       }
 
       if (minimumStock < 0) {
-        _showMessage(
-          'Minimum stock cannot be negative.',
-          isError: true,
-        );
+        _showMessage('Minimum stock cannot be negative.', isError: true);
         return;
       }
 
       if (!minimumStock.isFinite) {
-        _showMessage(
-          'Minimum stock must be a valid number.',
-          isError: true,
-        );
+        _showMessage('Minimum stock must be a valid number.', isError: true);
         return;
       }
 
@@ -231,24 +205,22 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
           minimumStock: minimumStock,
           isActive: _isActive,
+          supplierId: oldProduct.supplierId,
+          supplierName: oldProduct.supplierName,
 
           createdAt: oldProduct.createdAt,
           updatedAt: now,
         );
 
-        await _productRepository.updateProduct(
-          updatedProduct,
-        );
+        await _productRepository.updateProduct(updatedProduct);
 
         if (!mounted) {
           return;
         }
 
-        final double stockDifference =
-            currentStock - oldStock;
+        final double stockDifference = currentStock - oldStock;
 
-        String successMessage =
-            'Product updated successfully.';
+        String successMessage = 'Product updated successfully.';
 
         if (stockDifference > 0) {
           successMessage =
@@ -260,14 +232,9 @@ class _AddProductScreenState extends State<AddProductScreen> {
               '${_formatStock(stockDifference.abs())} $_selectedUnit.';
         }
 
-        _showMessage(
-          successMessage,
-        );
+        _showMessage(successMessage);
 
-        Navigator.pop(
-          context,
-          true,
-        );
+        Navigator.pop(context, true);
       } else {
         final ProductModel product = ProductModel(
           id: '',
@@ -289,41 +256,28 @@ class _AddProductScreenState extends State<AddProductScreen> {
           updatedAt: now,
         );
 
-        await _productRepository.createProduct(
-          product,
-        );
+        await _productRepository.createProduct(product);
 
         if (!mounted) {
           return;
         }
 
-        _showMessage(
-          'Product added successfully.',
-        );
+        _showMessage('Product added successfully.');
 
-        Navigator.pop(
-          context,
-          true,
-        );
+        Navigator.pop(context, true);
       }
     } on FirebaseException catch (e) {
       if (!mounted) {
         return;
       }
 
-      _showMessage(
-        e.message ?? 'Something went wrong.',
-        isError: true,
-      );
+      _showMessage(e.message ?? 'Something went wrong.', isError: true);
     } catch (_) {
       if (!mounted) {
         return;
       }
 
-      _showMessage(
-        'Unable to save product. Please try again.',
-        isError: true,
-      );
+      _showMessage('Unable to save product. Please try again.', isError: true);
     } finally {
       if (mounted) {
         setState(() {
@@ -333,10 +287,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
     }
   }
 
-  void _showMessage(
-    String message, {
-    bool isError = false,
-  }) {
+  void _showMessage(String message, {bool isError = false}) {
     if (!mounted) {
       return;
     }
@@ -347,9 +298,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
         SnackBar(
           content: Text(message),
           behavior: SnackBarBehavior.floating,
-          backgroundColor: isError
-              ? AppColors.danger
-              : AppColors.success,
+          backgroundColor: isError ? AppColors.danger : AppColors.success,
         ),
       );
   }
@@ -376,34 +325,20 @@ class _AddProductScreenState extends State<AddProductScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text(
-            'Discard changes?',
-          ),
-          content: const Text(
-            'Your entered product information will be lost.',
-          ),
+          title: const Text('Discard changes?'),
+          content: const Text('Your entered product information will be lost.'),
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(
-                  context,
-                  false,
-                );
+                Navigator.pop(context, false);
               },
-              child: const Text(
-                'Cancel',
-              ),
+              child: const Text('Cancel'),
             ),
             FilledButton(
               onPressed: () {
-                Navigator.pop(
-                  context,
-                  true,
-                );
+                Navigator.pop(context, true);
               },
-              child: const Text(
-                'Discard',
-              ),
+              child: const Text('Discard'),
             ),
           ],
         );
@@ -415,10 +350,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
     }
   }
 
-  String? _requiredValidator(
-    String? value,
-    String fieldName,
-  ) {
+  String? _requiredValidator(String? value, String fieldName) {
     if (value == null || value.trim().isEmpty) {
       return '$fieldName is required';
     }
@@ -426,17 +358,12 @@ class _AddProductScreenState extends State<AddProductScreen> {
     return null;
   }
 
-  String? _priceValidator(
-    String? value,
-    String fieldName,
-  ) {
+  String? _priceValidator(String? value, String fieldName) {
     if (value == null || value.trim().isEmpty) {
       return '$fieldName is required';
     }
 
-    final double? number = double.tryParse(
-      value.trim(),
-    );
+    final double? number = double.tryParse(value.trim());
 
     if (number == null || !number.isFinite) {
       return 'Enter a valid number';
@@ -449,17 +376,12 @@ class _AddProductScreenState extends State<AddProductScreen> {
     return null;
   }
 
-  String? _stockValidator(
-    String? value,
-    String fieldName,
-  ) {
+  String? _stockValidator(String? value, String fieldName) {
     if (value == null || value.trim().isEmpty) {
       return '$fieldName is required';
     }
 
-    final double? number = double.tryParse(
-      value.trim(),
-    );
+    final double? number = double.tryParse(value.trim());
 
     if (number == null || !number.isFinite) {
       return 'Enter a valid number';
@@ -481,33 +403,22 @@ class _AddProductScreenState extends State<AddProductScreen> {
       appBar: AppBar(
         title: Text(
           isEdit ? 'Edit Product' : 'Add Product',
-          style: const TextStyle(
-            fontWeight: FontWeight.w700,
-          ),
+          style: const TextStyle(fontWeight: FontWeight.w700),
         ),
         leading: IconButton(
-          onPressed: _isSaving
-              ? null
-              : _confirmCancel,
-          icon: const Icon(
-            Icons.arrow_back_rounded,
-          ),
+          onPressed: _isSaving ? null : _confirmCancel,
+          icon: const Icon(Icons.arrow_back_rounded),
         ),
       ),
-      body: SafeArea(
+      body: AppResponsivePage(child: SafeArea(
         child: Form(
           key: _formKey,
           child: LayoutBuilder(
-            builder: (
-              context,
-              constraints,
-            ) {
-              final bool wide =
-                  constraints.maxWidth >= 900;
+            builder: (context, constraints) {
+              final bool wide = constraints.maxWidth >= 900;
 
               final Widget content = Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildHeader(isEdit),
                   const SizedBox(height: 20),
@@ -526,14 +437,16 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
               return SingleChildScrollView(
                 padding: EdgeInsets.symmetric(
-                  horizontal: wide ? 40 : 16,
-                  vertical: 20,
+                  horizontal: wide
+                      ? 40
+                      : constraints.maxWidth < 380
+                      ? 12
+                      : 16,
+                  vertical: constraints.maxWidth < 380 ? 14 : 20,
                 ),
                 child: Center(
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(
-                      maxWidth: 1000,
-                    ),
+                    constraints: const BoxConstraints(maxWidth: 1000),
                     child: content,
                   ),
                 ),
@@ -541,52 +454,46 @@ class _AddProductScreenState extends State<AddProductScreen> {
             },
           ),
         ),
-      ),
+      )),
     );
   }
 
   Widget _buildHeader(bool isEdit) {
+    final double width = MediaQuery.sizeOf(context).width;
+    final bool compact = width < 380;
+
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(compact ? 14 : 20),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outlineVariant,
-        ),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Row(
         children: [
           Container(
-            width: 50,
-            height: 50,
+            width: compact ? 44 : 50,
+            height: compact ? 44 : 50,
             decoration: BoxDecoration(
-              color: AppColors.primary.withValues(
-                alpha: 0.10,
-              ),
+              color: AppColors.primary.withValues(alpha: 0.10),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Icon(
-              isEdit
-                  ? Icons.edit_rounded
-                  : Icons.inventory_2_rounded,
+              isEdit ? Icons.edit_rounded : Icons.inventory_2_rounded,
               color: AppColors.primary,
               size: 25,
             ),
           ),
-          const SizedBox(width: 14),
+          SizedBox(width: compact ? 10 : 14),
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  isEdit
-                      ? 'Edit Product'
-                      : 'Add New Product',
-                  style: const TextStyle(
-                    fontSize: 21,
+                  isEdit ? 'Edit Product' : 'Add New Product',
+                  style: TextStyle(
+                    fontSize: compact ? 18 : 21,
                     fontWeight: FontWeight.w800,
                     color: AppColors.lightTextPrimary,
                   ),
@@ -620,26 +527,17 @@ class _AddProductScreenState extends State<AddProductScreen> {
           hint: 'Enter product name',
           icon: Icons.inventory_2_outlined,
           validator: (value) {
-            return _requiredValidator(
-              value,
-              'Product name',
-            );
+            return _requiredValidator(value, 'Product name');
           },
         ),
         const SizedBox(height: 16),
         LayoutBuilder(
-          builder: (
-            context,
-            constraints,
-          ) {
-            final bool stacked =
-                constraints.maxWidth < 600;
+          builder: (context, constraints) {
+            final bool stacked = constraints.maxWidth < 600;
 
-            final Widget categoryField =
-                _categoryField();
+            final Widget categoryField = _categoryField();
 
-            final Widget unitField =
-                _unitField();
+            final Widget unitField = _unitField();
 
             if (stacked) {
               return Column(
@@ -653,13 +551,9 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
             return Row(
               children: [
-                Expanded(
-                  child: categoryField,
-                ),
+                Expanded(child: categoryField),
                 const SizedBox(width: 16),
-                Expanded(
-                  child: unitField,
-                ),
+                Expanded(child: unitField),
               ],
             );
           },
@@ -670,32 +564,22 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
   Widget _categoryField() {
     return Autocomplete<String>(
-      initialValue: TextEditingValue(
-        text: _categoryController.text,
-      ),
+      initialValue: TextEditingValue(text: _categoryController.text),
       optionsBuilder: (textEditingValue) {
-        final String query =
-            textEditingValue.text.trim().toLowerCase();
+        final String query = textEditingValue.text.trim().toLowerCase();
 
         if (query.isEmpty) {
           return _categories;
         }
 
         return _categories.where(
-          (category) => category
-              .toLowerCase()
-              .contains(query),
+          (category) => category.toLowerCase().contains(query),
         );
       },
       onSelected: (value) {
         _categoryController.text = value;
       },
-      fieldViewBuilder: (
-        context,
-        controller,
-        focusNode,
-        onFieldSubmitted,
-      ) {
+      fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
         if (controller.text != _categoryController.text) {
           controller.text = _categoryController.text;
         }
@@ -705,10 +589,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
           focusNode: focusNode,
           enabled: !_isSaving,
           validator: (value) {
-            return _requiredValidator(
-              value,
-              'Category',
-            );
+            return _requiredValidator(value, 'Category');
           },
           onChanged: (value) {
             _categoryController.text = value;
@@ -716,44 +597,28 @@ class _AddProductScreenState extends State<AddProductScreen> {
           decoration: const InputDecoration(
             labelText: 'Category',
             hintText: 'Select or enter category',
-            prefixIcon: Icon(
-              Icons.category_outlined,
-            ),
+            prefixIcon: Icon(Icons.category_outlined),
           ),
         );
       },
-      optionsViewBuilder: (
-        context,
-        onSelected,
-        options,
-      ) {
+      optionsViewBuilder: (context, onSelected, options) {
         return Align(
           alignment: Alignment.topLeft,
           child: Material(
             elevation: 5,
             borderRadius: BorderRadius.circular(12),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxWidth: 450,
-              ),
+              constraints: const BoxConstraints(maxWidth: 450),
               child: ListView.builder(
-                padding: const EdgeInsets.symmetric(
-                  vertical: 6,
-                ),
+                padding: const EdgeInsets.symmetric(vertical: 6),
                 shrinkWrap: true,
                 itemCount: options.length,
-                itemBuilder: (
-                  context,
-                  index,
-                ) {
-                  final String option =
-                      options.elementAt(index);
+                itemBuilder: (context, index) {
+                  final String option = options.elementAt(index);
 
                   return ListTile(
                     dense: true,
-                    leading: const Icon(
-                      Icons.category_outlined,
-                    ),
+                    leading: const Icon(Icons.category_outlined),
                     title: Text(option),
                     onTap: () {
                       onSelected(option);
@@ -770,24 +635,15 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
   Widget _unitField() {
     return DropdownButtonFormField<String>(
-      initialValue: _units.contains(_selectedUnit)
-          ? _selectedUnit
-          : 'Other',
+      initialValue: _units.contains(_selectedUnit) ? _selectedUnit : 'Other',
       decoration: const InputDecoration(
         labelText: 'Unit',
         hintText: 'Select unit',
-        prefixIcon: Icon(
-          Icons.straighten_outlined,
-        ),
+        prefixIcon: Icon(Icons.straighten_outlined),
       ),
-      items: _units.map(
-        (unit) {
-          return DropdownMenuItem<String>(
-            value: unit,
-            child: Text(unit),
-          );
-        },
-      ).toList(),
+      items: _units.map((unit) {
+        return DropdownMenuItem<String>(value: unit, child: Text(unit));
+      }).toList(),
       onChanged: _isSaving
           ? null
           : (value) {
@@ -808,27 +664,19 @@ class _AddProductScreenState extends State<AddProductScreen> {
       icon: Icons.payments_outlined,
       children: [
         LayoutBuilder(
-          builder: (
-            context,
-            constraints,
-          ) {
-            final bool stacked =
-                constraints.maxWidth < 600;
+          builder: (context, constraints) {
+            final bool stacked = constraints.maxWidth < 600;
 
             final Widget purchaseField = _textField(
               controller: _purchasePriceController,
               label: 'Purchase Price',
               hint: '0.00',
               icon: Icons.shopping_cart_outlined,
-              keyboardType:
-                  const TextInputType.numberWithOptions(
+              keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
               validator: (value) {
-                return _priceValidator(
-                  value,
-                  'Purchase price',
-                );
+                return _priceValidator(value, 'Purchase price');
               },
             );
 
@@ -837,15 +685,11 @@ class _AddProductScreenState extends State<AddProductScreen> {
               label: 'Selling Price',
               hint: '0.00',
               icon: Icons.sell_outlined,
-              keyboardType:
-                  const TextInputType.numberWithOptions(
+              keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
               validator: (value) {
-                return _priceValidator(
-                  value,
-                  'Selling price',
-                );
+                return _priceValidator(value, 'Selling price');
               },
             );
 
@@ -861,13 +705,9 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
             return Row(
               children: [
-                Expanded(
-                  child: purchaseField,
-                ),
+                Expanded(child: purchaseField),
                 const SizedBox(width: 16),
-                Expanded(
-                  child: sellingField,
-                ),
+                Expanded(child: sellingField),
               ],
             );
           },
@@ -889,27 +729,19 @@ class _AddProductScreenState extends State<AddProductScreen> {
       icon: Icons.warehouse_outlined,
       children: [
         LayoutBuilder(
-          builder: (
-            context,
-            constraints,
-          ) {
-            final bool stacked =
-                constraints.maxWidth < 600;
+          builder: (context, constraints) {
+            final bool stacked = constraints.maxWidth < 600;
 
             final Widget currentStockField = _textField(
               controller: _stockController,
               label: 'Current Stock',
               hint: '0',
               icon: Icons.inventory_outlined,
-              keyboardType:
-                  const TextInputType.numberWithOptions(
+              keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
               validator: (value) {
-                return _stockValidator(
-                  value,
-                  'Current stock',
-                );
+                return _stockValidator(value, 'Current stock');
               },
             );
 
@@ -918,15 +750,11 @@ class _AddProductScreenState extends State<AddProductScreen> {
               label: 'Minimum Stock',
               hint: '0',
               icon: Icons.warning_amber_rounded,
-              keyboardType:
-                  const TextInputType.numberWithOptions(
+              keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
               validator: (value) {
-                return _stockValidator(
-                  value,
-                  'Minimum stock',
-                );
+                return _stockValidator(value, 'Minimum stock');
               },
             );
 
@@ -942,13 +770,9 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
             return Row(
               children: [
-                Expanded(
-                  child: currentStockField,
-                ),
+                Expanded(child: currentStockField),
                 const SizedBox(width: 16),
-                Expanded(
-                  child: minimumStockField,
-                ),
+                Expanded(child: minimumStockField),
               ],
             );
           },
@@ -958,7 +782,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
           icon: Icons.sync_alt_rounded,
           text: widget.isEditMode
               ? 'Current stock can be increased or decreased directly here. '
-                  'Enter the new stock quantity and save the product.'
+                    'Enter the new stock quantity and save the product.'
               : 'Opening stock can be entered when creating a product.',
         ),
       ],
@@ -974,17 +798,13 @@ class _AddProductScreenState extends State<AddProductScreen> {
           contentPadding: EdgeInsets.zero,
           title: const Text(
             'Active Product',
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-            ),
+            style: TextStyle(fontWeight: FontWeight.w700),
           ),
           subtitle: Text(
             _isActive
                 ? 'This product is available for sales.'
                 : 'This product is hidden from active lists.',
-            style: const TextStyle(
-              color: AppColors.lightTextSecondary,
-            ),
+            style: const TextStyle(color: AppColors.lightTextSecondary),
           ),
           value: _isActive,
           onChanged: _isSaving
@@ -1004,9 +824,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
       width: double.infinity,
       height: 54,
       child: FilledButton.icon(
-        onPressed: _isSaving
-            ? null
-            : _saveProduct,
+        onPressed: _isSaving ? null : _saveProduct,
         icon: _isSaving
             ? const SizedBox(
                 width: 20,
@@ -1016,21 +834,14 @@ class _AddProductScreenState extends State<AddProductScreen> {
                   color: Colors.white,
                 ),
               )
-            : Icon(
-                isEdit
-                    ? Icons.save_rounded
-                    : Icons.add_rounded,
-              ),
+            : Icon(isEdit ? Icons.save_rounded : Icons.add_rounded),
         label: Text(
           _isSaving
               ? 'Saving...'
               : isEdit
-                  ? 'Update Product'
-                  : 'Save Product',
-          style: const TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
-          ),
+              ? 'Update Product'
+              : 'Save Product',
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
         ),
       ),
     );
@@ -1041,60 +852,56 @@ class _AddProductScreenState extends State<AddProductScreen> {
     required IconData icon,
     required List<Widget> children,
   }) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.lightCard,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: AppColors.lightBorder,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(
-              alpha: 0.035,
-            ),
-            blurRadius: 14,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(
-                    alpha: 0.10,
-                  ),
-                  borderRadius: BorderRadius.circular(11),
-                ),
-                child: Icon(
-                  icon,
-                  color: AppColors.primary,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.lightTextPrimary,
-                ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool compact = constraints.maxWidth < 380;
+
+        return Container(
+          width: double.infinity,
+          padding: EdgeInsets.all(compact ? 14 : 20),
+          decoration: BoxDecoration(
+            color: AppColors.lightCard,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: AppColors.lightBorder),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.035),
+                blurRadius: 14,
+                offset: const Offset(0, 5),
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          ...children,
-        ],
-      ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(11),
+                    ),
+                    child: Icon(icon, color: AppColors.primary, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.lightTextPrimary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              ...children,
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -1121,33 +928,19 @@ class _AddProductScreenState extends State<AddProductScreen> {
     );
   }
 
-  Widget _infoBanner({
-    required IconData icon,
-    required String text,
-  }) {
+  Widget _infoBanner({required IconData icon, required String text}) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
-        color: AppColors.info.withValues(
-          alpha: 0.07,
-        ),
+        color: AppColors.info.withValues(alpha: 0.07),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppColors.info.withValues(
-            alpha: 0.15,
-          ),
-        ),
+        border: Border.all(color: AppColors.info.withValues(alpha: 0.15)),
       ),
       child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            icon,
-            size: 19,
-            color: AppColors.info,
-          ),
+          Icon(icon, size: 19, color: AppColors.info),
           const SizedBox(width: 10),
           Expanded(
             child: Text(

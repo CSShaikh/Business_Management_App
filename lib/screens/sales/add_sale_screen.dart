@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/app_number_format.dart';
@@ -11,6 +12,7 @@ import '../../repositories/customer_repository.dart';
 import '../../repositories/product_repository.dart';
 import '../../core/services/sale_stock_service.dart';
 import '../../repositories/sale_repository.dart';
+import '../../core/widgets/app_responsive_page.dart';
 
 class AddSaleScreen extends StatefulWidget {
   final SaleModel? sale;
@@ -58,10 +60,12 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
   String? _errorMessage;
 
   String _paymentMethod = 'Cash';
+  late DateTime _saleDate;
 
   @override
   void initState() {
     super.initState();
+    _saleDate = widget.sale?.date.toLocal() ?? DateTime.now();
 
     _discountController.addListener(_refreshTotals);
     _taxController.addListener(_refreshTotals);
@@ -207,6 +211,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
     _taxController.text = _formatNumber(sale.tax);
     _paidController.text = _formatNumber(sale.paidAmount);
     _notesController.text = sale.notes;
+    _saleDate = sale.date.toLocal();
     _paymentMethod = sale.paymentMethod.trim().isEmpty
         ? 'Cash'
         : sale.paymentMethod;
@@ -372,6 +377,27 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
   // SAVE SALE
   // ===========================================================================
 
+  Future<void> _selectSaleDate() async {
+    final DateTime? selected = await showDatePicker(
+      context: context,
+      initialDate: _saleDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+      helpText: 'Select sale date',
+    );
+    if (selected == null || !mounted) return;
+    setState(() {
+      _saleDate = DateTime(
+        selected.year,
+        selected.month,
+        selected.day,
+        _saleDate.hour,
+        _saleDate.minute,
+        _saleDate.second,
+      );
+    });
+  }
+
   Future<void> _saveSale() async {
     if (_saving) return;
 
@@ -484,7 +510,14 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
         paidAmount: _paidAmount,
         paymentStatus: _paymentStatus,
         paymentMethod: _paymentMethod,
-        date: oldSale?.date ?? now,
+        date: DateTime(
+          _saleDate.year,
+          _saleDate.month,
+          _saleDate.day,
+          now.hour,
+          now.minute,
+          now.second,
+        ),
         notes: _notesController.text.trim(),
         invoiceNumber: invoiceNumber,
         createdAt: oldSale?.createdAt ?? now,
@@ -746,7 +779,9 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
         appBar: AppBar(
           title: Text(widget.isEditMode ? 'Edit Sale' : 'Add Sale'),
         ),
-        body: const Center(child: CircularProgressIndicator()),
+        body: AppResponsivePage(
+          child: const Center(child: CircularProgressIndicator()),
+        ),
       );
     }
 
@@ -755,7 +790,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
         appBar: AppBar(
           title: Text(widget.isEditMode ? 'Edit Sale' : 'Add Sale'),
         ),
-        body: _buildErrorState(),
+        body: AppResponsivePage(child: _buildErrorState()),
       );
     }
 
@@ -771,48 +806,52 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
             ),
         ],
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1250),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _buildCustomerSection(),
-                  const SizedBox(height: 16),
-                  _buildItemsSection(),
-                  const SizedBox(height: 16),
-                  _buildPaymentSection(),
-                  const SizedBox(height: 16),
-                  _buildNotesSection(),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: FilledButton.icon(
-                      onPressed: _saving ? null : _saveSale,
-                      icon: _saving
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.check_rounded),
-                      label: Text(
-                        _saving
-                            ? 'Saving...'
-                            : (widget.isEditMode
-                                  ? 'Update Sale'
-                                  : 'Create Sale'),
+      body: AppResponsivePage(
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1250),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildCustomerSection(),
+                    const SizedBox(height: 12),
+                    _buildSaleDateSection(),
+                    const SizedBox(height: 16),
+                    _buildItemsSection(),
+                    const SizedBox(height: 16),
+                    _buildPaymentSection(),
+                    const SizedBox(height: 16),
+                    _buildNotesSection(),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: FilledButton.icon(
+                        onPressed: _saving ? null : _saveSale,
+                        icon: _saving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.check_rounded),
+                        label: Text(
+                          _saving
+                              ? 'Saving...'
+                              : (widget.isEditMode
+                                    ? 'Update Sale'
+                                    : 'Create Sale'),
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -938,6 +977,55 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
                 ],
               ),
             ),
+    );
+  }
+
+  Widget _buildSaleDateSection() {
+    final ThemeData theme = Theme.of(context);
+    final String formatted = DateFormat('dd MMM yyyy').format(_saleDate);
+
+    return _SectionCard(
+      title: 'Sale Date',
+      icon: Icons.calendar_today_outlined,
+      child: InkWell(
+        onTap: _saving ? null : _selectSaleDate,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          decoration: BoxDecoration(
+            border: Border.all(color: theme.colorScheme.outline),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.event_rounded, color: theme.colorScheme.primary),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Invoice / Sale Date',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      formatted,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.edit_calendar_rounded),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -1205,10 +1293,11 @@ class _SectionCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final bool compact = constraints.maxWidth < 520;
+
+            final Widget heading = Row(
               children: [
                 Container(
                   width: 36,
@@ -1223,16 +1312,38 @@ class _SectionCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.titleMedium
                         ?.copyWith(fontWeight: FontWeight.bold),
                   ),
                 ),
-                if (trailingWidget case final Widget widget) widget,
               ],
-            ),
-            const SizedBox(height: 16),
-            child,
-          ],
+            );
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (trailingWidget case final Widget widget)
+                  if (compact) ...[
+                    heading,
+                    const SizedBox(height: 12),
+                    SizedBox(width: double.infinity, child: widget),
+                  ] else
+                    Row(
+                      children: [
+                        Expanded(child: heading),
+                        const SizedBox(width: 12),
+                        widget,
+                      ],
+                    )
+                else
+                  heading,
+                const SizedBox(height: 16),
+                child,
+              ],
+            );
+          },
         ),
       ),
     );
@@ -1314,40 +1425,42 @@ class _SaleItemCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: InkWell(
-                  onTap: onQuantityTap,
-                  borderRadius: BorderRadius.circular(10),
-                  child: _EditableValue(
-                    label: 'Quantity',
-                    value:
-                        '${_formatNumber(item.quantity)} '
-                        '${item.product.unit}',
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: InkWell(
-                  onTap: onRateTap,
-                  borderRadius: BorderRadius.circular(10),
-                  child: _EditableValue(
-                    label: 'Selling Rate',
-                    value: _formatCurrency(item.sellingRate),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final Widget quantity = InkWell(
+                onTap: onQuantityTap,
+                borderRadius: BorderRadius.circular(10),
                 child: _EditableValue(
-                  label: 'Amount',
-                  value: _formatCurrency(item.total),
-                  highlight: true,
+                  label: 'Quantity',
+                  value:
+                      '${_formatNumber(item.quantity)} '
+                      '${item.product.unit}',
                 ),
-              ),
-            ],
+              );
+              final Widget rate = InkWell(
+                onTap: onRateTap,
+                borderRadius: BorderRadius.circular(10),
+                child: _EditableValue(
+                  label: 'Selling Rate',
+                  value: _formatCurrency(item.sellingRate),
+                ),
+              );
+              final Widget amount = _EditableValue(
+                label: 'Amount',
+                value: _formatCurrency(item.total),
+                highlight: true,
+              );
+
+              return Row(
+                children: [
+                  Expanded(child: quantity),
+                  const SizedBox(width: 10),
+                  Expanded(child: rate),
+                  const SizedBox(width: 10),
+                  Expanded(child: amount),
+                ],
+              );
+            },
           ),
         ],
       ),
@@ -1638,8 +1751,8 @@ class _ProductPickerState extends State<_ProductPicker> {
                           title: Text(product.name),
                           subtitle: Text(
                             '₹${product.sellingPrice.toStringAsFixed(2)} • '
-                            'Stock ${_formatNumber(product.currentStock)} '
-                            '${product.unit}',
+                            'Stock ${_formatNumber(product.currentStock)} ${product.unit}'
+                            '${product.supplierName.trim().isEmpty ? '' : ' • ${product.supplierName.trim()}'}',
                           ),
                           trailing: const Icon(
                             Icons.add_circle_outline_rounded,

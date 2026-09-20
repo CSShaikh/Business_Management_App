@@ -7,11 +7,13 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:public_file_saver/public_file_saver.dart';
 
+import '../../core/services/business_pdf_branding.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/business_model.dart';
 import '../../models/payment_model.dart';
 import '../../repositories/business_repository.dart';
 import '../../repositories/payment_repository.dart';
+import '../../core/widgets/app_responsive_page.dart';
 
 class PaymentReportScreen extends StatefulWidget {
   const PaymentReportScreen({super.key});
@@ -553,7 +555,7 @@ class _PaymentReportScreenState
           ),
         ],
       ),
-      body: body,
+      body: AppResponsivePage(child: body),
     );
   }
 
@@ -576,6 +578,8 @@ class _PaymentReportScreenState
       final double total = _totalReceived(payments);
       final double average = _averagePayment(payments);
 
+      final pw.MemoryImage? logo = await BusinessPdfBranding.loadLogo(business);
+
       document.addPage(
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
@@ -588,6 +592,19 @@ class _PaymentReportScreenState
             ),
           ),
           build: (context) => [
+            pw.Container(
+              width: 52,
+              height: 52,
+              padding: const pw.EdgeInsets.all(4),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.grey300),
+                borderRadius: pw.BorderRadius.circular(8),
+              ),
+              child: logo == null
+                  ? pw.Center(child: pw.Text('LOGO', style: const pw.TextStyle(fontSize: 7)))
+                  : pw.Image(logo, fit: pw.BoxFit.contain),
+            ),
+            pw.SizedBox(height: 8),
             pw.Text(
               business.businessName.trim().isEmpty
                   ? 'Business Management App'

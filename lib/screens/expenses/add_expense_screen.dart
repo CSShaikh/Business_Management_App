@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import '../../core/widgets/app_date_picker.dart';
 
 import '../../core/theme/app_colors.dart';
@@ -7,47 +8,35 @@ import '../../models/business_model.dart';
 import '../../models/expense_model.dart';
 import '../../repositories/business_repository.dart';
 import '../../repositories/expense_repository.dart';
+import '../../core/widgets/app_responsive_page.dart';
 
 class AddExpenseScreen extends StatefulWidget {
   final ExpenseModel? expense;
 
-  const AddExpenseScreen({
-    super.key,
-    this.expense,
-  });
+  const AddExpenseScreen({super.key, this.expense});
 
   bool get isEditMode => expense != null;
 
   @override
-  State<AddExpenseScreen> createState() =>
-      _AddExpenseScreenState();
+  State<AddExpenseScreen> createState() => _AddExpenseScreenState();
 }
 
-class _AddExpenseScreenState
-    extends State<AddExpenseScreen> {
-  final GlobalKey<FormState> _formKey =
-      GlobalKey<FormState>();
+class _AddExpenseScreenState extends State<AddExpenseScreen> {
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
 
-  final BusinessRepository _businessRepository =
-      BusinessRepository();
+  final BusinessRepository _businessRepository = BusinessRepository();
 
-  final ExpenseRepository _expenseRepository =
-      ExpenseRepository();
+  final ExpenseRepository _expenseRepository = ExpenseRepository();
 
-  final TextEditingController _amountController =
-      TextEditingController();
+  final TextEditingController _amountController = TextEditingController();
 
-  final TextEditingController _categoryController =
-      TextEditingController();
+  final TextEditingController _categoryController = TextEditingController();
 
-  final TextEditingController _descriptionController =
-      TextEditingController();
+  final TextEditingController _descriptionController = TextEditingController();
 
-  final TextEditingController _notesController =
-      TextEditingController();
+  final TextEditingController _notesController = TextEditingController();
 
-  final TextEditingController _receiptUrlController =
-      TextEditingController();
+  final TextEditingController _receiptUrlController = TextEditingController();
 
   BusinessModel? _business;
 
@@ -85,15 +74,13 @@ class _AddExpenseScreenState
     'Other',
   ];
 
-  final NumberFormat _currencyFormat =
-      NumberFormat.currency(
+  final NumberFormat _currencyFormat = NumberFormat.currency(
     locale: 'en_IN',
     symbol: '₹',
     decimalDigits: 2,
   );
 
-  final DateFormat _dateFormat =
-      DateFormat('dd MMM yyyy');
+  final DateFormat _dateFormat = DateFormat('dd MMM yyyy');
 
   @override
   void initState() {
@@ -110,30 +97,21 @@ class _AddExpenseScreenState
       return;
     }
 
-    _amountController.text =
-        expense.amount.toString();
+    _amountController.text = expense.amount.toString();
 
-    _categoryController.text =
-        expense.category;
+    _categoryController.text = expense.category;
 
-    _descriptionController.text =
-        expense.description;
+    _descriptionController.text = expense.description;
 
-    _notesController.text =
-        expense.notes;
+    _notesController.text = expense.notes;
 
-    _receiptUrlController.text =
-        expense.receiptUrl;
+    _receiptUrlController.text = expense.receiptUrl;
 
     _expenseDate = expense.date;
 
-    if (_paymentMethods.contains(
-      expense.paymentMethod,
-    )) {
+    if (_paymentMethods.contains(expense.paymentMethod)) {
       _paymentMethod = expense.paymentMethod;
-    } else if (expense.paymentMethod
-        .trim()
-        .isNotEmpty) {
+    } else if (expense.paymentMethod.trim().isNotEmpty) {
       _paymentMethod = expense.paymentMethod.trim();
     }
   }
@@ -158,9 +136,7 @@ class _AddExpenseScreenState
     }
 
     try {
-      final business =
-          await _businessRepository
-              .getBusinessForCurrentUser();
+      final business = await _businessRepository.getBusinessForCurrentUser();
 
       if (!mounted) {
         return;
@@ -170,8 +146,7 @@ class _AddExpenseScreenState
         setState(() {
           _business = null;
           _isLoading = false;
-          _errorMessage =
-              'Business profile not found.';
+          _errorMessage = 'Business profile not found.';
         });
         return;
       }
@@ -187,8 +162,7 @@ class _AddExpenseScreenState
 
       setState(() {
         _isLoading = false;
-        _errorMessage =
-            'Unable to load business information.';
+        _errorMessage = 'Unable to load business information.';
       });
     }
   }
@@ -196,21 +170,16 @@ class _AddExpenseScreenState
   Future<void> _selectExpenseDate() async {
     final now = DateTime.now();
 
-    final selectedDate =
-        await AppDatePicker.showDatePicker(
+    final selectedDate = await AppDatePicker.showDatePicker(
       context: context,
-      
-      initialEntryMode: DatePickerEntryMode.calendar,initialDate: _expenseDate,
+
+      initialEntryMode: DatePickerEntryMode.calendar,
+      initialDate: _expenseDate,
       firstDate: DateTime(2020),
-      lastDate: DateTime(
-        now.year + 2,
-        12,
-        31,
-      ),
+      lastDate: DateTime(now.year + 2, 12, 31),
     );
 
-    if (selectedDate == null ||
-        !mounted) {
+    if (selectedDate == null || !mounted) {
       return;
     }
 
@@ -220,83 +189,61 @@ class _AddExpenseScreenState
   }
 
   Future<void> _selectCategory() async {
-    final selected =
-        await showModalBottomSheet<String>(
+    final selected = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
       builder: (context) {
         return SafeArea(
           child: ListView(
             shrinkWrap: true,
-            padding: const EdgeInsets.fromLTRB(
-              16,
-              4,
-              16,
-              20,
-            ),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
             children: [
               const Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: 4,
-                  vertical: 8,
-                ),
+                padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
                 child: Text(
                   'Select Expense Category',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                  ),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
                 ),
               ),
               const SizedBox(height: 8),
-              ..._commonCategories.map(
-                (category) {
-                  final isSelected =
-                      _categoryController.text
-                              .trim()
-                              .toLowerCase() ==
-                          category.toLowerCase();
+              ..._commonCategories.map((category) {
+                final isSelected =
+                    _categoryController.text.trim().toLowerCase() ==
+                    category.toLowerCase();
 
-                  return ListTile(
-                    leading: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: AppColors.primary
-                            .withValues(alpha: 0.08),
-                        borderRadius:
-                            BorderRadius.circular(11),
-                      ),
-                      child: Icon(
-                        _categoryIcon(category),
-                        color: AppColors.primary,
-                        size: 20,
-                      ),
+                return ListTile(
+                  leading: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(11),
                     ),
-                    title: Text(category),
-                    trailing: isSelected
-                        ? const Icon(
-                            Icons.check_circle_rounded,
-                            color: AppColors.success,
-                          )
-                        : null,
-                    onTap: () {
-                      Navigator.pop(
-                        context,
-                        category,
-                      );
-                    },
-                  );
-                },
-              ),
+                    child: Icon(
+                      _categoryIcon(category),
+                      color: AppColors.primary,
+                      size: 20,
+                    ),
+                  ),
+                  title: Text(category),
+                  trailing: isSelected
+                      ? const Icon(
+                          Icons.check_circle_rounded,
+                          color: AppColors.success,
+                        )
+                      : null,
+                  onTap: () {
+                    Navigator.pop(context, category);
+                  },
+                );
+              }),
             ],
           ),
         );
       },
     );
 
-    if (selected == null ||
-        !mounted) {
+    if (selected == null || !mounted) {
       return;
     }
 
@@ -305,9 +252,7 @@ class _AddExpenseScreenState
     });
   }
 
-  IconData _categoryIcon(
-    String category,
-  ) {
+  IconData _categoryIcon(String category) {
     switch (category.toLowerCase()) {
       case 'rent':
         return Icons.home_work_rounded;
@@ -347,57 +292,37 @@ class _AddExpenseScreenState
 
     final formState = _formKey.currentState;
 
-    if (formState == null ||
-        !formState.validate()) {
+    if (formState == null || !formState.validate()) {
       return;
     }
 
     final business = _business;
 
-    if (business == null ||
-        business.id.trim().isEmpty) {
-      _showMessage(
-        'Business profile is not available.',
-        isError: true,
-      );
+    if (business == null || business.id.trim().isEmpty) {
+      _showMessage('Business profile is not available.', isError: true);
       return;
     }
 
     final amount = double.tryParse(
-      _amountController.text
-          .trim()
-          .replaceAll(',', ''),
+      _amountController.text.trim().replaceAll(',', ''),
     );
 
-    if (amount == null ||
-        !amount.isFinite ||
-        amount <= 0) {
-      _showMessage(
-        'Enter a valid expense amount.',
-        isError: true,
-      );
+    if (amount == null || !amount.isFinite || amount <= 0) {
+      _showMessage('Enter a valid expense amount.', isError: true);
       return;
     }
 
-    final category =
-        _categoryController.text.trim();
+    final category = _categoryController.text.trim();
 
     if (category.isEmpty) {
-      _showMessage(
-        'Please select an expense category.',
-        isError: true,
-      );
+      _showMessage('Please select an expense category.', isError: true);
       return;
     }
 
-    final paymentMethod =
-        _paymentMethod.trim();
+    final paymentMethod = _paymentMethod.trim();
 
     if (paymentMethod.isEmpty) {
-      _showMessage(
-        'Please select a payment method.',
-        isError: true,
-      );
+      _showMessage('Please select a payment method.', isError: true);
       return;
     }
 
@@ -408,22 +333,16 @@ class _AddExpenseScreenState
     try {
       final now = DateTime.now();
 
-      final existingExpense =
-          widget.expense;
+      final existingExpense = widget.expense;
 
       final businessId =
           existingExpense != null &&
-                  existingExpense.businessId
-                      .trim()
-                      .isNotEmpty
-              ? existingExpense.businessId.trim()
-              : business.id.trim();
+              existingExpense.businessId.trim().isNotEmpty
+          ? existingExpense.businessId.trim()
+          : business.id.trim();
 
-      if (existingExpense != null &&
-          existingExpense.id.trim().isEmpty) {
-        throw StateError(
-          'Expense ID is missing.',
-        );
+      if (existingExpense != null && existingExpense.id.trim().isEmpty) {
+        throw StateError('Expense ID is missing.');
       }
 
       final expense = ExpenseModel(
@@ -433,23 +352,16 @@ class _AddExpenseScreenState
         amount: amount,
         date: _expenseDate,
         paymentMethod: paymentMethod,
-        description:
-            _descriptionController.text.trim(),
+        description: _descriptionController.text.trim(),
         notes: _notesController.text.trim(),
-        receiptUrl:
-            _receiptUrlController.text.trim(),
-        createdAt:
-            existingExpense?.createdAt ?? now,
+        receiptUrl: _receiptUrlController.text.trim(),
+        createdAt: existingExpense?.createdAt ?? now,
       );
 
       if (widget.isEditMode) {
-        await _expenseRepository.updateExpense(
-          expense,
-        );
+        await _expenseRepository.updateExpense(expense);
       } else {
-        await _expenseRepository.createExpense(
-          expense,
-        );
+        await _expenseRepository.createExpense(expense);
       }
 
       if (!mounted) {
@@ -462,10 +374,7 @@ class _AddExpenseScreenState
             : 'Expense saved successfully.',
       );
 
-      Navigator.pop(
-        context,
-        true,
-      );
+      Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) {
         return;
@@ -490,18 +399,13 @@ class _AddExpenseScreenState
     final message = error.toString();
 
     if (message.startsWith('Exception: ')) {
-      return message.substring(
-        'Exception: '.length,
-      );
+      return message.substring('Exception: '.length);
     }
 
     return message;
   }
 
-  void _showMessage(
-    String message, {
-    bool isError = false,
-  }) {
+  void _showMessage(String message, {bool isError = false}) {
     if (!mounted) {
       return;
     }
@@ -511,11 +415,8 @@ class _AddExpenseScreenState
       ..showSnackBar(
         SnackBar(
           content: Text(message),
-          behavior:
-              SnackBarBehavior.floating,
-          backgroundColor: isError
-              ? AppColors.danger
-              : AppColors.success,
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: isError ? AppColors.danger : AppColors.success,
         ),
       );
   }
@@ -539,15 +440,8 @@ class _AddExpenseScreenState
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppColors.danger,
-            Color(0xFFB91C1C),
-          ],
-        ),
-        borderRadius: BorderRadius.all(
-          Radius.circular(20),
-        ),
+        gradient: LinearGradient(colors: [AppColors.danger, Color(0xFFB91C1C)]),
+        borderRadius: BorderRadius.all(Radius.circular(20)),
       ),
       child: Row(
         children: [
@@ -555,11 +449,8 @@ class _AddExpenseScreenState
             width: 52,
             height: 52,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(
-                alpha: 0.15,
-              ),
-              borderRadius:
-                  BorderRadius.circular(16),
+              color: Colors.white.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(16),
             ),
             child: const Icon(
               Icons.receipt_long_rounded,
@@ -570,36 +461,25 @@ class _AddExpenseScreenState
           const SizedBox(width: 14),
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  isEdit
-                      ? 'Edit Expense'
-                      : 'Add Expense',
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleLarge
-                      ?.copyWith(
-                        color: Colors.white,
-                        fontWeight:
-                            FontWeight.w800,
-                      ),
+                  isEdit ? 'Edit Expense' : 'Add Expense',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: MediaQuery.sizeOf(context).width < 420
+                        ? 19
+                        : null,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   isEdit
                       ? 'Update your business expense details.'
                       : 'Record a new business expense.',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(
-                        color: Colors.white
-                            .withValues(
-                          alpha: 0.82,
-                        ),
-                      ),
+                  style: Theme.of(context).textTheme.bodyMedium
+                      ?.copyWith(color: Colors.white.withValues(alpha: 0.82)),
                 ),
               ],
             ),
@@ -613,10 +493,7 @@ class _AddExpenseScreenState
     return TextFormField(
       controller: _amountController,
       enabled: !_isSaving,
-      keyboardType:
-          const TextInputType.numberWithOptions(
-        decimal: true,
-      ),
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
       decoration: _inputDecoration(
         label: 'Amount',
         icon: Icons.currency_rupee_rounded,
@@ -626,19 +503,15 @@ class _AddExpenseScreenState
         setState(() {});
       },
       validator: (value) {
-        final text =
-            value?.trim() ?? '';
+        final text = value?.trim() ?? '';
 
         if (text.isEmpty) {
           return 'Please enter amount';
         }
 
-        final amount = double.tryParse(
-          text.replaceAll(',', ''),
-        );
+        final amount = double.tryParse(text.replaceAll(',', ''));
 
-        if (amount == null ||
-            !amount.isFinite) {
+        if (amount == null || !amount.isFinite) {
           return 'Enter a valid amount';
         }
 
@@ -661,14 +534,9 @@ class _AddExpenseScreenState
         label: 'Expense Category',
         icon: Icons.category_rounded,
         hint: 'Select category',
-      ).copyWith(
-        suffixIcon: const Icon(
-          Icons.keyboard_arrow_down_rounded,
-        ),
-      ),
+      ).copyWith(suffixIcon: const Icon(Icons.keyboard_arrow_down_rounded)),
       validator: (value) {
-        if (value == null ||
-            value.trim().isEmpty) {
+        if (value == null || value.trim().isEmpty) {
           return 'Please select a category';
         }
 
@@ -679,26 +547,17 @@ class _AddExpenseScreenState
 
   Widget _buildPaymentMethodField() {
     return DropdownButtonFormField<String>(
-      initialValue:
-          _paymentMethods.contains(
-        _paymentMethod,
-      )
-              ? _paymentMethod
-              : null,
+      initialValue: _paymentMethods.contains(_paymentMethod)
+          ? _paymentMethod
+          : null,
       isExpanded: true,
       decoration: _inputDecoration(
         label: 'Payment Method',
-        icon:
-            Icons.account_balance_wallet_rounded,
+        icon: Icons.account_balance_wallet_rounded,
       ),
-      items: _paymentMethods.map(
-        (method) {
-          return DropdownMenuItem<String>(
-            value: method,
-            child: Text(method),
-          );
-        },
-      ).toList(),
+      items: _paymentMethods.map((method) {
+        return DropdownMenuItem<String>(value: method, child: Text(method));
+      }).toList(),
       onChanged: _isSaving
           ? null
           : (value) {
@@ -711,8 +570,7 @@ class _AddExpenseScreenState
               });
             },
       validator: (value) {
-        if (value == null ||
-            value.trim().isEmpty) {
+        if (value == null || value.trim().isEmpty) {
           return 'Please select payment method';
         }
 
@@ -723,37 +581,27 @@ class _AddExpenseScreenState
 
   Widget _buildDateField() {
     return InkWell(
-      onTap: _isSaving
-          ? null
-          : _selectExpenseDate,
-      borderRadius:
-          BorderRadius.circular(12),
+      onTap: _isSaving ? null : _selectExpenseDate,
+      borderRadius: BorderRadius.circular(12),
       child: InputDecorator(
         decoration: _inputDecoration(
           label: 'Expense Date',
           icon: Icons.calendar_today_rounded,
         ),
-        child: Text(
-          _dateFormat.format(
-            _expenseDate,
-          ),
-        ),
+        child: Text(_dateFormat.format(_expenseDate)),
       ),
     );
   }
 
   Widget _buildDescriptionField() {
     return TextFormField(
-      controller:
-          _descriptionController,
+      controller: _descriptionController,
       enabled: !_isSaving,
-      textInputAction:
-          TextInputAction.next,
+      textInputAction: TextInputAction.next,
       decoration: _inputDecoration(
         label: 'Description',
         icon: Icons.description_outlined,
-        hint:
-            'e.g. Office electricity bill',
+        hint: 'e.g. Office electricity bill',
       ),
     );
   }
@@ -767,95 +615,63 @@ class _AddExpenseScreenState
       decoration: _inputDecoration(
         label: 'Notes',
         icon: Icons.notes_rounded,
-        hint:
-            'Add additional information',
+        hint: 'Add additional information',
       ),
     );
   }
 
   Widget _buildReceiptField() {
     return TextFormField(
-      controller:
-          _receiptUrlController,
+      controller: _receiptUrlController,
       enabled: !_isSaving,
-      keyboardType:
-          TextInputType.url,
+      keyboardType: TextInputType.url,
       decoration: _inputDecoration(
         label: 'Receipt URL',
         icon: Icons.attach_file_rounded,
-        hint:
-            'Optional receipt/document URL',
+        hint: 'Optional receipt/document URL',
       ),
     );
   }
 
-  Widget _buildSectionCard({
-    required Widget child,
-  }) {
+  Widget _buildSectionCard({required Widget child}) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding: EdgeInsets.all(MediaQuery.sizeOf(context).width < 420 ? 14 : 18),
       decoration: BoxDecoration(
-        color: Theme.of(context)
-            .colorScheme
-            .surface,
-        borderRadius:
-            BorderRadius.circular(20),
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: Theme.of(context)
-              .dividerColor
-              .withValues(alpha: 0.55),
+          color: Theme.of(context).dividerColor.withValues(alpha: 0.55),
         ),
       ),
       child: child,
     );
   }
 
-  Widget _buildSectionTitle(
-    String title,
-    String subtitle,
-    IconData icon,
-  ) {
+  Widget _buildSectionTitle(String title, String subtitle, IconData icon) {
     return Row(
       children: [
         Container(
           width: 40,
           height: 40,
           decoration: BoxDecoration(
-            color: AppColors.primary
-                .withValues(alpha: 0.10),
-            borderRadius:
-                BorderRadius.circular(12),
+            color: AppColors.primary.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(12),
           ),
-          child: Icon(
-            icon,
-            color: AppColors.primary,
-            size: 20,
-          ),
+          child: Icon(icon, color: AppColors.primary, size: 20),
         ),
         const SizedBox(width: 11),
         Expanded(
           child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 title,
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(
-                      fontWeight:
-                          FontWeight.w700,
-                    ),
+                style: Theme.of(context).textTheme.titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall,
-              ),
+              Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
             ],
           ),
         ),
@@ -865,25 +681,15 @@ class _AddExpenseScreenState
 
   Widget _buildAmountPreview() {
     final amount =
-        double.tryParse(
-              _amountController.text
-                  .trim()
-                  .replaceAll(',', ''),
-            ) ??
-            0;
+        double.tryParse(_amountController.text.trim().replaceAll(',', '')) ?? 0;
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.danger
-            .withValues(alpha: 0.07),
-        borderRadius:
-            BorderRadius.circular(16),
-        border: Border.all(
-          color: AppColors.danger
-              .withValues(alpha: 0.16),
-        ),
+        color: AppColors.danger.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.danger.withValues(alpha: 0.16)),
       ),
       child: Row(
         children: [
@@ -895,28 +701,20 @@ class _AddExpenseScreenState
           Expanded(
             child: Text(
               'Expense Amount',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(
-                    fontWeight:
-                        FontWeight.w600,
-                  ),
+              style: Theme.of(context).textTheme.bodyMedium
+                  ?.copyWith(fontWeight: FontWeight.w600),
             ),
           ),
-          Text(
-            _currencyFormat.format(
-              amount.isFinite ? amount : 0,
+          Flexible(
+            child: Text(
+              _currencyFormat.format(amount.isFinite ? amount : 0),
+              textAlign: TextAlign.end,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: AppColors.danger,
+                fontWeight: FontWeight.w800,
+              ),
             ),
-            style: Theme.of(context)
-                .textTheme
-                .titleMedium
-                ?.copyWith(
-                  color:
-                      AppColors.danger,
-                  fontWeight:
-                      FontWeight.w800,
-                ),
           ),
         ],
       ),
@@ -928,14 +726,12 @@ class _AddExpenseScreenState
       width: double.infinity,
       height: 54,
       child: FilledButton.icon(
-        onPressed:
-            _isSaving ? null : _saveExpense,
+        onPressed: _isSaving ? null : _saveExpense,
         icon: _isSaving
             ? const SizedBox(
                 width: 20,
                 height: 20,
-                child:
-                    CircularProgressIndicator(
+                child: CircularProgressIndicator(
                   strokeWidth: 2,
                   color: Colors.white,
                 ),
@@ -943,15 +739,14 @@ class _AddExpenseScreenState
             : Icon(
                 widget.isEditMode
                     ? Icons.save_rounded
-                    : Icons
-                        .check_circle_outline_rounded,
+                    : Icons.check_circle_outline_rounded,
               ),
         label: Text(
           _isSaving
               ? 'SAVING...'
               : widget.isEditMode
-                  ? 'UPDATE EXPENSE'
-                  : 'SAVE EXPENSE',
+              ? 'UPDATE EXPENSE'
+              : 'SAVE EXPENSE',
         ),
       ),
     );
@@ -959,104 +754,67 @@ class _AddExpenseScreenState
 
   Widget _buildForm() {
     return LayoutBuilder(
-      builder: (
-        context,
-        constraints,
-      ) {
-        final isDesktop =
-            constraints.maxWidth >= 900;
+      builder: (context, constraints) {
+        final isDesktop = constraints.maxWidth >= 900;
+        final isCompact = constraints.maxWidth < 420;
 
         return Center(
           child: ConstrainedBox(
-            constraints:
-                const BoxConstraints(
-              maxWidth: 1000,
-            ),
+            constraints: const BoxConstraints(maxWidth: 1000),
             child: Form(
               key: _formKey,
               child: SingleChildScrollView(
-                padding:
-                    const EdgeInsets.fromLTRB(
+                padding: EdgeInsets.fromLTRB(
+                  isCompact ? 12 : 16,
                   16,
-                  16,
-                  16,
+                  isCompact ? 12 : 16,
                   30,
                 ),
                 child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildHeader(),
                     const SizedBox(height: 16),
 
                     _buildSectionCard(
                       child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           _buildSectionTitle(
                             'Expense Details',
                             'Enter the basic expense information.',
-                            Icons
-                                .receipt_long_rounded,
+                            Icons.receipt_long_rounded,
                           ),
-                          const SizedBox(
-                            height: 20,
-                          ),
+                          const SizedBox(height: 20),
                           if (isDesktop)
                             Row(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.start,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Expanded(
-                                  child:
-                                      _buildCategoryField(),
-                                ),
-                                const SizedBox(
-                                  width: 14,
-                                ),
-                                Expanded(
-                                  child:
-                                      _buildAmountField(),
-                                ),
+                                Expanded(child: _buildCategoryField()),
+                                const SizedBox(width: 14),
+                                Expanded(child: _buildAmountField()),
                               ],
                             )
                           else ...[
                             _buildCategoryField(),
-                            const SizedBox(
-                              height: 14,
-                            ),
+                            const SizedBox(height: 14),
                             _buildAmountField(),
                           ],
-                          const SizedBox(
-                            height: 14,
-                          ),
+                          const SizedBox(height: 14),
                           if (isDesktop)
                             Row(
                               children: [
-                                Expanded(
-                                  child:
-                                      _buildPaymentMethodField(),
-                                ),
-                                const SizedBox(
-                                  width: 14,
-                                ),
-                                Expanded(
-                                  child:
-                                      _buildDateField(),
-                                ),
+                                Expanded(child: _buildPaymentMethodField()),
+                                const SizedBox(width: 14),
+                                Expanded(child: _buildDateField()),
                               ],
                             )
                           else ...[
                             _buildPaymentMethodField(),
-                            const SizedBox(
-                              height: 14,
-                            ),
+                            const SizedBox(height: 14),
                             _buildDateField(),
                           ],
-                          const SizedBox(
-                            height: 16,
-                          ),
+                          const SizedBox(height: 16),
                           _buildAmountPreview(),
                         ],
                       ),
@@ -1066,26 +824,18 @@ class _AddExpenseScreenState
 
                     _buildSectionCard(
                       child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           _buildSectionTitle(
                             'Additional Information',
                             'Optional details for better record keeping.',
-                            Icons
-                                .description_outlined,
+                            Icons.description_outlined,
                           ),
-                          const SizedBox(
-                            height: 20,
-                          ),
+                          const SizedBox(height: 20),
                           _buildDescriptionField(),
-                          const SizedBox(
-                            height: 14,
-                          ),
+                          const SizedBox(height: 14),
                           _buildNotesField(),
-                          const SizedBox(
-                            height: 14,
-                          ),
+                          const SizedBox(height: 14),
                           _buildReceiptField(),
                         ],
                       ),
@@ -1109,67 +859,43 @@ class _AddExpenseScreenState
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          widget.isEditMode
-              ? 'Edit Expense'
-              : 'Add Expense',
-          style: const TextStyle(
-            fontWeight: FontWeight.w700,
-          ),
+          widget.isEditMode ? 'Edit Expense' : 'Add Expense',
+          style: const TextStyle(fontWeight: FontWeight.w700),
         ),
       ),
-      body: SafeArea(
+      body: AppResponsivePage(child: SafeArea(
         child: _isLoading
-            ? const Center(
-                child:
-                    CircularProgressIndicator(),
-              )
+            ? const Center(child: CircularProgressIndicator())
             : _errorMessage != null
-                ? Center(
-                    child: Padding(
-                      padding:
-                          const EdgeInsets.all(24),
-                      child: Column(
-                        mainAxisSize:
-                            MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.cloud_off_rounded,
-                            size: 56,
-                            color:
-                                AppColors.danger,
-                          ),
-                          const SizedBox(
-                            height: 16,
-                          ),
-                          Text(
-                            _errorMessage!,
-                            textAlign:
-                                TextAlign.center,
-                            style: Theme.of(
-                              context,
-                            )
-                                .textTheme
-                                .titleMedium,
-                          ),
-                          const SizedBox(
-                            height: 16,
-                          ),
-                          FilledButton.icon(
-                            onPressed:
-                                _loadBusiness,
-                            icon: const Icon(
-                              Icons.refresh_rounded,
-                            ),
-                            label: const Text(
-                              'RETRY',
-                            ),
-                          ),
-                        ],
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.cloud_off_rounded,
+                        size: 56,
+                        color: AppColors.danger,
                       ),
-                    ),
-                  )
-                : _buildForm(),
-      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        _errorMessage!,
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                        onPressed: _loadBusiness,
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('RETRY'),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            : _buildForm(),
+      )),
     );
   }
 }

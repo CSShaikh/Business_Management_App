@@ -36,8 +36,19 @@ class AuthRepository {
   Future<void> sendPasswordResetEmail({
     required String email,
   }) async {
+    final String normalizedEmail = email.trim();
+    if (normalizedEmail.isEmpty) {
+      throw FirebaseAuthException(
+        code: 'invalid-email',
+        message: 'Email address is required.',
+      );
+    }
+
+    // Firebase generates and sends the secure reset link. We deliberately do
+    // not hard-code a continue URL because it must belong to a domain that is
+    // authorized in the Firebase Authentication console.
     await _auth.sendPasswordResetEmail(
-      email: email.trim(),
+      email: normalizedEmail,
     );
   }
 

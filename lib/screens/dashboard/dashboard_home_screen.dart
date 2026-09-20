@@ -6,6 +6,13 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/app_number_format.dart';
+import 'dashboard_detail_screen.dart';
+import '../expenses/expenses_screen.dart';
+import '../inventory/inventory_screen.dart';
+import '../payments/payment_screen.dart';
+import '../purchases/purchases_screen.dart';
+import '../reports/reports_screen.dart';
+import '../sales/sales_screen.dart';
 import '../../models/business_model.dart';
 import '../../models/expense_model.dart';
 import '../../models/payment_model.dart';
@@ -495,6 +502,12 @@ class _DashboardHomeScreenState extends State<DashboardHomeScreen> {
     return AppNumberFormat.amount(value);
   }
 
+  String _formatNumber(double value) {
+    return value == value.roundToDouble()
+        ? value.toStringAsFixed(0)
+        : value.toStringAsFixed(2);
+  }
+
   String _formatDate(DateTime date) {
     return DateFormat('dd MMM yyyy').format(date);
   }
@@ -507,6 +520,11 @@ class _DashboardHomeScreenState extends State<DashboardHomeScreen> {
 
     if (_errorMessage != null) {
       return _buildErrorState(context);
+    }
+
+    final bool mobile = MediaQuery.sizeOf(context).width < 600;
+    if (mobile) {
+      return _buildMobileDashboard(context);
     }
 
     return SafeArea(
@@ -555,6 +573,108 @@ class _DashboardHomeScreenState extends State<DashboardHomeScreen> {
     );
   }
 
+  Widget _buildMobileDashboard(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final String businessName = _business?.businessName.trim() ?? '';
+    final String ownerName = _business?.ownerName.trim() ?? '';
+
+    return SafeArea(
+      child: RefreshIndicator(
+        onRefresh: _loadDashboard,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 28),
+          children: [
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 16, 10, 16),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppColors.primaryDark, AppColors.primary],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(Icons.business_center_rounded, color: Colors.white, size: 25),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          businessName.isEmpty ? 'Business Dashboard' : businessName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.w800),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          ownerName.isEmpty ? 'Today at a glance' : 'Welcome, $ownerName',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(color: Colors.white.withValues(alpha: 0.80)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(onPressed: _loadDashboard, icon: const Icon(Icons.refresh_rounded, color: Colors.white)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text("Today's Snapshot", style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 10),
+            Row(children: [
+              Expanded(child: _CompactDashboardCard(title: 'Sales', value: _formatCurrency(_todaySales), icon: Icons.trending_up_rounded, color: AppColors.success, onTap: () => _showDashboardMetricDetails('Sales'))),
+              const SizedBox(width: 10),
+              Expanded(child: _CompactDashboardCard(title: 'Purchase', value: _formatCurrency(_todayPurchase), icon: Icons.shopping_cart_rounded, color: AppColors.info, onTap: () => _showDashboardMetricDetails('Purchase'))),
+            ]),
+            const SizedBox(height: 10),
+            Row(children: [
+              Expanded(child: _CompactDashboardCard(title: 'Profit', value: _formatCurrency(_todayProfit), icon: Icons.show_chart_rounded, color: AppColors.primary, onTap: () => _showDashboardMetricDetails('Profit'))),
+              const SizedBox(width: 10),
+              Expanded(child: _CompactDashboardCard(title: 'Pending', value: _formatCurrency(_totalOutstanding), icon: Icons.pending_actions_rounded, color: AppColors.warning, onTap: () => _showDashboardMetricDetails('Pending'))),
+            ]),
+            const SizedBox(height: 18),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: theme.colorScheme.outlineVariant),
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Business Summary', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                const SizedBox(height: 10),
+                _MobileSummaryRow(label: 'Total Sales', value: _formatCurrency(_totalSales), icon: Icons.receipt_long_rounded),
+                _MobileSummaryRow(label: 'Received', value: _formatCurrency(_totalReceived), icon: Icons.payments_rounded),
+                _MobileSummaryRow(label: 'Expenses', value: _formatCurrency(_totalExpenses), icon: Icons.money_off_csred_outlined),
+                _MobileSummaryRow(label: 'Supplier Payable', value: _formatCurrency(_supplierOutstanding), icon: Icons.local_shipping_outlined),
+                _MobileSummaryRow(label: 'Stock Value', value: _formatCurrency(_stockValue), icon: Icons.warehouse_outlined),
+              ]),
+            ),
+            const SizedBox(height: 18),
+            _buildPerformanceOverview(context),
+            const SizedBox(height: 18),
+            _buildRecentActivity(context),
+            const SizedBox(height: 18),
+            _buildInventoryOverview(context),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildHeader(BuildContext context) {
     final ThemeData theme = Theme.of(context);
 
@@ -589,11 +709,24 @@ class _DashboardHomeScreenState extends State<DashboardHomeScreen> {
               color: Colors.white.withValues(alpha: 0.14),
               borderRadius: BorderRadius.circular(16),
             ),
-            child: const Icon(
-              Icons.dashboard_rounded,
-              color: Colors.white,
-              size: 29,
-            ),
+            child: (_business?.logoUrl.trim().isNotEmpty == true)
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: Image.network(
+                      _business!.logoUrl.trim(),
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => const Icon(
+                        Icons.dashboard_rounded,
+                        color: Colors.white,
+                        size: 29,
+                      ),
+                    ),
+                  )
+                : const Icon(
+                    Icons.dashboard_rounded,
+                    color: Colors.white,
+                    size: 29,
+                  ),
           ),
 
           const SizedBox(width: 14),
@@ -664,15 +797,16 @@ class _DashboardHomeScreenState extends State<DashboardHomeScreen> {
 
         LayoutBuilder(
           builder: (context, constraints) {
+            final bool singleColumn = constraints.maxWidth < 420;
             final bool compact = constraints.maxWidth < 700;
 
             return GridView.count(
-              crossAxisCount: compact ? 2 : 3,
+              crossAxisCount: singleColumn ? 1 : (compact ? 2 : 3),
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               crossAxisSpacing: 12,
               mainAxisSpacing: 12,
-              childAspectRatio: compact ? 1.42 : 1.80,
+              childAspectRatio: singleColumn ? 2.65 : (compact ? 1.42 : 1.80),
               children: [
                 _MetricCard(
                   title: "Today's Sales",
@@ -680,6 +814,7 @@ class _DashboardHomeScreenState extends State<DashboardHomeScreen> {
                   subtitle: 'Sales recorded today',
                   icon: Icons.trending_up_rounded,
                   color: AppColors.success,
+                  onTap: () => _showDashboardMetricDetails('Sales'),
                 ),
                 _MetricCard(
                   title: "Today's Purchase",
@@ -687,6 +822,7 @@ class _DashboardHomeScreenState extends State<DashboardHomeScreen> {
                   subtitle: 'Purchases today',
                   icon: Icons.shopping_cart_outlined,
                   color: AppColors.info,
+                  onTap: () => _showDashboardMetricDetails('Purchase'),
                 ),
                 _MetricCard(
                   title: "Today's Profit",
@@ -694,6 +830,7 @@ class _DashboardHomeScreenState extends State<DashboardHomeScreen> {
                   subtitle: 'Gross product profit',
                   icon: Icons.account_balance_wallet_outlined,
                   color: AppColors.primary,
+                  onTap: () => _showDashboardMetricDetails('Profit'),
                 ),
               ],
             );
@@ -772,6 +909,7 @@ class _DashboardHomeScreenState extends State<DashboardHomeScreen> {
 
         LayoutBuilder(
           builder: (context, constraints) {
+            final bool singleColumn = constraints.maxWidth < 420;
             final bool compact = constraints.maxWidth < 700;
 
             return GridView.builder(
@@ -779,10 +917,10 @@ class _DashboardHomeScreenState extends State<DashboardHomeScreen> {
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: compact ? 2 : 3,
+                crossAxisCount: singleColumn ? 1 : (compact ? 2 : 3),
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
-                childAspectRatio: compact ? 1.42 : 1.80,
+                childAspectRatio: singleColumn ? 2.65 : (compact ? 1.42 : 1.80),
               ),
               itemBuilder: (context, index) {
                 final _MetricData item = metrics[index];
@@ -793,6 +931,7 @@ class _DashboardHomeScreenState extends State<DashboardHomeScreen> {
                   subtitle: item.subtitle,
                   icon: item.icon,
                   color: item.color,
+                  onTap: () => _showDashboardMetricDetails(item.title),
                 );
               },
             );
@@ -858,6 +997,7 @@ class _DashboardHomeScreenState extends State<DashboardHomeScreen> {
 
         LayoutBuilder(
           builder: (context, constraints) {
+            final bool singleColumn = constraints.maxWidth < 420;
             final bool compact = constraints.maxWidth < 700;
 
             return Column(
@@ -867,10 +1007,12 @@ class _DashboardHomeScreenState extends State<DashboardHomeScreen> {
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: compact ? 2 : 4,
+                    crossAxisCount: singleColumn ? 1 : (compact ? 2 : 4),
                     crossAxisSpacing: 12,
                     mainAxisSpacing: 12,
-                    childAspectRatio: compact ? 1.35 : 1.20,
+                    childAspectRatio: singleColumn
+                        ? 2.55
+                        : (compact ? 1.35 : 1.20),
                   ),
                   itemBuilder: (context, index) {
                     final _HealthData item = cards[index];
@@ -1087,6 +1229,41 @@ class _DashboardHomeScreenState extends State<DashboardHomeScreen> {
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
+  void _showDashboardMetricDetails(String metric) {
+    final Widget page;
+    switch (metric) {
+      case 'Sales':
+        page = const SalesScreen();
+        break;
+      case 'Purchase':
+        page = const PurchasesScreen();
+        break;
+      case 'Profit':
+        page = const ReportsScreen();
+        break;
+      case 'Pending':
+        page = const PaymentsScreen();
+        break;
+      case 'Expenses':
+        page = const ExpensesScreen();
+        break;
+      case 'Supplier Payable':
+        page = const PurchasesScreen();
+        break;
+      case 'Stock Value':
+      case 'Products':
+      case 'Low Stock':
+        page = const InventoryScreen();
+        break;
+      default:
+        page = const ReportsScreen();
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => page),
+    );
+  }
+
   Widget _buildRecentActivity(BuildContext context) {
     final ThemeData theme = Theme.of(context);
 
@@ -1134,6 +1311,7 @@ class _DashboardHomeScreenState extends State<DashboardHomeScreen> {
                           amount: _formatCurrency(sale.total),
                           date: _formatDate(sale.date),
                           color: AppColors.success,
+                          onTap: () => _showSaleDetails(sale),
                         ),
                       ),
 
@@ -1150,6 +1328,7 @@ class _DashboardHomeScreenState extends State<DashboardHomeScreen> {
                           amount: _formatCurrency(purchase.total),
                           date: _formatDate(purchase.date),
                           color: AppColors.info,
+                          onTap: () => _showPurchaseDetails(purchase),
                         ),
                       ),
 
@@ -1166,6 +1345,7 @@ class _DashboardHomeScreenState extends State<DashboardHomeScreen> {
                           amount: _formatCurrency(payment.amount),
                           date: _formatDate(payment.date),
                           color: AppColors.success,
+                          onTap: () => _showPaymentDetails(payment),
                         ),
                       ),
 
@@ -1184,6 +1364,7 @@ class _DashboardHomeScreenState extends State<DashboardHomeScreen> {
                           amount: _formatCurrency(expense.amount),
                           date: _formatDate(expense.date),
                           color: AppColors.danger,
+                          onTap: () => _showExpenseDetails(expense),
                         ),
                       ),
 
@@ -1197,6 +1378,133 @@ class _DashboardHomeScreenState extends State<DashboardHomeScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  void _showSaleDetails(SaleModel sale) {
+    _showDashboardTransactionDetails(
+      title: 'Sale Details',
+      icon: Icons.receipt_long_rounded,
+      color: AppColors.success,
+      children: [
+        _detailRow('Invoice No.', sale.invoiceNumber.trim().isEmpty ? sale.id : sale.invoiceNumber),
+        _detailRow('Customer', sale.customerName.trim().isEmpty ? 'Walk-in Customer' : sale.customerName),
+        _detailRow('Date', _formatDate(sale.date)),
+        _detailRow('Payment Status', sale.paymentStatus),
+        _detailRow('Payment Method', sale.paymentMethod),
+        const Divider(),
+        ...sale.items.map((item) => _detailRow(
+              item.productName,
+              '${_formatNumber(item.quantity)} ${item.unit} × ${_formatCurrency(item.sellingRate)} = ${_formatCurrency(item.total)}',
+            )),
+        const Divider(),
+        _detailRow('Subtotal', _formatCurrency(sale.subtotal)),
+        _detailRow('Discount', _formatCurrency(sale.discount)),
+        _detailRow('Tax', _formatCurrency(sale.tax)),
+        _detailRow('Total', _formatCurrency(sale.total), strong: true),
+        _detailRow('Received', _formatCurrency(sale.paidAmount)),
+        _detailRow('Pending', _formatCurrency(sale.pendingAmount)),
+      ],
+    );
+  }
+
+  void _showPurchaseDetails(PurchaseModel purchase) {
+    _showDashboardTransactionDetails(
+      title: 'Purchase Details',
+      icon: Icons.shopping_cart_rounded,
+      color: AppColors.info,
+      children: [
+        _detailRow('Supplier', purchase.supplierName),
+        _detailRow('Date', _formatDate(purchase.date)),
+        _detailRow('Payment Status', purchase.paymentStatus),
+        _detailRow('Payment Method', purchase.paymentMethod),
+        const Divider(),
+        ...purchase.items.map((item) => _detailRow(
+              item.productName,
+              '${_formatNumber(item.quantity)} ${item.unit} × ${_formatCurrency(item.purchaseRate)} = ${_formatCurrency(item.total)}',
+            )),
+        const Divider(),
+        _detailRow('Subtotal', _formatCurrency(purchase.subtotal)),
+        _detailRow('Discount', _formatCurrency(purchase.discount)),
+        _detailRow('Tax', _formatCurrency(purchase.tax)),
+        _detailRow('Total', _formatCurrency(purchase.total), strong: true),
+        _detailRow('Paid', _formatCurrency(purchase.paidAmount)),
+        _detailRow('Outstanding', _formatCurrency((purchase.total - purchase.paidAmount).clamp(0, double.infinity).toDouble())),
+      ],
+    );
+  }
+
+  void _showPaymentDetails(PaymentModel payment) {
+    _showDashboardTransactionDetails(
+      title: 'Payment Details',
+      icon: Icons.payments_rounded,
+      color: AppColors.success,
+      children: [
+        _detailRow('Customer', payment.customerName),
+        _detailRow('Amount', _formatCurrency(payment.amount), strong: true),
+        _detailRow('Date', _formatDate(payment.date)),
+        _detailRow('Payment Method', payment.paymentMethod),
+        if (payment.transactionReference.trim().isNotEmpty)
+          _detailRow('Reference', payment.transactionReference),
+        if (payment.notes.trim().isNotEmpty)
+          _detailRow('Notes', payment.notes),
+      ],
+    );
+  }
+
+  void _showExpenseDetails(ExpenseModel expense) {
+    _showDashboardTransactionDetails(
+      title: 'Expense Details',
+      icon: Icons.money_off_rounded,
+      color: AppColors.danger,
+      children: [
+        _detailRow('Category', expense.category),
+        _detailRow('Amount', _formatCurrency(expense.amount), strong: true),
+        _detailRow('Date', _formatDate(expense.date)),
+        _detailRow('Payment Method', expense.paymentMethod),
+        if (expense.description.trim().isNotEmpty)
+          _detailRow('Description', expense.description),
+        if (expense.notes.trim().isNotEmpty)
+          _detailRow('Notes', expense.notes),
+      ],
+    );
+  }
+
+  void _showDashboardTransactionDetails({
+    required String title,
+    required IconData icon,
+    required Color color,
+    required List<Widget> children,
+  }) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => DashboardDetailScreen(
+          title: title,
+          icon: icon,
+          color: color,
+          children: children,
+        ),
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value, {bool strong = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 4,
+            child: Text(label, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            flex: 6,
+            child: Text(value, textAlign: TextAlign.right, style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: strong ? FontWeight.w900 : FontWeight.w600)),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1449,6 +1757,7 @@ class _MetricCard extends StatelessWidget {
   final String subtitle;
   final IconData icon;
   final Color color;
+  final VoidCallback? onTap;
 
   const _MetricCard({
     required this.title,
@@ -1456,14 +1765,18 @@ class _MetricCard extends StatelessWidget {
     required this.subtitle,
     required this.icon,
     required this.color,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
 
-    return Container(
-      padding: const EdgeInsets.all(15),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
@@ -1522,6 +1835,7 @@ class _MetricCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
       ),
     );
   }
@@ -1884,6 +2198,7 @@ class _ActivityTile extends StatelessWidget {
   final String amount;
   final String date;
   final Color color;
+  final VoidCallback? onTap;
 
   const _ActivityTile({
     required this.icon,
@@ -1892,15 +2207,19 @@ class _ActivityTile extends StatelessWidget {
     required this.amount,
     required this.date,
     required this.color,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest.withValues(
           alpha: 0.35,
@@ -1973,6 +2292,39 @@ class _ActivityTile extends StatelessWidget {
           ),
         ],
       ),
+      ),
     );
   }
+}
+
+
+class _CompactDashboardCard extends StatelessWidget {
+  final String title; final String value; final IconData icon; final Color color; final VoidCallback? onTap;
+  const _CompactDashboardCard({required this.title, required this.value, required this.icon, required this.color, this.onTap});
+  @override Widget build(BuildContext context) => InkWell(onTap: onTap, borderRadius: BorderRadius.circular(16), child: Container(
+    padding: const EdgeInsets.all(13),
+    decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface, borderRadius: BorderRadius.circular(16), border: Border.all(color: Theme.of(context).colorScheme.outlineVariant)),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Container(width: 34, height: 34, decoration: BoxDecoration(color: color.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(10)), child: Icon(icon, size: 18, color: color)),
+      const SizedBox(height: 9),
+      Text(title, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+      const SizedBox(height: 3),
+      Text(value, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+    ]),
+  ));
+}
+
+class _MobileSummaryRow extends StatelessWidget {
+  final String label; final String value; final IconData icon;
+  const _MobileSummaryRow({required this.label, required this.value, required this.icon});
+  @override Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 7),
+    child: Row(children: [
+      Icon(icon, size: 18, color: Theme.of(context).colorScheme.primary),
+      const SizedBox(width: 10),
+      Expanded(child: Text(label)),
+      const SizedBox(width: 8),
+      Flexible(child: Text(value, textAlign: TextAlign.end, style: const TextStyle(fontWeight: FontWeight.w700))),
+    ]),
+  );
 }

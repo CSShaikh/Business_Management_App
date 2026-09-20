@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import '../../core/widgets/app_date_picker.dart';
 
 import '../../core/theme/app_colors.dart';
@@ -12,33 +13,26 @@ import '../../repositories/supplier_payment_repository.dart';
 import '../../repositories/supplier_repository.dart';
 import '../../services/ledger/supplier_ledger_service.dart';
 import 'add_supplier_payment_screen.dart';
+import '../../core/widgets/app_responsive_page.dart';
 
 class SupplierPaymentScreen extends StatefulWidget {
-  const SupplierPaymentScreen({
-    super.key,
-  });
+  const SupplierPaymentScreen({super.key});
 
   @override
-  State<SupplierPaymentScreen> createState() =>
-      _SupplierPaymentScreenState();
+  State<SupplierPaymentScreen> createState() => _SupplierPaymentScreenState();
 }
 
-class _SupplierPaymentScreenState
-    extends State<SupplierPaymentScreen> {
-  final BusinessRepository _businessRepository =
-      BusinessRepository();
+class _SupplierPaymentScreenState extends State<SupplierPaymentScreen> {
+  final BusinessRepository _businessRepository = BusinessRepository();
 
-  final SupplierRepository _supplierRepository =
-      SupplierRepository();
+  final SupplierRepository _supplierRepository = SupplierRepository();
 
   final SupplierPaymentRepository _paymentRepository =
       SupplierPaymentRepository();
 
-  final SupplierLedgerService _supplierLedgerService =
-      SupplierLedgerService();
+  final SupplierLedgerService _supplierLedgerService = SupplierLedgerService();
 
-  final TextEditingController _searchController =
-      TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
 
   final List<String> _paymentMethods = <String>[
     'All',
@@ -52,11 +46,9 @@ class _SupplierPaymentScreenState
 
   String? _businessId;
 
-  List<SupplierPaymentModel> _payments =
-      <SupplierPaymentModel>[];
+  List<SupplierPaymentModel> _payments = <SupplierPaymentModel>[];
 
-  List<SupplierModel> _suppliers =
-      <SupplierModel>[];
+  List<SupplierModel> _suppliers = <SupplierModel>[];
 
   bool _isLoading = true;
   bool _isRefreshing = false;
@@ -79,9 +71,7 @@ class _SupplierPaymentScreenState
   void initState() {
     super.initState();
 
-    _searchController.addListener(
-      _handleSearchChanged,
-    );
+    _searchController.addListener(_handleSearchChanged);
 
     _initialize();
   }
@@ -110,15 +100,13 @@ class _SupplierPaymentScreenState
     });
 
     try {
-      final business = await _businessRepository
-          .getBusinessForCurrentUser();
+      final business = await _businessRepository.getBusinessForCurrentUser();
 
       if (!mounted) {
         return;
       }
 
-      if (business == null ||
-          business.id.trim().isEmpty) {
+      if (business == null || business.id.trim().isEmpty) {
         setState(() {
           _isLoading = false;
           _businessId = null;
@@ -130,16 +118,11 @@ class _SupplierPaymentScreenState
         return;
       }
 
-      final String businessId =
-          business.id.trim();
+      final String businessId = business.id.trim();
 
       final results = await Future.wait<dynamic>([
-        _paymentRepository.getPayments(
-          businessId: businessId,
-        ),
-        _supplierRepository.getSuppliers(
-          businessId,
-        ),
+        _paymentRepository.getPayments(businessId: businessId),
+        _supplierRepository.getSuppliers(businessId),
       ]);
 
       if (!mounted) {
@@ -149,11 +132,9 @@ class _SupplierPaymentScreenState
       setState(() {
         _businessId = businessId;
 
-        _payments =
-            results[0] as List<SupplierPaymentModel>;
+        _payments = results[0] as List<SupplierPaymentModel>;
 
-        _suppliers =
-            results[1] as List<SupplierModel>;
+        _suppliers = results[1] as List<SupplierModel>;
 
         _isLoading = false;
         _errorMessage = null;
@@ -177,8 +158,7 @@ class _SupplierPaymentScreenState
 
     final String? businessId = _businessId;
 
-    if (businessId == null ||
-        businessId.trim().isEmpty) {
+    if (businessId == null || businessId.trim().isEmpty) {
       await _initialize();
       return;
     }
@@ -189,12 +169,8 @@ class _SupplierPaymentScreenState
 
     try {
       final results = await Future.wait<dynamic>([
-        _paymentRepository.getPayments(
-          businessId: businessId,
-        ),
-        _supplierRepository.getSuppliers(
-          businessId,
-        ),
+        _paymentRepository.getPayments(businessId: businessId),
+        _supplierRepository.getSuppliers(businessId),
       ]);
 
       if (!mounted) {
@@ -202,11 +178,9 @@ class _SupplierPaymentScreenState
       }
 
       setState(() {
-        _payments =
-            results[0] as List<SupplierPaymentModel>;
+        _payments = results[0] as List<SupplierPaymentModel>;
 
-        _suppliers =
-            results[1] as List<SupplierModel>;
+        _suppliers = results[1] as List<SupplierModel>;
 
         _isRefreshing = false;
         _errorMessage = null;
@@ -238,8 +212,7 @@ class _SupplierPaymentScreenState
     }
 
     setState(() {
-      _searchQuery =
-          _searchController.text.trim();
+      _searchQuery = _searchController.text.trim();
     });
   }
 
@@ -266,115 +239,99 @@ class _SupplierPaymentScreenState
   }
 
   List<SupplierPaymentModel> _filteredPayments() {
-    final String query =
-        _searchQuery.trim().toLowerCase();
+    final String query = _searchQuery.trim().toLowerCase();
 
-    return _payments.where(
-      (SupplierPaymentModel payment) {
-        // ---------------------------------------------------------------------
-        // SEARCH
-        // ---------------------------------------------------------------------
+    return _payments.where((SupplierPaymentModel payment) {
+      // ---------------------------------------------------------------------
+      // SEARCH
+      // ---------------------------------------------------------------------
 
-        if (query.isNotEmpty) {
-          final String supplierName =
-              payment.supplierName.toLowerCase();
+      if (query.isNotEmpty) {
+        final String supplierName = payment.supplierName.toLowerCase();
 
-          final String supplierId =
-              payment.supplierId.toLowerCase();
+        final String supplierId = payment.supplierId.toLowerCase();
 
-          final String method =
-              payment.paymentMethod.toLowerCase();
+        final String method = payment.paymentMethod.toLowerCase();
 
-          final String reference =
-              payment.transactionReference
-                  .toLowerCase();
+        final String reference = payment.transactionReference.toLowerCase();
 
-          final String notes =
-              payment.notes.toLowerCase();
+        final String notes = payment.notes.toLowerCase();
 
-          final String amount =
-              payment.amount.toStringAsFixed(2);
+        final String amount = payment.amount.toStringAsFixed(2);
 
-          final bool matchesSearch =
-              supplierName.contains(query) ||
-                  supplierId.contains(query) ||
-                  method.contains(query) ||
-                  reference.contains(query) ||
-                  notes.contains(query) ||
-                  amount.contains(query);
+        final bool matchesSearch =
+            supplierName.contains(query) ||
+            supplierId.contains(query) ||
+            method.contains(query) ||
+            reference.contains(query) ||
+            notes.contains(query) ||
+            amount.contains(query);
 
-          if (!matchesSearch) {
-            return false;
-          }
-        }
-
-        // ---------------------------------------------------------------------
-        // PAYMENT METHOD
-        // ---------------------------------------------------------------------
-
-        if (_selectedPaymentMethod != 'All' &&
-            payment.paymentMethod.trim() !=
-                _selectedPaymentMethod) {
+        if (!matchesSearch) {
           return false;
         }
+      }
 
-        // ---------------------------------------------------------------------
-        // SUPPLIER
-        // ---------------------------------------------------------------------
+      // ---------------------------------------------------------------------
+      // PAYMENT METHOD
+      // ---------------------------------------------------------------------
 
-        if (_selectedSupplierId != 'All' &&
-            payment.supplierId.trim() !=
-                _selectedSupplierId) {
+      if (_selectedPaymentMethod != 'All' &&
+          payment.paymentMethod.trim() != _selectedPaymentMethod) {
+        return false;
+      }
+
+      // ---------------------------------------------------------------------
+      // SUPPLIER
+      // ---------------------------------------------------------------------
+
+      if (_selectedSupplierId != 'All' &&
+          payment.supplierId.trim() != _selectedSupplierId) {
+        return false;
+      }
+
+      // ---------------------------------------------------------------------
+      // STATUS
+      // ---------------------------------------------------------------------
+
+      // Supplier payment records are completed payment transactions.
+      // Therefore the only meaningful status is Paid.
+      if (_selectedStatus == 'Paid') {
+        // Always true for a valid SupplierPaymentModel.
+      }
+
+      // ---------------------------------------------------------------------
+      // DATE RANGE
+      // ---------------------------------------------------------------------
+
+      final DateTime paymentDate = payment.date;
+
+      if (_startDate != null) {
+        final DateTime start = DateTime(
+          _startDate!.year,
+          _startDate!.month,
+          _startDate!.day,
+        );
+
+        if (paymentDate.isBefore(start)) {
           return false;
         }
+      }
 
-        // ---------------------------------------------------------------------
-        // STATUS
-        // ---------------------------------------------------------------------
+      if (_endDate != null) {
+        final DateTime endExclusive = DateTime(
+          _endDate!.year,
+          _endDate!.month,
+          _endDate!.day + 1,
+        );
 
-        // Supplier payment records are completed payment transactions.
-        // Therefore the only meaningful status is Paid.
-        if (_selectedStatus == 'Paid') {
-          // Always true for a valid SupplierPaymentModel.
+        if (!paymentDate.isBefore(endExclusive)) {
+          return false;
         }
+      }
 
-        // ---------------------------------------------------------------------
-        // DATE RANGE
-        // ---------------------------------------------------------------------
-
-        final DateTime paymentDate =
-            payment.date;
-
-        if (_startDate != null) {
-          final DateTime start = DateTime(
-            _startDate!.year,
-            _startDate!.month,
-            _startDate!.day,
-          );
-
-          if (paymentDate.isBefore(start)) {
-            return false;
-          }
-        }
-
-        if (_endDate != null) {
-          final DateTime endExclusive =
-              DateTime(
-            _endDate!.year,
-            _endDate!.month,
-            _endDate!.day + 1,
-          );
-
-          if (!paymentDate.isBefore(
-            endExclusive,
-          )) {
-            return false;
-          }
-        }
-
-        return true;
-      },
-    ).toList();
+      return true;
+    }).toList();
   }
 
   // ===========================================================================
@@ -382,80 +339,56 @@ class _SupplierPaymentScreenState
   // ===========================================================================
 
   Future<void> _selectStartDate() async {
-    final DateTime initialDate =
-        _startDate ??
-            _endDate ??
-            DateTime.now();
+    final DateTime initialDate = _startDate ?? _endDate ?? DateTime.now();
 
-    final DateTime? selected =
-        await AppDatePicker.showDatePicker(
+    final DateTime? selected = await AppDatePicker.showDatePicker(
       context: context,
-      
-      initialEntryMode: DatePickerEntryMode.calendar,initialDate: initialDate,
+
+      initialEntryMode: DatePickerEntryMode.calendar,
+      initialDate: initialDate,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
     );
 
-    if (selected == null ||
-        !mounted) {
+    if (selected == null || !mounted) {
       return;
     }
 
-    if (_endDate != null &&
-        selected.isAfter(_endDate!)) {
-      _showMessage(
-        'Start date cannot be after end date.',
-        isError: true,
-      );
+    if (_endDate != null && selected.isAfter(_endDate!)) {
+      _showMessage('Start date cannot be after end date.', isError: true);
 
       return;
     }
 
     setState(() {
-      _startDate = DateTime(
-        selected.year,
-        selected.month,
-        selected.day,
-      );
+      _startDate = DateTime(selected.year, selected.month, selected.day);
     });
   }
 
   Future<void> _selectEndDate() async {
-    final DateTime initialDate =
-        _endDate ??
-            _startDate ??
-            DateTime.now();
+    final DateTime initialDate = _endDate ?? _startDate ?? DateTime.now();
 
-    final DateTime? selected =
-        await AppDatePicker.showDatePicker(
+    final DateTime? selected = await AppDatePicker.showDatePicker(
       context: context,
-      
-      initialEntryMode: DatePickerEntryMode.calendar,initialDate: initialDate,
+
+      initialEntryMode: DatePickerEntryMode.calendar,
+      initialDate: initialDate,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
     );
 
-    if (selected == null ||
-        !mounted) {
+    if (selected == null || !mounted) {
       return;
     }
 
-    if (_startDate != null &&
-        selected.isBefore(_startDate!)) {
-      _showMessage(
-        'End date cannot be before start date.',
-        isError: true,
-      );
+    if (_startDate != null && selected.isBefore(_startDate!)) {
+      _showMessage('End date cannot be before start date.', isError: true);
 
       return;
     }
 
     setState(() {
-      _endDate = DateTime(
-        selected.year,
-        selected.month,
-        selected.day,
-      );
+      _endDate = DateTime(selected.year, selected.month, selected.day);
     });
   }
 
@@ -464,13 +397,9 @@ class _SupplierPaymentScreenState
   // ===========================================================================
 
   Future<void> _openAddPayment() async {
-    final bool? result =
-        await Navigator.push<bool>(
+    final bool? result = await Navigator.push<bool>(
       context,
-      MaterialPageRoute<bool>(
-        builder: (_) =>
-            const AddSupplierPaymentScreen(),
-      ),
+      MaterialPageRoute<bool>(builder: (_) => const AddSupplierPaymentScreen()),
     );
 
     if (result == true) {
@@ -478,21 +407,15 @@ class _SupplierPaymentScreenState
     }
   }
 
-  Future<void> _openEditPayment(
-    SupplierPaymentModel payment,
-  ) async {
+  Future<void> _openEditPayment(SupplierPaymentModel payment) async {
     if (_isDeleting) {
       return;
     }
 
-    final bool? result =
-        await Navigator.push<bool>(
+    final bool? result = await Navigator.push<bool>(
       context,
       MaterialPageRoute<bool>(
-        builder: (_) =>
-            AddSupplierPaymentScreen(
-          payment: payment,
-        ),
+        builder: (_) => AddSupplierPaymentScreen(payment: payment),
       ),
     );
 
@@ -505,33 +428,24 @@ class _SupplierPaymentScreenState
   // DELETE
   // ===========================================================================
 
-  Future<void> _deletePayment(
-    SupplierPaymentModel payment,
-  ) async {
+  Future<void> _deletePayment(SupplierPaymentModel payment) async {
     if (_isDeleting) {
       return;
     }
 
-    final String businessId =
-        _businessId?.trim() ?? '';
+    final String businessId = _businessId?.trim() ?? '';
 
     if (businessId.isEmpty) {
-      _showMessage(
-        'Business information is not available.',
-        isError: true,
-      );
+      _showMessage('Business information is not available.', isError: true);
 
       return;
     }
 
-    final bool? confirmed =
-        await showDialog<bool>(
+    final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
-          title: const Text(
-            'Delete Supplier Payment?',
-          ),
+          title: const Text('Delete Supplier Payment?'),
           content: Text(
             'Are you sure you want to delete '
             'this payment of '
@@ -543,29 +457,16 @@ class _SupplierPaymentScreenState
           actions: <Widget>[
             TextButton(
               onPressed: () {
-                Navigator.pop(
-                  dialogContext,
-                  false,
-                );
+                Navigator.pop(dialogContext, false);
               },
-              child: const Text(
-                'Cancel',
-              ),
+              child: const Text('Cancel'),
             ),
             FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor:
-                    AppColors.danger,
-              ),
+              style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
               onPressed: () {
-                Navigator.pop(
-                  dialogContext,
-                  true,
-                );
+                Navigator.pop(dialogContext, true);
               },
-              child: const Text(
-                'Delete',
-              ),
+              child: const Text('Delete'),
             ),
           ],
         );
@@ -587,59 +488,43 @@ class _SupplierPaymentScreenState
       // 1. CHECK WHETHER PAYMENT LEDGER ENTRY EXISTS
       // -----------------------------------------------------------------------
 
-      final List<LedgerTransactionModel>
-          transactions =
-          await _supplierLedgerService
-              .getSupplierTransactions(
-        businessId: businessId,
-        supplierId: payment.supplierId.trim(),
-      );
+      final List<LedgerTransactionModel> transactions =
+          await _supplierLedgerService.getSupplierTransactions(
+            businessId: businessId,
+            supplierId: payment.supplierId.trim(),
+          );
 
-      final List<LedgerTransactionModel>
-          paymentEntries =
-          transactions.where(
-        (LedgerTransactionModel transaction) {
-          return transaction.referenceId.trim() ==
-                  payment.id.trim() &&
-              transaction.transactionType
-                      .trim()
-                      .toUpperCase() ==
-                  SupplierLedgerService
-                      .supplierPaymentType;
-        },
-      ).toList();
+      final List<LedgerTransactionModel> paymentEntries = transactions.where((
+        LedgerTransactionModel transaction,
+      ) {
+        return transaction.referenceId.trim() == payment.id.trim() &&
+            transaction.transactionType.trim().toUpperCase() ==
+                SupplierLedgerService.supplierPaymentType;
+      }).toList();
 
       // -----------------------------------------------------------------------
       // 2. REVERSE SUPPLIER LEDGER
       // -----------------------------------------------------------------------
 
       if (paymentEntries.isNotEmpty) {
-        final bool reversalAlreadyExists =
-            transactions.any(
-          (LedgerTransactionModel transaction) {
-            return transaction.referenceId
-                        .trim() ==
-                    payment.id.trim() &&
-                transaction.transactionType
-                        .trim()
-                        .toUpperCase() ==
-                    SupplierLedgerService
-                        .supplierPaymentReversalType;
-          },
-        );
+        final bool reversalAlreadyExists = transactions.any((
+          LedgerTransactionModel transaction,
+        ) {
+          return transaction.referenceId.trim() == payment.id.trim() &&
+              transaction.transactionType.trim().toUpperCase() ==
+                  SupplierLedgerService.supplierPaymentReversalType;
+        });
 
         if (!reversalAlreadyExists) {
-          createdReversal =
-              await _supplierLedgerService
-                  .createSupplierPaymentReversal(
-            businessId: businessId,
-            paymentAmount: payment.amount,
-            supplierId: payment.supplierId.trim(),
-            supplierName: payment.supplierName.trim(),
-            referenceId: payment.id.trim(),
-            notes:
-                'Reversal for supplier payment ${payment.id.trim()}.',
-          );
+          createdReversal = await _supplierLedgerService
+              .createSupplierPaymentReversal(
+                businessId: businessId,
+                paymentAmount: payment.amount,
+                supplierId: payment.supplierId.trim(),
+                supplierName: payment.supplierName.trim(),
+                referenceId: payment.id.trim(),
+                notes: 'Reversal for supplier payment ${payment.id.trim()}.',
+              );
         }
       }
 
@@ -658,9 +543,7 @@ class _SupplierPaymentScreenState
 
       setState(() {
         _payments.removeWhere(
-          (SupplierPaymentModel item) =>
-              item.id.trim() ==
-              payment.id.trim(),
+          (SupplierPaymentModel item) => item.id.trim() == payment.id.trim(),
         );
 
         _isDeleting = false;
@@ -670,7 +553,7 @@ class _SupplierPaymentScreenState
         createdReversal == null
             ? 'Supplier payment deleted successfully.'
             : 'Supplier payment deleted and '
-              'supplier ledger reversed successfully.',
+                  'supplier ledger reversed successfully.',
       );
     } catch (e) {
       // -----------------------------------------------------------------------
@@ -679,11 +562,9 @@ class _SupplierPaymentScreenState
 
       if (createdReversal != null) {
         try {
-          await _supplierLedgerService
-              .deleteTransaction(
+          await _supplierLedgerService.deleteTransaction(
             businessId: businessId,
-            transactionId:
-                createdReversal.id,
+            transactionId: createdReversal.id,
           );
         } catch (_) {
           // Preserve original error.
@@ -710,20 +591,14 @@ class _SupplierPaymentScreenState
   // DETAILS
   // ===========================================================================
 
-  Future<void> _showPaymentDetails(
-    SupplierPaymentModel payment,
-  ) async {
-    final String businessId =
-        _businessId?.trim() ?? '';
+  Future<void> _showPaymentDetails(SupplierPaymentModel payment) async {
+    final String businessId = _businessId?.trim() ?? '';
 
     double supplierBalance = 0;
 
-    if (businessId.isNotEmpty &&
-        payment.supplierId.trim().isNotEmpty) {
+    if (businessId.isNotEmpty && payment.supplierId.trim().isNotEmpty) {
       try {
-        supplierBalance =
-            await _supplierLedgerService
-                .getSupplierBalance(
+        supplierBalance = await _supplierLedgerService.getSupplierBalance(
           businessId: businessId,
           supplierId: payment.supplierId.trim(),
         );
@@ -741,29 +616,18 @@ class _SupplierPaymentScreenState
       isScrollControlled: true,
       showDragHandle: true,
       builder: (BuildContext sheetContext) {
-        final ThemeData theme =
-            Theme.of(sheetContext);
+        final ThemeData theme = Theme.of(sheetContext);
 
         return SafeArea(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(
-              20,
-              4,
-              20,
-              24,
-            ),
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
                   'Payment Details',
-                  style: theme
-                      .textTheme
-                      .headlineSmall
-                      ?.copyWith(
-                    fontWeight:
-                        FontWeight.w800,
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -771,86 +635,54 @@ class _SupplierPaymentScreenState
                 _DetailTile(
                   icon: Icons.person_outline_rounded,
                   label: 'Supplier',
-                  value:
-                      payment.supplierName,
+                  value: payment.supplierName,
                 ),
 
                 _DetailTile(
                   icon: Icons.currency_rupee_rounded,
                   label: 'Amount',
-                  value:
-                      _formatCurrency(
-                    payment.amount,
-                  ),
-                  valueColor:
-                      AppColors.success,
+                  value: _formatCurrency(payment.amount),
+                  valueColor: AppColors.success,
                 ),
 
                 _DetailTile(
-                  icon:
-                      Icons.calendar_month_outlined,
+                  icon: Icons.calendar_month_outlined,
                   label: 'Payment Date',
-                  value:
-                      DateFormat(
-                    'dd MMM yyyy',
-                  ).format(payment.date),
+                  value: DateFormat('dd MMM yyyy').format(payment.date),
                 ),
 
                 _DetailTile(
-                  icon:
-                      Icons.account_balance_wallet_outlined,
+                  icon: Icons.account_balance_wallet_outlined,
                   label: 'Payment Method',
-                  value:
-                      payment.paymentMethod
-                              .trim()
-                              .isEmpty
-                          ? 'Not specified'
-                          : payment.paymentMethod,
+                  value: payment.paymentMethod.trim().isEmpty
+                      ? 'Not specified'
+                      : payment.paymentMethod,
                 ),
 
-                if (payment.transactionReference
-                    .trim()
-                    .isNotEmpty)
+                if (payment.transactionReference.trim().isNotEmpty)
                   _DetailTile(
-                    icon:
-                        Icons.receipt_long_outlined,
-                    label:
-                        'Transaction Reference',
-                    value:
-                        payment.transactionReference,
+                    icon: Icons.receipt_long_outlined,
+                    label: 'Transaction Reference',
+                    value: payment.transactionReference,
                   ),
 
-                if (payment.notes
-                    .trim()
-                    .isNotEmpty)
+                if (payment.notes.trim().isNotEmpty)
                   _DetailTile(
                     icon: Icons.notes_outlined,
                     label: 'Notes',
-                    value:
-                        payment.notes,
+                    value: payment.notes,
                   ),
 
                 const SizedBox(height: 8),
 
                 Container(
                   width: double.infinity,
-                  padding:
-                      const EdgeInsets.all(16),
-                  decoration:
-                      BoxDecoration(
-                    color: AppColors.primary
-                        .withValues(
-                      alpha: 0.07,
-                    ),
-                    borderRadius:
-                        BorderRadius.circular(
-                      14,
-                    ),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.07),
+                    borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                      color: AppColors.primary
-                          .withValues(
-                        alpha: 0.15,
-                      ),
+                      color: AppColors.primary.withValues(alpha: 0.15),
                     ),
                   ),
                   child: Row(
@@ -858,55 +690,31 @@ class _SupplierPaymentScreenState
                       Container(
                         width: 42,
                         height: 42,
-                        decoration:
-                            BoxDecoration(
-                          color: AppColors
-                              .primary
-                              .withValues(
-                            alpha: 0.10,
-                          ),
-                          shape:
-                              BoxShape.circle,
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.10),
+                          shape: BoxShape.circle,
                         ),
                         child: const Icon(
                           Icons.account_balance_rounded,
-                          color:
-                              AppColors.primary,
+                          color: AppColors.primary,
                         ),
                       ),
-                      const SizedBox(
-                        width: 12,
-                      ),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment
-                                  .start,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: <Widget>[
                             Text(
                               'Current Supplier Payable',
-                              style: theme
-                                  .textTheme
-                                  .bodySmall
-                                  ?.copyWith(
-                                color: theme
-                                    .colorScheme
-                                    .onSurfaceVariant,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
                               ),
                             ),
-                            const SizedBox(
-                              height: 3,
-                            ),
+                            const SizedBox(height: 3),
                             Text(
-                              _formatCurrency(
-                                supplierBalance,
-                              ),
-                              style: theme
-                                  .textTheme
-                                  .titleLarge
-                                  ?.copyWith(
-                                fontWeight:
-                                    FontWeight.w800,
+                              _formatCurrency(supplierBalance),
+                              style: theme.textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w800,
                               ),
                             ),
                           ],
@@ -923,20 +731,12 @@ class _SupplierPaymentScreenState
                   height: 50,
                   child: FilledButton.icon(
                     onPressed: () {
-                      Navigator.pop(
-                        sheetContext,
-                      );
+                      Navigator.pop(sheetContext);
 
-                      _openEditPayment(
-                        payment,
-                      );
+                      _openEditPayment(payment);
                     },
-                    icon: const Icon(
-                      Icons.edit_outlined,
-                    ),
-                    label: const Text(
-                      'EDIT PAYMENT',
-                    ),
+                    icon: const Icon(Icons.edit_outlined),
+                    label: const Text('EDIT PAYMENT'),
                   ),
                 ),
               ],
@@ -953,183 +753,100 @@ class _SupplierPaymentScreenState
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme =
-        Theme.of(context);
+    final ThemeData theme = Theme.of(context);
 
     if (_isLoading) {
       return Scaffold(
-        backgroundColor:
-            theme.scaffoldBackgroundColor,
-        appBar: AppBar(
-          title: const Text(
-            'Supplier Payments',
-          ),
-        ),
-        body: const Center(
-          child:
-              CircularProgressIndicator(),
-        ),
+        backgroundColor: theme.scaffoldBackgroundColor,
+        appBar: AppBar(title: const Text('Supplier Payments')),
+        body: AppResponsivePage(child: const Center(child: CircularProgressIndicator())),
       );
     }
 
-    if (_errorMessage != null &&
-        _payments.isEmpty) {
+    if (_errorMessage != null && _payments.isEmpty) {
       return Scaffold(
-        backgroundColor:
-            theme.scaffoldBackgroundColor,
-        appBar: AppBar(
-          title: const Text(
-            'Supplier Payments',
-          ),
-        ),
-        body: _buildErrorState(
-          theme,
-        ),
+        backgroundColor: theme.scaffoldBackgroundColor,
+        appBar: AppBar(title: const Text('Supplier Payments')),
+        body: AppResponsivePage(child: _buildErrorState(theme)),
       );
     }
 
-    final List<SupplierPaymentModel>
-        filteredPayments =
-        _filteredPayments();
+    final List<SupplierPaymentModel> filteredPayments = _filteredPayments();
 
     return Scaffold(
-      backgroundColor:
-          theme.scaffoldBackgroundColor,
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text(
-          'Supplier Payments',
-        ),
+        title: const Text('Supplier Payments'),
         actions: <Widget>[
           IconButton(
             tooltip: 'Refresh',
-            onPressed: _isRefreshing
-                ? null
-                : _refresh,
+            onPressed: _isRefreshing ? null : _refresh,
             icon: _isRefreshing
                 ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child:
-                        CircularProgressIndicator(
-                      strokeWidth: 2,
-                    ),
+                    child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Icon(
-                    Icons.refresh_rounded,
-                  ),
+                : const Icon(Icons.refresh_rounded),
           ),
           const SizedBox(width: 4),
         ],
       ),
-      body: RefreshIndicator(
+      body: AppResponsivePage(child: RefreshIndicator(
         onRefresh: _refresh,
         child: LayoutBuilder(
-          builder: (
-            BuildContext context,
-            BoxConstraints constraints,
-          ) {
-            final bool isDesktop =
-                constraints.maxWidth >=
-                    1000;
+          builder: (BuildContext context, BoxConstraints constraints) {
+            final bool isDesktop = constraints.maxWidth >= 1000;
 
             return Center(
               child: ConstrainedBox(
-                constraints:
-                    const BoxConstraints(
-                  maxWidth: 1250,
-                ),
+                constraints: const BoxConstraints(maxWidth: 1250),
                 child: ListView(
-                  physics:
-                      const AlwaysScrollableScrollPhysics(),
-                  padding:
-                      const EdgeInsets.fromLTRB(
-                    16,
-                    16,
-                    16,
-                    100,
-                  ),
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
                   children: <Widget>[
-                    _buildHeader(
-                      theme,
-                      isDesktop,
-                    ),
-                    const SizedBox(
-                      height: 16,
-                    ),
-                    _buildSummary(
-                      theme,
-                      filteredPayments,
-                    ),
-                    const SizedBox(
-                      height: 16,
-                    ),
-                    _buildFilters(
-                      theme,
-                      isDesktop,
-                    ),
-                    const SizedBox(
-                      height: 20,
-                    ),
-                    _buildPaymentList(
-                      theme,
-                      filteredPayments,
-                    ),
+                    _buildHeader(theme, isDesktop),
+                    const SizedBox(height: 16),
+                    _buildSummary(theme, filteredPayments),
+                    const SizedBox(height: 16),
+                    _buildFilters(theme, isDesktop),
+                    const SizedBox(height: 20),
+                    _buildPaymentList(theme, filteredPayments),
                   ],
                 ),
               ),
             );
           },
         ),
-      ),
-      floatingActionButton:
-          FloatingActionButton.extended(
-        onPressed: _isDeleting
-            ? null
-            : _openAddPayment,
-        icon: const Icon(
-          Icons.add_rounded,
-        ),
-        label: const Text(
-          'Add Payment',
-        ),
+      )),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _isDeleting ? null : _openAddPayment,
+        icon: const Icon(Icons.add_rounded),
+        label: const Text('Add Payment'),
       ),
     );
   }
 
-  Widget _buildHeader(
-    ThemeData theme,
-    bool isDesktop,
-  ) {
+  Widget _buildHeader(ThemeData theme, bool isDesktop) {
     return Row(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Expanded(
           child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Text(
                 'Supplier Payments',
-                style: theme
-                    .textTheme
-                    .headlineSmall
-                    ?.copyWith(
-                  fontWeight:
-                      FontWeight.w800,
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
                 ),
               ),
               const SizedBox(height: 5),
               Text(
                 'Track payments made to your suppliers '
                 'and keep supplier balances synchronized.',
-                style: theme
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(
-                  color: theme
-                      .colorScheme
-                      .onSurfaceVariant,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
             ],
@@ -1138,15 +855,9 @@ class _SupplierPaymentScreenState
         if (isDesktop) ...[
           const SizedBox(width: 16),
           FilledButton.icon(
-            onPressed: _isDeleting
-                ? null
-                : _openAddPayment,
-            icon: const Icon(
-              Icons.add_rounded,
-            ),
-            label: const Text(
-              'Add Payment',
-            ),
+            onPressed: _isDeleting ? null : _openAddPayment,
+            icon: const Icon(Icons.add_rounded),
+            label: const Text('Add Payment'),
           ),
         ],
       ],
@@ -1155,65 +866,40 @@ class _SupplierPaymentScreenState
 
   Widget _buildSummary(
     ThemeData theme,
-    List<SupplierPaymentModel>
-        filteredPayments,
+    List<SupplierPaymentModel> filteredPayments,
   ) {
-    final double filteredTotal =
-        filteredPayments.fold<double>(
+    final double filteredTotal = filteredPayments.fold<double>(
       0,
-      (
-        double sum,
-        SupplierPaymentModel payment,
-      ) =>
-          sum + payment.amount,
+      (double sum, SupplierPaymentModel payment) => sum + payment.amount,
     );
 
-    final double overallTotal =
-        _payments.fold<double>(
+    final double overallTotal = _payments.fold<double>(
       0,
-      (
-        double sum,
-        SupplierPaymentModel payment,
-      ) =>
-          sum + payment.amount,
+      (double sum, SupplierPaymentModel payment) => sum + payment.amount,
     );
 
     return LayoutBuilder(
-      builder: (
-        BuildContext context,
-        BoxConstraints constraints,
-      ) {
-        final bool compact =
-            constraints.maxWidth < 650;
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final bool compact = constraints.maxWidth < 650;
 
-        final List<Widget> cards =
-            <Widget>[
+        final List<Widget> cards = <Widget>[
           _SummaryCard(
             title: 'Total Paid',
-            value:
-                _formatCurrency(overallTotal),
-            icon:
-                Icons.payments_outlined,
-            iconColor:
-                AppColors.success,
+            value: _formatCurrency(overallTotal),
+            icon: Icons.payments_outlined,
+            iconColor: AppColors.success,
           ),
           _SummaryCard(
             title: 'Filtered',
-            value:
-                _formatCurrency(filteredTotal),
-            icon:
-                Icons.filter_alt_outlined,
-            iconColor:
-                AppColors.primary,
+            value: _formatCurrency(filteredTotal),
+            icon: Icons.filter_alt_outlined,
+            iconColor: AppColors.primary,
           ),
           _SummaryCard(
             title: 'Transactions',
-            value:
-                '${filteredPayments.length}',
-            icon:
-                Icons.receipt_long_outlined,
-            iconColor:
-                AppColors.warning,
+            value: '${filteredPayments.length}',
+            icon: Icons.receipt_long_outlined,
+            iconColor: AppColors.warning,
           ),
         ];
 
@@ -1222,10 +908,7 @@ class _SupplierPaymentScreenState
             children: cards
                 .map(
                   (Widget card) => Padding(
-                    padding:
-                        const EdgeInsets.only(
-                      bottom: 10,
-                    ),
+                    padding: const EdgeInsets.only(bottom: 10),
                     child: card,
                   ),
                 )
@@ -1238,10 +921,7 @@ class _SupplierPaymentScreenState
               .map(
                 (Widget card) => Expanded(
                   child: Padding(
-                    padding:
-                        const EdgeInsets.only(
-                      right: 10,
-                    ),
+                    padding: const EdgeInsets.only(right: 10),
                     child: card,
                   ),
                 ),
@@ -1252,52 +932,33 @@ class _SupplierPaymentScreenState
     );
   }
 
-  Widget _buildFilters(
-    ThemeData theme,
-    bool isDesktop,
-  ) {
-    final Widget searchField =
-        TextField(
+  Widget _buildFilters(ThemeData theme, bool isDesktop) {
+    final Widget searchField = TextField(
       controller: _searchController,
       decoration: InputDecoration(
-        hintText:
-            'Search supplier, amount, reference...',
-        prefixIcon: const Icon(
-          Icons.search_rounded,
-        ),
-        suffixIcon:
-            _searchQuery.isNotEmpty
-                ? IconButton(
-                    onPressed: () {
-                      _searchController
-                          .clear();
-                    },
-                    icon: const Icon(
-                      Icons.clear_rounded,
-                    ),
-                  )
-                : null,
+        hintText: 'Search supplier, amount, reference...',
+        prefixIcon: const Icon(Icons.search_rounded),
+        suffixIcon: _searchQuery.isNotEmpty
+            ? IconButton(
+                onPressed: () {
+                  _searchController.clear();
+                },
+                icon: const Icon(Icons.clear_rounded),
+              )
+            : null,
       ),
     );
 
-    final Widget methodDropdown =
-        DropdownButtonFormField<String>(
-      initialValue:
-          _selectedPaymentMethod,
-      decoration:
-          const InputDecoration(
+    final Widget methodDropdown = DropdownButtonFormField<String>(
+      initialValue: _selectedPaymentMethod,
+      decoration: const InputDecoration(
         labelText: 'Payment Method',
-        prefixIcon: Icon(
-          Icons.account_balance_wallet_outlined,
-        ),
+        prefixIcon: Icon(Icons.account_balance_wallet_outlined),
       ),
       items: _paymentMethods
           .map(
             (String method) =>
-                DropdownMenuItem<String>(
-              value: method,
-              child: Text(method),
-            ),
+                DropdownMenuItem<String>(value: method, child: Text(method)),
           )
           .toList(),
       onChanged: (String? value) {
@@ -1306,40 +967,27 @@ class _SupplierPaymentScreenState
         }
 
         setState(() {
-          _selectedPaymentMethod =
-              value;
+          _selectedPaymentMethod = value;
         });
       },
     );
 
-    final Widget supplierDropdown =
-        DropdownButtonFormField<String>(
-      initialValue:
-          _supplierDropdownValue(),
+    final Widget supplierDropdown = DropdownButtonFormField<String>(
+      initialValue: _supplierDropdownValue(),
       isExpanded: true,
-      decoration:
-          const InputDecoration(
+      decoration: const InputDecoration(
         labelText: 'Supplier',
-        prefixIcon: Icon(
-          Icons.local_shipping_outlined,
-        ),
+        prefixIcon: Icon(Icons.local_shipping_outlined),
       ),
       items: <DropdownMenuItem<String>>[
         const DropdownMenuItem<String>(
           value: 'All',
-          child: Text(
-            'All Suppliers',
-          ),
+          child: Text('All Suppliers'),
         ),
         ..._suppliers.map(
-          (SupplierModel supplier) =>
-              DropdownMenuItem<String>(
+          (SupplierModel supplier) => DropdownMenuItem<String>(
             value: supplier.id,
-            child: Text(
-              supplier.name,
-              overflow:
-                  TextOverflow.ellipsis,
-            ),
+            child: Text(supplier.name, overflow: TextOverflow.ellipsis),
           ),
         ),
       ],
@@ -1349,131 +997,82 @@ class _SupplierPaymentScreenState
         }
 
         setState(() {
-          _selectedSupplierId =
-              value;
+          _selectedSupplierId = value;
         });
       },
     );
 
-    final Widget dateButton =
-        OutlinedButton.icon(
+    final Widget dateButton = OutlinedButton.icon(
       onPressed: _showDateRangeSheet,
-      icon: const Icon(
-        Icons.date_range_rounded,
-      ),
-      label: Text(
-        _dateFilterLabel(),
-        overflow:
-            TextOverflow.ellipsis,
-      ),
-      style:
-          OutlinedButton.styleFrom(
-        minimumSize:
-            const Size.fromHeight(56),
-      ),
+      icon: const Icon(Icons.date_range_rounded),
+      label: Text(_dateFilterLabel(), overflow: TextOverflow.ellipsis),
+      style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(56)),
     );
 
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
-        padding:
-            const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Row(
               children: <Widget>[
-                const Icon(
-                  Icons.filter_alt_outlined,
-                  color:
-                      AppColors.primary,
-                ),
-                const SizedBox(
-                  width: 8,
-                ),
+                const Icon(Icons.filter_alt_outlined, color: AppColors.primary),
+                const SizedBox(width: 8),
                 Text(
                   'Search & Filters',
-                  style: theme
-                      .textTheme
-                      .titleMedium
-                      ?.copyWith(
-                    fontWeight:
-                        FontWeight.w700,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
                 const Spacer(),
                 if (_hasActiveFilters)
                   TextButton(
-                    onPressed:
-                        _clearFilters,
-                    child:
-                        const Text(
-                      'CLEAR',
-                    ),
+                    onPressed: _clearFilters,
+                    child: const Text('CLEAR'),
                   ),
               ],
             ),
-            const SizedBox(
-              height: 14,
-            ),
+            const SizedBox(height: 14),
             if (isDesktop)
               Row(
                 children: <Widget>[
-                  Expanded(
-                    flex: 2,
-                    child: searchField,
-                  ),
-                  const SizedBox(
-                    width: 12,
-                  ),
-                  Expanded(
-                    child:
-                        supplierDropdown,
-                  ),
-                  const SizedBox(
-                    width: 12,
-                  ),
-                  Expanded(
-                    child:
-                        methodDropdown,
-                  ),
-                  const SizedBox(
-                    width: 12,
-                  ),
-                  Expanded(
-                    child:
-                        dateButton,
-                  ),
+                  Expanded(flex: 2, child: searchField),
+                  const SizedBox(width: 12),
+                  Expanded(child: supplierDropdown),
+                  const SizedBox(width: 12),
+                  Expanded(child: methodDropdown),
+                  const SizedBox(width: 12),
+                  Expanded(child: dateButton),
                 ],
               )
             else
-              Column(
-                children: <Widget>[
-                  searchField,
-                  const SizedBox(
-                    height: 10,
-                  ),
-                  supplierDropdown,
-                  const SizedBox(
-                    height: 10,
-                  ),
-                  Row(
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final bool narrow = constraints.maxWidth < 420;
+
+                  return Column(
                     children: <Widget>[
-                      Expanded(
-                        child:
-                            methodDropdown,
-                      ),
-                      const SizedBox(
-                        width: 10,
-                      ),
-                      Expanded(
-                        child:
-                            dateButton,
-                      ),
+                      searchField,
+                      const SizedBox(height: 10),
+                      supplierDropdown,
+                      const SizedBox(height: 10),
+                      if (narrow) ...<Widget>[
+                        methodDropdown,
+                        const SizedBox(height: 10),
+                        dateButton,
+                      ] else
+                        Row(
+                          children: <Widget>[
+                            Expanded(child: methodDropdown),
+                            const SizedBox(width: 10),
+                            Expanded(child: dateButton),
+                          ],
+                        ),
                     ],
-                  ),
-                ],
+                  );
+                },
               ),
           ],
         ),
@@ -1487,303 +1086,175 @@ class _SupplierPaymentScreenState
 
   Widget _buildPaymentList(
     ThemeData theme,
-    List<SupplierPaymentModel>
-        payments,
+    List<SupplierPaymentModel> payments,
   ) {
     if (payments.isEmpty) {
-      return _buildEmptyState(
-        theme,
-      );
+      return _buildEmptyState(theme);
     }
 
     return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Row(
           children: <Widget>[
             Expanded(
               child: Text(
                 'Payment History',
-                style: theme
-                    .textTheme
-                    .titleLarge
-                    ?.copyWith(
-                  fontWeight:
-                      FontWeight.w800,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
                 ),
               ),
             ),
             Text(
               '${payments.length} records',
-              style: theme
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(
-                color: theme
-                    .colorScheme
-                    .onSurfaceVariant,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ],
         ),
-        const SizedBox(
-          height: 12,
-        ),
+        const SizedBox(height: 12),
         ...payments.map(
-          (SupplierPaymentModel payment) =>
-              _buildPaymentCard(
-            theme,
-            payment,
-          ),
+          (SupplierPaymentModel payment) => _buildPaymentCard(theme, payment),
         ),
       ],
     );
   }
 
-  Widget _buildPaymentCard(
-    ThemeData theme,
-    SupplierPaymentModel payment,
-  ) {
+  Widget _buildPaymentCard(ThemeData theme, SupplierPaymentModel payment) {
     return Card(
-      margin:
-          const EdgeInsets.only(
-        bottom: 12,
-      ),
+      margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
-        borderRadius:
-            BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(16),
         onTap: () {
-          _showPaymentDetails(
-            payment,
-          );
+          _showPaymentDetails(payment);
         },
         child: Padding(
-          padding:
-              const EdgeInsets.all(16),
+          padding: EdgeInsets.all(
+            MediaQuery.sizeOf(context).width < 380 ? 12 : 16,
+          ),
           child: Row(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Container(
                 width: 48,
                 height: 48,
-                decoration:
-                    BoxDecoration(
-                  color: AppColors
-                      .success
-                      .withValues(
-                    alpha: 0.10,
-                  ),
-                  shape:
-                      BoxShape.circle,
+                decoration: BoxDecoration(
+                  color: AppColors.success.withValues(alpha: 0.10),
+                  shape: BoxShape.circle,
                 ),
                 child: const Icon(
-                  Icons
-                      .payments_outlined,
-                  color:
-                      AppColors.success,
+                  Icons.payments_outlined,
+                  color: AppColors.success,
                 ),
               ),
-              const SizedBox(
-                width: 13,
-              ),
+              const SizedBox(width: 13),
               Expanded(
                 child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Row(
                       children: <Widget>[
                         Expanded(
                           child: Text(
-                            payment
-                                .supplierName,
+                            payment.supplierName,
                             maxLines: 1,
-                            overflow:
-                                TextOverflow
-                                    .ellipsis,
-                            style: theme
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(
-                              fontWeight:
-                                  FontWeight
-                                      .w800,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
                         ),
-                        const SizedBox(
-                          width: 8,
-                        ),
+                        const SizedBox(width: 8),
                         Text(
-                          _formatCurrency(
-                            payment.amount,
-                          ),
-                          style: theme
-                              .textTheme
-                              .titleMedium
-                              ?.copyWith(
-                            fontWeight:
-                                FontWeight
-                                    .w800,
-                            color:
-                                AppColors
-                                    .success,
+                          _formatCurrency(payment.amount),
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.success,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(
-                      height: 5,
-                    ),
+                    const SizedBox(height: 5),
                     Row(
                       children: <Widget>[
                         Flexible(
                           child: Text(
-                            payment
-                                .paymentMethod
-                                .trim()
-                                .isEmpty
+                            payment.paymentMethod.trim().isEmpty
                                 ? 'Payment'
-                                : payment
-                                    .paymentMethod,
-                            overflow:
-                                TextOverflow
-                                    .ellipsis,
-                            style: theme
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(
-                              color: theme
-                                  .colorScheme
-                                  .onSurfaceVariant,
+                                : payment.paymentMethod,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
                             ),
                           ),
                         ),
-                        const SizedBox(
-                          width: 8,
-                        ),
-                        const Text(
-                          '•',
-                        ),
-                        const SizedBox(
-                          width: 8,
-                        ),
+                        const SizedBox(width: 8),
+                        const Text('•'),
+                        const SizedBox(width: 8),
                         Text(
-                          DateFormat(
-                            'dd MMM yyyy',
-                          ).format(
-                            payment.date,
-                          ),
-                          style: theme
-                              .textTheme
-                              .bodySmall
-                              ?.copyWith(
-                            color: theme
-                                .colorScheme
-                                .onSurfaceVariant,
+                          DateFormat('dd MMM yyyy').format(payment.date),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
                           ),
                         ),
                       ],
                     ),
-                    if (payment
-                        .transactionReference
-                        .trim()
-                        .isNotEmpty) ...[
-                      const SizedBox(
-                        height: 5,
-                      ),
+                    if (payment.transactionReference.trim().isNotEmpty) ...[
+                      const SizedBox(height: 5),
                       Text(
                         'Ref: ${payment.transactionReference}',
                         maxLines: 1,
-                        overflow:
-                            TextOverflow
-                                .ellipsis,
-                        style: theme
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(
-                          color:
-                              AppColors.primary,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: AppColors.primary,
                         ),
                       ),
                     ],
                   ],
                 ),
               ),
-              const SizedBox(
-                width: 4,
-              ),
+              const SizedBox(width: 4),
               PopupMenuButton<String>(
                 tooltip: 'More',
-                onSelected:
-                    (String value) {
+                onSelected: (String value) {
                   if (value == 'view') {
-                    _showPaymentDetails(
-                      payment,
-                    );
-                  } else if (value ==
-                      'edit') {
-                    _openEditPayment(
-                      payment,
-                    );
-                  } else if (value ==
-                      'delete') {
-                    _deletePayment(
-                      payment,
-                    );
+                    _showPaymentDetails(payment);
+                  } else if (value == 'edit') {
+                    _openEditPayment(payment);
+                  } else if (value == 'delete') {
+                    _deletePayment(payment);
                   }
                 },
-                itemBuilder:
-                    (
-                  BuildContext context,
-                ) =>
-                        <PopupMenuEntry<String>>[
+                itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
                   const PopupMenuItem<String>(
                     value: 'view',
                     child: ListTile(
-                      contentPadding:
-                          EdgeInsets.zero,
-                      leading: Icon(
-                        Icons
-                            .visibility_outlined,
-                      ),
-                      title:
-                          Text('View'),
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.visibility_outlined),
+                      title: Text('View'),
                     ),
                   ),
                   const PopupMenuItem<String>(
                     value: 'edit',
                     child: ListTile(
-                      contentPadding:
-                          EdgeInsets.zero,
-                      leading: Icon(
-                        Icons
-                            .edit_outlined,
-                      ),
-                      title:
-                          Text('Edit'),
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.edit_outlined),
+                      title: Text('Edit'),
                     ),
                   ),
                   const PopupMenuDivider(),
                   const PopupMenuItem<String>(
                     value: 'delete',
                     child: ListTile(
-                      contentPadding:
-                          EdgeInsets.zero,
+                      contentPadding: EdgeInsets.zero,
                       leading: Icon(
-                        Icons
-                            .delete_outline_rounded,
-                        color:
-                            AppColors.danger,
+                        Icons.delete_outline_rounded,
+                        color: AppColors.danger,
                       ),
                       title: Text(
                         'Delete',
-                        style: TextStyle(
-                          color:
-                              AppColors.danger,
-                        ),
+                        style: TextStyle(color: AppColors.danger),
                       ),
                     ),
                   ),
@@ -1800,103 +1271,58 @@ class _SupplierPaymentScreenState
   // EMPTY / ERROR
   // ===========================================================================
 
-  Widget _buildEmptyState(
-    ThemeData theme,
-  ) {
-    final bool hasFilters =
-        _hasActiveFilters;
+  Widget _buildEmptyState(ThemeData theme) {
+    final bool hasFilters = _hasActiveFilters;
 
     return Card(
       child: Padding(
-        padding:
-            const EdgeInsets.symmetric(
-          horizontal: 24,
-          vertical: 44,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 44),
         child: Column(
           children: <Widget>[
             Container(
               width: 72,
               height: 72,
-              decoration:
-                  BoxDecoration(
-                color: AppColors
-                    .primary
-                    .withValues(
-                  alpha: 0.10,
-                ),
-                shape:
-                    BoxShape.circle,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.10),
+                shape: BoxShape.circle,
               ),
               child: Icon(
-                hasFilters
-                    ? Icons
-                        .search_off_rounded
-                    : Icons
-                        .payments_outlined,
+                hasFilters ? Icons.search_off_rounded : Icons.payments_outlined,
                 size: 34,
-                color:
-                    AppColors.primary,
+                color: AppColors.primary,
               ),
             ),
-            const SizedBox(
-              height: 16,
-            ),
+            const SizedBox(height: 16),
             Text(
               hasFilters
                   ? 'No payments found'
                   : 'No supplier payments recorded',
-              style: theme
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(
-                fontWeight:
-                    FontWeight.w700,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(
-              height: 7,
-            ),
+            const SizedBox(height: 7),
             Text(
               hasFilters
                   ? 'Try changing your search or filters.'
                   : 'Supplier payment transactions will appear here.',
-              textAlign:
-                  TextAlign.center,
-              style: theme
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(
-                color: theme
-                    .colorScheme
-                    .onSurfaceVariant,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
-            const SizedBox(
-              height: 18,
-            ),
+            const SizedBox(height: 18),
             if (hasFilters)
               OutlinedButton.icon(
-                onPressed:
-                    _clearFilters,
-                icon: const Icon(
-                  Icons
-                      .filter_alt_off_rounded,
-                ),
-                label: const Text(
-                  'CLEAR FILTERS',
-                ),
+                onPressed: _clearFilters,
+                icon: const Icon(Icons.filter_alt_off_rounded),
+                label: const Text('CLEAR FILTERS'),
               )
             else
               FilledButton.icon(
-                onPressed:
-                    _openAddPayment,
-                icon: const Icon(
-                  Icons.add_rounded,
-                ),
-                label: const Text(
-                  'ADD PAYMENT',
-                ),
+                onPressed: _openAddPayment,
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('ADD PAYMENT'),
               ),
           ],
         ),
@@ -1904,47 +1330,29 @@ class _SupplierPaymentScreenState
     );
   }
 
-  Widget _buildErrorState(
-    ThemeData theme,
-  ) {
+  Widget _buildErrorState(ThemeData theme) {
     return Center(
       child: Padding(
-        padding:
-            const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(24),
         child: Column(
-          mainAxisSize:
-              MainAxisSize.min,
+          mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             const Icon(
-              Icons
-                  .error_outline_rounded,
+              Icons.error_outline_rounded,
               size: 56,
-              color:
-                  AppColors.danger,
+              color: AppColors.danger,
             ),
-            const SizedBox(
-              height: 14,
-            ),
+            const SizedBox(height: 14),
             Text(
-              _errorMessage ??
-                  'Unable to load supplier payments.',
-              textAlign:
-                  TextAlign.center,
-              style: theme
-                  .textTheme
-                  .bodyLarge,
+              _errorMessage ?? 'Unable to load supplier payments.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyLarge,
             ),
-            const SizedBox(
-              height: 18,
-            ),
+            const SizedBox(height: 18),
             FilledButton.icon(
-              onPressed:
-                  _initialize,
-              icon: const Icon(
-                Icons.refresh_rounded,
-              ),
-              label:
-                  const Text('Retry'),
+              onPressed: _initialize,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Retry'),
             ),
           ],
         ),
@@ -1960,95 +1368,54 @@ class _SupplierPaymentScreenState
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
-      builder: (
-        BuildContext sheetContext,
-      ) {
+      builder: (BuildContext sheetContext) {
         return SafeArea(
           child: Padding(
-            padding:
-                const EdgeInsets.fromLTRB(
-              20,
-              4,
-              20,
-              20,
-            ),
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
             child: Column(
-              mainAxisSize:
-                  MainAxisSize.min,
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
                   'Date Filter',
-                  style: Theme.of(
-                    sheetContext,
-                  )
-                      .textTheme
-                      .titleLarge
-                      ?.copyWith(
-                    fontWeight:
-                        FontWeight.w800,
-                  ),
+                  style: Theme.of(sheetContext).textTheme.titleLarge
+                      ?.copyWith(fontWeight: FontWeight.w800),
                 ),
-                const SizedBox(
-                  height: 16,
-                ),
+                const SizedBox(height: 16),
                 Row(
                   children: <Widget>[
                     Expanded(
-                      child:
-                          _dateSelectionTile(
-                        label:
-                            'Start Date',
-                        date:
-                            _startDate,
-                        onPressed:
-                            _selectStartDate,
+                      child: _dateSelectionTile(
+                        label: 'Start Date',
+                        date: _startDate,
+                        onPressed: _selectStartDate,
                       ),
                     ),
-                    const SizedBox(
-                      width: 10,
-                    ),
+                    const SizedBox(width: 10),
                     Expanded(
-                      child:
-                          _dateSelectionTile(
-                        label:
-                            'End Date',
-                        date:
-                            _endDate,
-                        onPressed:
-                            _selectEndDate,
+                      child: _dateSelectionTile(
+                        label: 'End Date',
+                        date: _endDate,
+                        onPressed: _selectEndDate,
                       ),
                     ),
                   ],
                 ),
-                if (_startDate != null ||
-                    _endDate != null) ...[
-                  const SizedBox(
-                    height: 12,
-                  ),
+                if (_startDate != null || _endDate != null) ...[
+                  const SizedBox(height: 12),
                   SizedBox(
-                    width:
-                        double.infinity,
-                    child:
-                        OutlinedButton.icon(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
                       onPressed: () {
                         setState(() {
-                          _startDate =
-                              null;
+                          _startDate = null;
                           _endDate = null;
                         });
 
-                        Navigator.pop(
-                          sheetContext,
-                        );
+                        Navigator.pop(sheetContext);
                       },
-                      icon: const Icon(
-                        Icons.clear_rounded,
-                      ),
-                      label: const Text(
-                        'Clear Date Filter',
-                      ),
+                      icon: const Icon(Icons.clear_rounded),
+                      label: const Text('Clear Date Filter'),
                     ),
                   ),
                 ],
@@ -2067,39 +1434,20 @@ class _SupplierPaymentScreenState
   }) {
     return OutlinedButton.icon(
       onPressed: onPressed,
-      icon: const Icon(
-        Icons.calendar_month_outlined,
-      ),
+      icon: const Icon(Icons.calendar_month_outlined),
       label: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        mainAxisSize:
-            MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: <Widget>[
+          Text(label, style: const TextStyle(fontSize: 11)),
           Text(
-            label,
-            style: const TextStyle(
-              fontSize: 11,
-            ),
-          ),
-          Text(
-            date == null
-                ? 'Select'
-                : DateFormat(
-                    'dd MMM yyyy',
-                  ).format(date),
-            overflow:
-                TextOverflow.ellipsis,
+            date == null ? 'Select' : DateFormat('dd MMM yyyy').format(date),
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
-      style:
-          OutlinedButton.styleFrom(
-        padding:
-            const EdgeInsets.symmetric(
-          horizontal: 12,
-          vertical: 10,
-        ),
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       ),
     );
   }
@@ -2109,31 +1457,23 @@ class _SupplierPaymentScreenState
   // ===========================================================================
 
   String _supplierDropdownValue() {
-    if (_selectedSupplierId ==
-        'All') {
+    if (_selectedSupplierId == 'All') {
       return 'All';
     }
 
-    final bool exists =
-        _suppliers.any(
-      (SupplierModel supplier) =>
-          supplier.id ==
-          _selectedSupplierId,
+    final bool exists = _suppliers.any(
+      (SupplierModel supplier) => supplier.id == _selectedSupplierId,
     );
 
-    return exists
-        ? _selectedSupplierId
-        : 'All';
+    return exists ? _selectedSupplierId : 'All';
   }
 
   String _dateFilterLabel() {
-    if (_startDate == null &&
-        _endDate == null) {
+    if (_startDate == null && _endDate == null) {
       return 'Date Range';
     }
 
-    if (_startDate != null &&
-        _endDate != null) {
+    if (_startDate != null && _endDate != null) {
       return '${DateFormat('dd/MM/yy').format(_startDate!)}'
           ' - '
           '${DateFormat('dd/MM/yy').format(_endDate!)}';
@@ -2146,33 +1486,21 @@ class _SupplierPaymentScreenState
     return 'Until ${DateFormat('dd/MM/yy').format(_endDate!)}';
   }
 
-  String _formatCurrency(
-    double value,
-  ) {
+  String _formatCurrency(double value) {
     return AppNumberFormat.amount(value);
   }
 
-  String _cleanError(
-    Object error,
-  ) {
-    final String message =
-        error.toString();
+  String _cleanError(Object error) {
+    final String message = error.toString();
 
-    if (message.startsWith(
-      'Exception: ',
-    )) {
-      return message.substring(
-        'Exception: '.length,
-      );
+    if (message.startsWith('Exception: ')) {
+      return message.substring('Exception: '.length);
     }
 
     return message;
   }
 
-  void _showMessage(
-    String message, {
-    bool isError = false,
-  }) {
+  void _showMessage(String message, {bool isError = false}) {
     if (!mounted) {
       return;
     }
@@ -2182,11 +1510,8 @@ class _SupplierPaymentScreenState
       ..showSnackBar(
         SnackBar(
           content: Text(message),
-          behavior:
-              SnackBarBehavior.floating,
-          backgroundColor: isError
-              ? AppColors.danger
-              : AppColors.success,
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: isError ? AppColors.danger : AppColors.success,
         ),
       );
   }
@@ -2210,68 +1535,42 @@ class _SummaryCard extends StatelessWidget {
   });
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
-        padding:
-            const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
         child: Row(
           children: <Widget>[
             Container(
               width: 46,
               height: 46,
-              decoration:
-                  BoxDecoration(
-                color: iconColor.withValues(
-                  alpha: 0.10,
-                ),
-                shape:
-                    BoxShape.circle,
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.10),
+                shape: BoxShape.circle,
               ),
-              child: Icon(
-                icon,
-                color: iconColor,
-              ),
+              child: Icon(icon, color: iconColor),
             ),
-            const SizedBox(
-              width: 12,
-            ),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(
                     title,
-                    style: theme
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(
-                      color: theme
-                          .colorScheme
-                          .onSurfaceVariant,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
-                  const SizedBox(
-                    height: 4,
-                  ),
+                  const SizedBox(height: 4),
                   Text(
                     value,
                     maxLines: 1,
-                    overflow:
-                        TextOverflow.ellipsis,
-                    style: theme
-                        .textTheme
-                        .titleLarge
-                        ?.copyWith(
-                      fontWeight:
-                          FontWeight.w800,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ],
@@ -2302,74 +1601,44 @@ class _DetailTile extends StatelessWidget {
   });
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     return Padding(
-      padding:
-          const EdgeInsets.only(
-        bottom: 14,
-      ),
+      padding: const EdgeInsets.only(bottom: 14),
       child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Container(
             width: 38,
             height: 38,
-            decoration:
-                BoxDecoration(
-              color: theme
-                  .colorScheme
-                  .surfaceContainerHighest,
-              borderRadius:
-                  BorderRadius.circular(
-                10,
-              ),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(
               icon,
               size: 20,
-              color: theme
-                  .colorScheme
-                  .onSurfaceVariant,
+              color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
-          const SizedBox(
-            width: 12,
-          ),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
                   label,
-                  style: theme
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(
-                    color: theme
-                        .colorScheme
-                        .onSurfaceVariant,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
-                const SizedBox(
-                  height: 3,
-                ),
+                const SizedBox(height: 3),
                 Text(
                   value,
-                  style: theme
-                      .textTheme
-                      .bodyLarge
-                      ?.copyWith(
-                    fontWeight:
-                        FontWeight.w600,
-                    color:
-                        valueColor,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: valueColor,
                   ),
                 ),
               ],

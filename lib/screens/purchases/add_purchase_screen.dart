@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+
 import '../../core/widgets/app_date_picker.dart';
 
 import '../../core/theme/app_colors.dart';
@@ -13,6 +14,7 @@ import '../../repositories/product_repository.dart';
 import '../../repositories/purchase_repository.dart';
 import '../../repositories/supplier_repository.dart';
 import '../../core/services/purchase_stock_service.dart';
+import '../../core/widgets/app_responsive_page.dart';
 
 class AddPurchaseScreen extends StatefulWidget {
   final PurchaseModel? purchase;
@@ -438,8 +440,9 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
   Future<void> _selectDate() async {
     final selected = await AppDatePicker.showDatePicker(
       context: context,
-      
-      initialEntryMode: DatePickerEntryMode.calendar,initialDate: _purchaseDate,
+
+      initialEntryMode: DatePickerEntryMode.calendar,
+      initialDate: _purchaseDate,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
     );
@@ -499,16 +502,42 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
     try {
       final now = DateTime.now();
 
-      final purchaseItems = _items.map((item) {
-        return PurchaseItemModel(
-          productId: item.product.id,
-          productName: item.product.name,
-          quantity: item.quantity,
-          unit: item.product.unit,
-          purchaseRate: item.purchaseRate,
-          total: item.total,
+      final List<PurchaseItemModel> purchaseItems = <PurchaseItemModel>[];
+
+      // Different suppliers get independent product variants. Existing
+      // legacy products remain usable and are never rewritten.
+      for (final _PurchaseDraftItem item in _items) {
+        ProductModel resolvedProduct = item.product;
+        final String supplierId = _selectedSupplier!.id.trim();
+
+        if (supplierId.isNotEmpty && item.product.supplierId.trim() != supplierId) {
+          final ProductModel? existingVariant =
+              await _productRepository.findSupplierVariant(
+            businessId: _business!.id,
+            productName: item.product.name,
+            supplierId: supplierId,
+          );
+
+          resolvedProduct = existingVariant ??
+              await _productRepository.createSupplierVariant(
+                baseProduct: item.product,
+                supplierId: supplierId,
+                supplierName: _selectedSupplier!.name,
+                purchasePrice: item.purchaseRate,
+              );
+        }
+
+        purchaseItems.add(
+          PurchaseItemModel(
+            productId: resolvedProduct.id,
+            productName: resolvedProduct.name,
+            quantity: item.quantity,
+            unit: resolvedProduct.unit,
+            purchaseRate: item.purchaseRate,
+            total: item.total,
+          ),
         );
-      }).toList();
+      }
 
       final purchase = PurchaseModel(
         id: widget.purchase?.id ?? '',
@@ -604,7 +633,7 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
         appBar: AppBar(
           title: Text(widget.isEditMode ? 'Edit Purchase' : 'Add Purchase'),
         ),
-        body: const Center(child: CircularProgressIndicator()),
+        body: AppResponsivePage(child: const Center(child: CircularProgressIndicator())),
       );
     }
 
@@ -613,7 +642,7 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
         appBar: AppBar(
           title: Text(widget.isEditMode ? 'Edit Purchase' : 'Add Purchase'),
         ),
-        body: Center(
+        body: AppResponsivePage(child: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
@@ -641,7 +670,7 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
               ],
             ),
           ),
-        ),
+        )),
       );
     }
 
@@ -649,7 +678,7 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
       appBar: AppBar(
         title: Text(widget.isEditMode ? 'Edit Purchase' : 'Add Purchase'),
       ),
-      body: Form(
+      body: AppResponsivePage(child: Form(
         key: _formKey,
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -670,7 +699,7 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
             );
           },
         ),
-      ),
+      )),
       bottomNavigationBar: _buildBottomBar(),
     );
   }
@@ -852,21 +881,48 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Expanded(
-                  child: _SectionTitle(
-                    icon: Icons.inventory_2_rounded,
-                    title: 'Products',
-                    subtitle: 'Add products included in this purchase',
-                  ),
-                ),
-                FilledButton.icon(
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final bool compact = constraints.maxWidth < 520;
+
+                final sectionTitle = const _SectionTitle(
+                  icon: Icons.inventory_2_rounded,
+                  title: 'Products',
+                  subtitle: 'Add products included in this purchase',
+                );
+
+                final addButton = FilledButton.icon(
                   onPressed: _addProduct,
                   icon: const Icon(Icons.add_rounded),
                   label: const Text('Add Product'),
-                ),
-              ],
+                );
+
+                if (compact) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      sectionTitle,
+                      const SizedBox(height: 12),
+                      SizedBox(width: double.infinity, child: addButton),
+                    ],
+                  );
+                }
+
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Expanded(
+                      child: _SectionTitle(
+                        icon: Icons.inventory_2_rounded,
+                        title: 'Products',
+                        subtitle: 'Add products included in this purchase',
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    addButton,
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 16),
             if (_items.isEmpty)
@@ -1082,47 +1138,64 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
           boxShadow: [
             BoxShadow(
               blurRadius: 12,
-              color: Theme.of(context).colorScheme.shadow.withValues(alpha: 0.12),
+              color: Theme.of(context).colorScheme.shadow
+                  .withValues(alpha: 0.12),
             ),
           ],
         ),
-        child: Row(
-          children: [
-            Expanded(
-              child: OutlinedButton(
-                onPressed: _isSaving
-                    ? null
-                    : () {
-                        Navigator.pop(context);
-                      },
-                child: const Text('Cancel'),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final bool compact = constraints.maxWidth < 430;
+
+            final cancelButton = OutlinedButton(
+              onPressed: _isSaving
+                  ? null
+                  : () {
+                      Navigator.pop(context);
+                    },
+              child: const Text('Cancel'),
+            );
+
+            final saveButton = FilledButton.icon(
+              onPressed: _isSaving ? null : _savePurchase,
+              icon: _isSaving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.check_rounded),
+              label: Text(
+                _isSaving
+                    ? 'Saving...'
+                    : widget.isEditMode
+                    ? 'Update Purchase'
+                    : 'Save Purchase',
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              flex: 2,
-              child: FilledButton.icon(
-                onPressed: _isSaving ? null : _savePurchase,
-                icon: _isSaving
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.check_rounded),
-                label: Text(
-                  _isSaving
-                      ? 'Saving...'
-                      : widget.isEditMode
-                      ? 'Update Purchase'
-                      : 'Save Purchase',
-                ),
-              ),
-            ),
-          ],
+            );
+
+            if (compact) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(width: double.infinity, child: saveButton),
+                  const SizedBox(height: 8),
+                  SizedBox(width: double.infinity, child: cancelButton),
+                ],
+              );
+            }
+
+            return Row(
+              children: [
+                Expanded(child: cancelButton),
+                const SizedBox(width: 12),
+                Expanded(flex: 2, child: saveButton),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -1730,7 +1803,8 @@ class _ProductPickerSheetState extends State<_ProductPickerSheet> {
                               ),
                             ),
                             subtitle: Text(
-                              '${product.category.isEmpty ? 'Product' : product.category} • ${product.unit} • Stock: ${_formatNumber(product.currentStock)}',
+                              '${product.category.isEmpty ? 'Product' : product.category} • ${product.unit} • Stock: ${_formatNumber(product.currentStock)}'
+                              '${product.supplierName.trim().isEmpty ? '' : ' • ${product.supplierName.trim()}'}',
                             ),
                             trailing: Text(
                               NumberFormat.currency(

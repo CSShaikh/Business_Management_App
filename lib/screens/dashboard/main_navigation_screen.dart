@@ -32,10 +32,9 @@ class MainNavigationScreen extends StatefulWidget {
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   // ============================================================
   // MAIN NAVIGATION INDEX
-  //
-  // IMPORTANT: These indexes are the single source of truth for
-  // both the navigation destinations and the IndexedStack.
-  // Never change one order without changing the other.
+  // ============================================================
+  // These indexes are the single source of truth for the actual
+  // screens and their IndexedStack positions.
   // ============================================================
 
   static const int _homeIndex = 0;
@@ -46,6 +45,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   static const int _suppliersIndex = 5;
   static const int _paymentsIndex = 6;
   static const int _expensesIndex = 7;
+  static const int _reportsIndex = 8;
+  static const int _profileIndex = 9;
+
+  // Phone breakpoint. Below this width the desktop/rail navigation
+  // is removed completely so the page receives the full phone width.
+  static const double _mobileBreakpoint = 700;
 
   int _currentIndex = _homeIndex;
 
@@ -58,8 +63,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   void initState() {
     super.initState();
 
-    // This order MUST exactly match the navigation destinations
-    // in _buildNavigationRail().
+    // This order MUST exactly match the navigation indexes above.
     _screens = const [
       DashboardHomeScreen(), // 0
       ProductsScreen(), // 1
@@ -88,8 +92,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       return;
     }
 
-    // Direct index assignment is intentional. It prevents a
-    // navigation item from accidentally opening another section.
     if (_currentIndex == index) {
       return;
     }
@@ -126,6 +128,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   void _openPayments() => _setNavigationIndex(_paymentsIndex);
 
   void _openExpenses() => _setNavigationIndex(_expensesIndex);
+
+  void _openReports() => _setNavigationIndex(_reportsIndex);
+
+  void _openProfile() => _setNavigationIndex(_profileIndex);
 
   // ============================================================
   // BUSINESS
@@ -177,6 +183,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
       backgroundColor: Theme.of(context).colorScheme.surface,
       builder: (bottomSheetContext) {
         return SafeArea(
@@ -200,10 +207,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                     ),
                   ),
                   const SizedBox(height: 18),
-
-                  // ==================================================
-                  // ADD SALE
-                  // ==================================================
                   _AddOptionTile(
                     icon: Icons.point_of_sale_rounded,
                     title: 'Add Sale',
@@ -214,10 +217,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                       _openAddSale();
                     },
                   ),
-
-                  // ==================================================
-                  // ADD PURCHASE
-                  // ==================================================
                   _AddOptionTile(
                     icon: Icons.shopping_cart_rounded,
                     title: 'Add Purchase',
@@ -228,10 +227,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                       _openAddPurchase();
                     },
                   ),
-
-                  // ==================================================
-                  // CUSTOMER PAYMENT
-                  // ==================================================
                   _AddOptionTile(
                     icon: Icons.payments_rounded,
                     title: 'Add Payment',
@@ -242,10 +237,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                       _openAddPayment();
                     },
                   ),
-
-                  // ==================================================
-                  // SUPPLIER PAYMENT
-                  // ==================================================
                   _AddOptionTile(
                     icon: Icons.account_balance_rounded,
                     title: 'Supplier Payment',
@@ -256,10 +247,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                       _openSupplierPayment();
                     },
                   ),
-
-                  // ==================================================
-                  // ADD EXPENSE
-                  // ==================================================
                   _AddOptionTile(
                     icon: Icons.receipt_long_rounded,
                     title: 'Add Expense',
@@ -270,10 +257,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                       _openAddExpense();
                     },
                   ),
-
-                  // ==================================================
-                  // ADD CUSTOMER
-                  // ==================================================
                   _AddOptionTile(
                     icon: Icons.person_add_alt_1_rounded,
                     title: 'Add Hotel / Customer',
@@ -284,10 +267,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                       _openAddCustomer();
                     },
                   ),
-
-                  // ==================================================
-                  // ADD PRODUCT
-                  // ==================================================
                   _AddOptionTile(
                     icon: Icons.inventory_2_outlined,
                     title: 'Add Product',
@@ -300,6 +279,100 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   ),
                 ],
               ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // ============================================================
+  // MOBILE MORE MENU
+  // ============================================================
+
+  void _showMoreNavigation() {
+    if (!mounted) {
+      return;
+    }
+
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      backgroundColor: scheme.surface,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'More',
+                    style: Theme.of(context).textTheme.titleLarge
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                _MoreNavigationTile(
+                  icon: Icons.people_rounded,
+                  label: 'Customers',
+                  selected: _currentIndex == _customersIndex,
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _openCustomers();
+                  },
+                ),
+                _MoreNavigationTile(
+                  icon: Icons.local_shipping_rounded,
+                  label: 'Suppliers',
+                  selected: _currentIndex == _suppliersIndex,
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _openSuppliers();
+                  },
+                ),
+                _MoreNavigationTile(
+                  icon: Icons.payments_rounded,
+                  label: 'Payments',
+                  selected: _currentIndex == _paymentsIndex,
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _openPayments();
+                  },
+                ),
+                _MoreNavigationTile(
+                  icon: Icons.receipt_long_rounded,
+                  label: 'Expenses',
+                  selected: _currentIndex == _expensesIndex,
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _openExpenses();
+                  },
+                ),
+                _MoreNavigationTile(
+                  icon: Icons.bar_chart_rounded,
+                  label: 'Reports',
+                  selected: _currentIndex == _reportsIndex,
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _openReports();
+                  },
+                ),
+                _MoreNavigationTile(
+                  icon: Icons.person_rounded,
+                  label: 'Profile',
+                  selected: _currentIndex == _profileIndex,
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _openProfile();
+                  },
+                ),
+              ],
             ),
           ),
         );
@@ -322,8 +395,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       return;
     }
 
-    // Always return to the Sales section after leaving
-    // the Add Sale screen.
     _openSales();
   }
 
@@ -513,43 +584,162 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final Size screenSize = MediaQuery.sizeOf(context);
+    final bool isMobile = screenSize.width < _mobileBreakpoint;
+
     final int safeIndex =
         (_currentIndex >= 0 && _currentIndex < _screens.length)
         ? _currentIndex
         : _homeIndex;
 
+    final NavigatorState? activeNavigator = _navigatorKeys[safeIndex].currentState;
+    final bool childCanPop = activeNavigator?.canPop() ?? false;
+
+    return PopScope(
+      canPop: safeIndex == _homeIndex && !childCanPop,
+      onPopInvokedWithResult: (bool didPop, Object? result) {
+        if (didPop || !mounted) return;
+        final NavigatorState? navigator = _navigatorKeys[safeIndex].currentState;
+        if (navigator != null && navigator.canPop()) {
+          navigator.pop();
+        } else if (safeIndex != _homeIndex) {
+          _setNavigationIndex(_homeIndex);
+        }
+      },
+      child: isMobile
+          ? _buildMobileLayout(selectedIndex: safeIndex)
+          : _buildDesktopLayout(selectedIndex: safeIndex),
+    );
+  }
+
+  Widget _buildMobileLayout({required int selectedIndex}) {
+    final int bottomIndex = _mobileBottomIndexForScreen(selectedIndex);
+
+    return Scaffold(
+      resizeToAvoidBottomInset: true,
+      body: _buildIndexedContent(selectedIndex),
+      floatingActionButton: FloatingActionButton(
+        heroTag: 'main_navigation_mobile_add_fab',
+        onPressed: _showAddOptions,
+        tooltip: 'Quick Add',
+        child: const Icon(Icons.add_rounded),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: bottomIndex,
+        onDestinationSelected: (int index) {
+          if (index == 4) {
+            _showMoreNavigation();
+            return;
+          }
+
+          final int screenIndex = _mobileScreenIndexForBottomIndex(index);
+          _onNavigationItemTapped(screenIndex);
+        },
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home_rounded),
+            label: 'Home',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.inventory_2_outlined),
+            selectedIcon: Icon(Icons.inventory_2_rounded),
+            label: 'Products',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.point_of_sale_outlined),
+            selectedIcon: Icon(Icons.point_of_sale_rounded),
+            label: 'Sales',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.shopping_cart_outlined),
+            selectedIcon: Icon(Icons.shopping_cart_rounded),
+            label: 'Purchases',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.more_horiz_rounded),
+            selectedIcon: Icon(Icons.more_horiz_rounded),
+            label: 'More',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDesktopLayout({required int selectedIndex}) {
     return Scaffold(
       body: SafeArea(
         child: Row(
           children: [
-            _buildNavigationRail(selectedIndex: safeIndex),
+            _buildNavigationRail(selectedIndex: selectedIndex),
             const VerticalDivider(width: 1, thickness: 1),
-            Expanded(
-              child: IndexedStack(
-                index: safeIndex,
-                children: List<Widget>.generate(
-                  _screens.length,
-                  (int index) => Navigator(
-                    key: _navigatorKeys[index],
-                    onGenerateRoute: (RouteSettings settings) {
-                      return MaterialPageRoute<void>(
-                        settings: settings,
-                        builder: (_) => _screens[index],
-                      );
-                    },
-                  ),
-                ),
-              ),
-            ),
+            Expanded(child: _buildIndexedContent(selectedIndex)),
           ],
         ),
       ),
     );
   }
 
+  Widget _buildIndexedContent(int selectedIndex) {
+    return IndexedStack(
+      index: selectedIndex,
+      children: List<Widget>.generate(
+        _screens.length,
+        (int index) => Navigator(
+          key: _navigatorKeys[index],
+          onGenerateRoute: (RouteSettings settings) {
+            return MaterialPageRoute<void>(
+              settings: settings,
+              builder: (_) => _screens[index],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // MOBILE NAVIGATION HELPERS
+  // ============================================================
+
+  int _mobileBottomIndexForScreen(int screenIndex) {
+    switch (screenIndex) {
+      case _homeIndex:
+        return 0;
+      case _productsIndex:
+        return 1;
+      case _salesIndex:
+        return 2;
+      case _purchasesIndex:
+        return 3;
+      default:
+        return 4;
+    }
+  }
+
+  int _mobileScreenIndexForBottomIndex(int bottomIndex) {
+    switch (bottomIndex) {
+      case 0:
+        return _homeIndex;
+      case 1:
+        return _productsIndex;
+      case 2:
+        return _salesIndex;
+      case 3:
+        return _purchasesIndex;
+      default:
+        return _homeIndex;
+    }
+  }
+
+  // ============================================================
+  // DESKTOP NAVIGATION RAIL
+  // ============================================================
+
   Widget _buildNavigationRail({required int selectedIndex}) {
     final bool extended = MediaQuery.sizeOf(context).width >= 1200;
-    final double width = extended ? 220 : 104;
+    final double width = extended ? 220 : 84;
 
     const List<({IconData icon, IconData selectedIcon, String label})> items = [
       (
@@ -757,6 +947,46 @@ class _AddOptionTile extends StatelessWidget {
       ),
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
       subtitle: Text(subtitle),
+      trailing: const Icon(Icons.chevron_right_rounded),
+      onTap: onTap,
+    );
+  }
+}
+
+class _MoreNavigationTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _MoreNavigationTile({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+
+    return ListTile(
+      minTileHeight: 52,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      tileColor: selected
+          ? scheme.primary.withValues(alpha: 0.10)
+          : Colors.transparent,
+      leading: Icon(
+        icon,
+        color: selected ? scheme.primary : scheme.onSurfaceVariant,
+      ),
+      title: Text(
+        label,
+        style: TextStyle(
+          fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+          color: selected ? scheme.primary : scheme.onSurface,
+        ),
+      ),
       trailing: const Icon(Icons.chevron_right_rounded),
       onTap: onTap,
     );

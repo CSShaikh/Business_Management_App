@@ -9,6 +9,8 @@ class ProductModel {
   final double currentStock;
   final double minimumStock;
   final bool isActive;
+  final String supplierId;
+  final String supplierName;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -23,6 +25,8 @@ class ProductModel {
     required this.currentStock,
     required this.minimumStock,
     this.isActive = true,
+    this.supplierId = '',
+    this.supplierName = '',
     required this.createdAt,
     required this.updatedAt,
   });

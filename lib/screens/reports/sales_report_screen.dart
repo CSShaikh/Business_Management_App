@@ -8,6 +8,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:public_file_saver/public_file_saver.dart';
 
+import '../../core/services/business_pdf_branding.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/business_model.dart';
 import '../../models/payment_model.dart';
@@ -15,6 +16,7 @@ import '../../models/sale_model.dart';
 import '../../repositories/business_repository.dart';
 import '../../repositories/payment_repository.dart';
 import '../../repositories/sale_repository.dart';
+import '../../core/widgets/app_responsive_page.dart';
 
 class SalesReportScreen extends StatefulWidget {
   const SalesReportScreen({super.key});
@@ -560,11 +562,11 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: _buildAppBar(),
-      body: _loading
+      body: AppResponsivePage(child: _loading
           ? const Center(child: CircularProgressIndicator())
           : _errorMessage != null
           ? _buildErrorState(theme)
-          : _buildReportBody(theme),
+          : _buildReportBody(theme)),
     );
   }
 
@@ -1413,6 +1415,8 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
         color: PdfColors.grey700,
       );
 
+      final pw.MemoryImage? logo = await BusinessPdfBranding.loadLogo(_business!);
+
       document.addPage(
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
@@ -1463,6 +1467,19 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
           },
           build: (context) {
             return [
+            pw.Container(
+              width: 52,
+              height: 52,
+              padding: const pw.EdgeInsets.all(4),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.grey300),
+                borderRadius: pw.BorderRadius.circular(8),
+              ),
+              child: logo == null
+                  ? pw.Center(child: pw.Text('LOGO', style: const pw.TextStyle(fontSize: 7)))
+                  : pw.Image(logo, fit: pw.BoxFit.contain),
+            ),
+            pw.SizedBox(height: 8),
               pw.Container(
                 padding: const pw.EdgeInsets.all(9),
                 decoration: pw.BoxDecoration(

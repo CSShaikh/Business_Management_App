@@ -8,6 +8,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:public_file_saver/public_file_saver.dart';
 
+import '../../core/services/business_pdf_branding.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/business_model.dart';
 import '../../models/purchase_model.dart';
@@ -17,6 +18,7 @@ import '../../repositories/business_repository.dart';
 import '../../repositories/purchase_repository.dart';
 import '../../repositories/supplier_repository.dart';
 import '../../repositories/supplier_payment_repository.dart';
+import '../../core/widgets/app_responsive_page.dart';
 
 class SupplierReportScreen extends StatefulWidget {
   const SupplierReportScreen({super.key});
@@ -469,6 +471,10 @@ class _SupplierReportScreenState extends State<SupplierReportScreen> {
           ? '${_date(_startDate!)} - ${_date(_endDate!)}'
           : 'All dates';
 
+      final pw.MemoryImage? logo = business == null
+          ? null
+          : await BusinessPdfBranding.loadLogo(business);
+
       document.addPage(
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
@@ -481,6 +487,19 @@ class _SupplierReportScreenState extends State<SupplierReportScreen> {
             ),
           ),
           build: (context) => [
+            pw.Container(
+              width: 52,
+              height: 52,
+              padding: const pw.EdgeInsets.all(4),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.grey300),
+                borderRadius: pw.BorderRadius.circular(8),
+              ),
+              child: logo == null
+                  ? pw.Center(child: pw.Text('LOGO', style: const pw.TextStyle(fontSize: 7)))
+                  : pw.Image(logo, fit: pw.BoxFit.contain),
+            ),
+            pw.SizedBox(height: 8),
             pw.Text(
               business?.businessName.trim().isNotEmpty == true
                   ? business!.businessName
@@ -688,7 +707,7 @@ class _SupplierReportScreenState extends State<SupplierReportScreen> {
           ),
           title: const Text('Supplier Report'),
         ),
-        body: const Center(child: CircularProgressIndicator()),
+        body: AppResponsivePage(child: const Center(child: CircularProgressIndicator())),
       );
     }
 
@@ -703,7 +722,7 @@ class _SupplierReportScreenState extends State<SupplierReportScreen> {
           ),
           title: const Text('Supplier Report'),
         ),
-        body: _buildErrorState(theme),
+        body: AppResponsivePage(child: _buildErrorState(theme)),
       );
     }
 
@@ -744,7 +763,7 @@ class _SupplierReportScreenState extends State<SupplierReportScreen> {
           const SizedBox(width: 4),
         ],
       ),
-      body: LayoutBuilder(
+      body: AppResponsivePage(child: LayoutBuilder(
         builder: (context, constraints) {
           final bool isDesktop = constraints.maxWidth >= 1000;
 
@@ -782,7 +801,7 @@ class _SupplierReportScreenState extends State<SupplierReportScreen> {
             ),
           );
         },
-      ),
+      )),
     );
   }
 

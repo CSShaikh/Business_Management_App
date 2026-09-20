@@ -6,6 +6,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../../models/business_model.dart';
+import 'business_pdf_branding.dart';
 import '../../models/sale_model.dart';
 
 class InvoicePdfService {
@@ -34,6 +35,7 @@ class InvoicePdfService {
     final PdfColor successColor = PdfColor.fromHex('#15803D');
     final PdfColor warningColor = PdfColor.fromHex('#B45309');
     final PdfColor dangerColor = PdfColor.fromHex('#B91C1C');
+    final pw.MemoryImage? logo = await BusinessPdfBranding.loadLogo(business);
 
     document.addPage(
       pw.MultiPage(
@@ -50,6 +52,7 @@ class InvoicePdfService {
             sale: sale,
             primaryColor: primaryColor,
             mutedColor: mutedColor,
+            logo: logo,
           );
         },
         footer: (pw.Context context) {
@@ -163,6 +166,7 @@ class InvoicePdfService {
     required SaleModel sale,
     required PdfColor primaryColor,
     required PdfColor mutedColor,
+    required pw.MemoryImage? logo,
   }) {
     final String businessName = business.businessName.trim().isEmpty
         ? 'Business'
@@ -187,6 +191,24 @@ class InvoicePdfService {
       child: pw.Row(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: <pw.Widget>[
+          pw.Container(
+            width: 62,
+            height: 62,
+            padding: const pw.EdgeInsets.all(5),
+            decoration: pw.BoxDecoration(
+              border: pw.Border.all(color: primaryColor, width: 1),
+              borderRadius: pw.BorderRadius.circular(8),
+            ),
+            child: logo == null
+                ? pw.Center(
+                    child: pw.Text(
+                      'LOGO',
+                      style: pw.TextStyle(fontSize: 8, color: primaryColor),
+                    ),
+                  )
+                : pw.Image(logo, fit: pw.BoxFit.contain),
+          ),
+          pw.SizedBox(width: 12),
           pw.Expanded(
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,

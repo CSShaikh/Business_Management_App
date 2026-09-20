@@ -478,6 +478,8 @@ class ProductProvider extends ChangeNotifier {
           currentStock: product.currentStock,
           minimumStock: product.minimumStock,
           isActive: isActive,
+          supplierId: product.supplierId,
+          supplierName: product.supplierName,
           createdAt: product.createdAt,
           updatedAt: DateTime.now(),
         );
@@ -561,6 +563,8 @@ class ProductProvider extends ChangeNotifier {
           currentStock: newStock,
           minimumStock: product.minimumStock,
           isActive: product.isActive,
+          supplierId: product.supplierId,
+          supplierName: product.supplierName,
           createdAt: product.createdAt,
           updatedAt: DateTime.now(),
         );

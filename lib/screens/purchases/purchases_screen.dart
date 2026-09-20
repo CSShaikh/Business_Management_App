@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+
 import '../../core/widgets/app_date_picker.dart';
 
 import '../../core/services/purchase_stock_service.dart';
@@ -14,24 +15,19 @@ import '../../providers/purchase_provider.dart';
 import '../../providers/supplier_provider.dart';
 import '../../services/ledger/supplier_ledger_service.dart';
 import 'add_purchase_screen.dart';
+import '../../core/widgets/app_responsive_page.dart';
 
 class PurchasesScreen extends StatefulWidget {
-  const PurchasesScreen({
-    super.key,
-  });
+  const PurchasesScreen({super.key});
 
   @override
-  State<PurchasesScreen> createState() =>
-      _PurchasesScreenState();
+  State<PurchasesScreen> createState() => _PurchasesScreenState();
 }
 
-class _PurchasesScreenState
-    extends State<PurchasesScreen> {
-  final SupplierLedgerService _supplierLedgerService =
-      SupplierLedgerService();
+class _PurchasesScreenState extends State<PurchasesScreen> {
+  final SupplierLedgerService _supplierLedgerService = SupplierLedgerService();
 
-  final PurchaseStockService _purchaseStockService =
-      PurchaseStockService();
+  final PurchaseStockService _purchaseStockService = PurchaseStockService();
 
   String? _businessId;
 
@@ -58,11 +54,9 @@ class _PurchasesScreenState
   void initState() {
     super.initState();
 
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) {
-        _initialize();
-      },
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initialize();
+    });
   }
 
   // ===========================================================================
@@ -71,14 +65,14 @@ class _PurchasesScreenState
 
   Future<void> _initialize() async {
     try {
-      final BusinessProvider businessProvider =
-          context.read<BusinessProvider>();
+      final BusinessProvider businessProvider = context
+          .read<BusinessProvider>();
 
-      final PurchaseProvider purchaseProvider =
-          context.read<PurchaseProvider>();
+      final PurchaseProvider purchaseProvider = context
+          .read<PurchaseProvider>();
 
-      final SupplierProvider supplierProvider =
-          context.read<SupplierProvider>();
+      final SupplierProvider supplierProvider = context
+          .read<SupplierProvider>();
 
       await businessProvider.loadBusiness();
 
@@ -86,8 +80,7 @@ class _PurchasesScreenState
         return;
       }
 
-      final String businessId =
-          businessProvider.business?.id.trim() ?? '';
+      final String businessId = businessProvider.business?.id.trim() ?? '';
 
       if (businessId.isEmpty) {
         setState(() {
@@ -100,21 +93,13 @@ class _PurchasesScreenState
 
       _businessId = businessId;
 
-      purchaseProvider.setBusinessId(
-        businessId,
-      );
+      purchaseProvider.setBusinessId(businessId);
 
-      supplierProvider.setBusinessId(
-        businessId,
-      );
+      supplierProvider.setBusinessId(businessId);
 
       await Future.wait([
-        purchaseProvider.loadAndWatchPurchases(
-          businessId: businessId,
-        ),
-        supplierProvider.loadAndWatchSuppliers(
-          businessId: businessId,
-        ),
+        purchaseProvider.loadAndWatchPurchases(businessId: businessId),
+        supplierProvider.loadAndWatchSuppliers(businessId: businessId),
       ]);
 
       if (!mounted) {
@@ -136,20 +121,16 @@ class _PurchasesScreenState
   }
 
   Future<void> _refresh() async {
-    final String? businessId =
-        _businessId;
+    final String? businessId = _businessId;
 
-    if (businessId == null ||
-        businessId.trim().isEmpty) {
+    if (businessId == null || businessId.trim().isEmpty) {
       await _initialize();
       return;
     }
 
-    final PurchaseProvider purchaseProvider =
-        context.read<PurchaseProvider>();
+    final PurchaseProvider purchaseProvider = context.read<PurchaseProvider>();
 
-    final SupplierProvider supplierProvider =
-        context.read<SupplierProvider>();
+    final SupplierProvider supplierProvider = context.read<SupplierProvider>();
 
     try {
       await Future.wait([
@@ -165,112 +146,94 @@ class _PurchasesScreenState
   // FILTERING
   // ===========================================================================
 
-  List<PurchaseModel> _getFilteredPurchases(
-    List<PurchaseModel> purchases,
-  ) {
-    final String query =
-        _searchQuery.trim().toLowerCase();
+  List<PurchaseModel> _getFilteredPurchases(List<PurchaseModel> purchases) {
+    final String query = _searchQuery.trim().toLowerCase();
 
-    return purchases.where(
-      (purchase) {
-        // ---------------------------------------------------------------
-        // SEARCH
-        // ---------------------------------------------------------------
+    return purchases.where((purchase) {
+      // ---------------------------------------------------------------
+      // SEARCH
+      // ---------------------------------------------------------------
 
-        if (query.isNotEmpty) {
-          final bool matchesSearch =
-              purchase.supplierName
-                      .toLowerCase()
-                      .contains(query) ||
-                  purchase.supplierId
-                      .toLowerCase()
-                      .contains(query) ||
-                  purchase.notes
-                      .toLowerCase()
-                      .contains(query) ||
-                  purchase.paymentMethod
-                      .toLowerCase()
-                      .contains(query);
+      if (query.isNotEmpty) {
+        final bool matchesSearch =
+            purchase.supplierName.toLowerCase().contains(query) ||
+            purchase.supplierId.toLowerCase().contains(query) ||
+            purchase.notes.toLowerCase().contains(query) ||
+            purchase.paymentMethod.toLowerCase().contains(query);
 
-          if (!matchesSearch) {
-            return false;
-          }
+        if (!matchesSearch) {
+          return false;
         }
+      }
 
-        // ---------------------------------------------------------------
-        // PAYMENT STATUS
-        // ---------------------------------------------------------------
+      // ---------------------------------------------------------------
+      // PAYMENT STATUS
+      // ---------------------------------------------------------------
 
-        if (_selectedStatus != 'All') {
-          final String status =
-              purchase.paymentStatus
-                  .trim()
-                  .toLowerCase();
+      if (_selectedStatus != 'All') {
+        final String status = purchase.paymentStatus.trim().toLowerCase();
 
-          if (status !=
-              _selectedStatus.toLowerCase()) {
-            return false;
-          }
+        if (status != _selectedStatus.toLowerCase()) {
+          return false;
         }
+      }
 
-        // ---------------------------------------------------------------
-        // SUPPLIER
-        // ---------------------------------------------------------------
+      // ---------------------------------------------------------------
+      // SUPPLIER
+      // ---------------------------------------------------------------
 
-        if (_selectedSupplierId != 'All') {
-          if (purchase.supplierId.trim() !=
-              _selectedSupplierId.trim()) {
-            return false;
-          }
+      if (_selectedSupplierId != 'All') {
+        if (purchase.supplierId.trim() != _selectedSupplierId.trim()) {
+          return false;
         }
+      }
 
-        // ---------------------------------------------------------------
-        // START DATE
-        // ---------------------------------------------------------------
+      // ---------------------------------------------------------------
+      // START DATE
+      // ---------------------------------------------------------------
 
-        if (_startDate != null) {
-          final DateTime start = DateTime(
-            _startDate!.year,
-            _startDate!.month,
-            _startDate!.day,
-          );
+      if (_startDate != null) {
+        final DateTime start = DateTime(
+          _startDate!.year,
+          _startDate!.month,
+          _startDate!.day,
+        );
 
-          final DateTime purchaseDate = DateTime(
-            purchase.date.year,
-            purchase.date.month,
-            purchase.date.day,
-          );
+        final DateTime purchaseDate = DateTime(
+          purchase.date.year,
+          purchase.date.month,
+          purchase.date.day,
+        );
 
-          if (purchaseDate.isBefore(start)) {
-            return false;
-          }
+        if (purchaseDate.isBefore(start)) {
+          return false;
         }
+      }
 
-        // ---------------------------------------------------------------
-        // END DATE
-        // ---------------------------------------------------------------
+      // ---------------------------------------------------------------
+      // END DATE
+      // ---------------------------------------------------------------
 
-        if (_endDate != null) {
-          final DateTime end = DateTime(
-            _endDate!.year,
-            _endDate!.month,
-            _endDate!.day,
-          );
+      if (_endDate != null) {
+        final DateTime end = DateTime(
+          _endDate!.year,
+          _endDate!.month,
+          _endDate!.day,
+        );
 
-          final DateTime purchaseDate = DateTime(
-            purchase.date.year,
-            purchase.date.month,
-            purchase.date.day,
-          );
+        final DateTime purchaseDate = DateTime(
+          purchase.date.year,
+          purchase.date.month,
+          purchase.date.day,
+        );
 
-          if (purchaseDate.isAfter(end)) {
-            return false;
-          }
+        if (purchaseDate.isAfter(end)) {
+          return false;
         }
+      }
 
-        return true;
-      },
-    ).toList();
+      return true;
+    }).toList();
   }
 
   // ===========================================================================
@@ -278,13 +241,9 @@ class _PurchasesScreenState
   // ===========================================================================
 
   Future<void> _openAddPurchase() async {
-    final bool? result =
-        await Navigator.push<bool>(
+    final bool? result = await Navigator.push<bool>(
       context,
-      MaterialPageRoute<bool>(
-        builder: (_) =>
-            const AddPurchaseScreen(),
-      ),
+      MaterialPageRoute<bool>(builder: (_) => const AddPurchaseScreen()),
     );
 
     if (result == true) {
@@ -296,17 +255,11 @@ class _PurchasesScreenState
   // EDIT PURCHASE
   // ===========================================================================
 
-  Future<void> _openEditPurchase(
-    PurchaseModel purchase,
-  ) async {
-    final bool? result =
-        await Navigator.push<bool>(
+  Future<void> _openEditPurchase(PurchaseModel purchase) async {
+    final bool? result = await Navigator.push<bool>(
       context,
       MaterialPageRoute<bool>(
-        builder: (_) =>
-            AddPurchaseScreen(
-          purchase: purchase,
-        ),
+        builder: (_) => AddPurchaseScreen(purchase: purchase),
       ),
     );
 
@@ -319,17 +272,12 @@ class _PurchasesScreenState
   // DELETE PURCHASE
   // ===========================================================================
 
-  Future<void> _deletePurchase(
-    PurchaseModel purchase,
-  ) async {
-    final bool? confirmed =
-        await showDialog<bool>(
+  Future<void> _deletePurchase(PurchaseModel purchase) async {
+    final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text(
-            'Delete Purchase?',
-          ),
+          title: const Text('Delete Purchase?'),
           content: Text(
             'This will delete the purchase record of '
             '${purchase.supplierName}. '
@@ -340,78 +288,52 @@ class _PurchasesScreenState
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(
-                  dialogContext,
-                  false,
-                );
+                Navigator.pop(dialogContext, false);
               },
-              child: const Text(
-                'Cancel',
-              ),
+              child: const Text('Cancel'),
             ),
             FilledButton(
               style: FilledButton.styleFrom(
-                backgroundColor:
-                    AppColors.danger,
-                foregroundColor:
-                    Colors.white,
+                backgroundColor: AppColors.danger,
+                foregroundColor: Colors.white,
               ),
               onPressed: () {
-                Navigator.pop(
-                  dialogContext,
-                  true,
-                );
+                Navigator.pop(dialogContext, true);
               },
-              child: const Text(
-                'Delete',
-              ),
+              child: const Text('Delete'),
             ),
           ],
         );
       },
     );
 
-    if (confirmed != true ||
-        !mounted) {
+    if (confirmed != true || !mounted) {
       return;
     }
 
-    final String? businessId =
-        _businessId;
+    final String? businessId = _businessId;
 
-    if (businessId == null ||
-        businessId.trim().isEmpty) {
-      _showMessage(
-        'Business information is not available.',
-        isError: true,
-      );
+    if (businessId == null || businessId.trim().isEmpty) {
+      _showMessage('Business information is not available.', isError: true);
 
       return;
     }
 
-    final String normalizedBusinessId =
-        businessId.trim();
+    final String normalizedBusinessId = businessId.trim();
 
-    final String purchaseId =
-        purchase.id.trim();
+    final String purchaseId = purchase.id.trim();
 
     if (purchaseId.isEmpty) {
-      _showMessage(
-        'Invalid purchase ID.',
-        isError: true,
-      );
+      _showMessage('Invalid purchase ID.', isError: true);
 
       return;
     }
 
-    final PurchaseProvider
-        purchaseProvider =
-        context.read<PurchaseProvider>();
+    final PurchaseProvider purchaseProvider = context.read<PurchaseProvider>();
 
     bool stockReversed = false;
 
-    final List<LedgerTransactionModel>
-        createdLedgerReversals =
+    final List<LedgerTransactionModel> createdLedgerReversals =
         <LedgerTransactionModel>[];
 
     try {
@@ -422,32 +344,21 @@ class _PurchasesScreenState
       // We keep the existing transaction IDs so that rollback can remove only
       // the reversal transaction created by this delete attempt.
       //
-      final String supplierId =
-          purchase.supplierId.trim();
+      final String supplierId = purchase.supplierId.trim();
 
-      final Set<String>
-          existingSupplierTransactionIds =
-          <String>{};
+      final Set<String> existingSupplierTransactionIds = <String>{};
 
       if (supplierId.isNotEmpty) {
-        final List<LedgerTransactionModel>
-            existingTransactions =
-            await _supplierLedgerService
-                .getSupplierTransactions(
-          businessId:
-              normalizedBusinessId,
-          supplierId: supplierId,
-        );
+        final List<LedgerTransactionModel> existingTransactions =
+            await _supplierLedgerService.getSupplierTransactions(
+              businessId: normalizedBusinessId,
+              supplierId: supplierId,
+            );
 
         existingSupplierTransactionIds.addAll(
           existingTransactions
-              .map(
-                (transaction) =>
-                    transaction.id.trim(),
-              )
-              .where(
-                (id) => id.isNotEmpty,
-              ),
+              .map((transaction) => transaction.id.trim())
+              .where((id) => id.isNotEmpty),
         );
       }
 
@@ -458,10 +369,7 @@ class _PurchasesScreenState
       // The purchase document is not deleted until the stock has been
       // successfully restored.
       //
-      await _purchaseStockService
-          .reversePurchaseStock(
-        purchase: purchase,
-      );
+      await _purchaseStockService.reversePurchaseStock(purchase: purchase);
 
       stockReversed = true;
 
@@ -474,45 +382,29 @@ class _PurchasesScreenState
       // belonging to this purchase.
       //
       if (supplierId.isNotEmpty) {
-        await _supplierLedgerService
-            .reverseActivePurchaseLedger(
+        await _supplierLedgerService.reverseActivePurchaseLedger(
           purchase: purchase,
         );
 
-        final List<LedgerTransactionModel>
-            updatedTransactions =
-            await _supplierLedgerService
-                .getSupplierTransactions(
-          businessId:
-              normalizedBusinessId,
-          supplierId: supplierId,
-        );
+        final List<LedgerTransactionModel> updatedTransactions =
+            await _supplierLedgerService.getSupplierTransactions(
+              businessId: normalizedBusinessId,
+              supplierId: supplierId,
+            );
 
-        for (final LedgerTransactionModel
-            transaction in updatedTransactions) {
-          final String transactionId =
-              transaction.id.trim();
+        for (final LedgerTransactionModel transaction in updatedTransactions) {
+          final String transactionId = transaction.id.trim();
 
-          final String type =
-              transaction.transactionType
-                  .trim()
-                  .toUpperCase();
+          final String type = transaction.transactionType.trim().toUpperCase();
 
           if (transactionId.isEmpty ||
-              existingSupplierTransactionIds
-                  .contains(transactionId)) {
+              existingSupplierTransactionIds.contains(transactionId)) {
             continue;
           }
 
-          if (transaction.referenceId
-                      .trim() ==
-                  purchaseId &&
-              type ==
-                  SupplierLedgerService
-                      .purchaseReversalType) {
-            createdLedgerReversals.add(
-              transaction,
-            );
+          if (transaction.referenceId.trim() == purchaseId &&
+              type == SupplierLedgerService.purchaseReversalType) {
+            createdLedgerReversals.add(transaction);
           }
         }
       }
@@ -520,21 +412,15 @@ class _PurchasesScreenState
       // -----------------------------------------------------------------------
       // 4. DELETE PURCHASE DOCUMENT
       // -----------------------------------------------------------------------
-      final bool deleted =
-          await purchaseProvider.deletePurchase(
+      final bool deleted = await purchaseProvider.deletePurchase(
         purchaseId: purchaseId,
         businessId: normalizedBusinessId,
       );
 
       if (!deleted) {
         throw StateError(
-          purchaseProvider.errorMessage
-                      ?.trim()
-                      .isNotEmpty ==
-                  true
-              ? purchaseProvider
-                  .errorMessage!
-                  .trim()
+          purchaseProvider.errorMessage?.trim().isNotEmpty == true
+              ? purchaseProvider.errorMessage!.trim()
               : 'Unable to delete the purchase record.',
         );
       }
@@ -557,16 +443,12 @@ class _PurchasesScreenState
       // created, remove only the reversal transactions created during this
       // delete attempt.
       //
-      for (final LedgerTransactionModel
-          transaction
+      for (final LedgerTransactionModel transaction
           in createdLedgerReversals.reversed) {
         try {
-          await _supplierLedgerService
-              .deleteTransaction(
-            businessId:
-                normalizedBusinessId,
-            transactionId:
-                transaction.id,
+          await _supplierLedgerService.deleteTransaction(
+            businessId: normalizedBusinessId,
+            transactionId: transaction.id,
           );
         } catch (_) {
           // Preserve the original operation error.
@@ -581,10 +463,7 @@ class _PurchasesScreenState
       //
       if (stockReversed) {
         try {
-          await _purchaseStockService
-              .processPurchaseStock(
-            purchase: purchase,
-          );
+          await _purchaseStockService.processPurchaseStock(purchase: purchase);
         } catch (_) {
           // Preserve the original operation error.
         }
@@ -606,17 +485,13 @@ class _PurchasesScreenState
   // DETAILS
   // ===========================================================================
 
-  Future<void> _openPurchaseDetails(
-    PurchaseModel purchase,
-  ) async {
+  Future<void> _openPurchaseDetails(PurchaseModel purchase) async {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (context) {
-        return _PurchaseDetailsSheet(
-          purchase: purchase,
-        );
+        return _PurchaseDetailsSheet(purchase: purchase);
       },
     );
   }
@@ -627,33 +502,21 @@ class _PurchasesScreenState
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme =
-        Theme.of(context);
+    final ThemeData theme = Theme.of(context);
 
     if (_isInitializing) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text(
-            'Purchases',
-          ),
-        ),
-        body: const Center(
-          child:
-              CircularProgressIndicator(),
+        appBar: AppBar(title: const Text('Purchases')),
+        body: AppResponsivePage(
+          child: const Center(child: CircularProgressIndicator()),
         ),
       );
     }
 
-    if (_businessId == null ||
-        _businessId!.trim().isEmpty) {
+    if (_businessId == null || _businessId!.trim().isEmpty) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text(
-            'Purchases',
-          ),
-        ),
-        body:
-            _buildNoBusinessState(theme),
+        appBar: AppBar(title: const Text('Purchases')),
+        body: AppResponsivePage(child: _buildNoBusinessState(theme)),
       );
     }
 
@@ -661,112 +524,56 @@ class _PurchasesScreenState
       appBar: AppBar(
         title: const Text(
           'Purchases',
-          style: TextStyle(
-            fontWeight:
-                FontWeight.w700,
-          ),
+          style: TextStyle(fontWeight: FontWeight.w700),
         ),
         actions: [
           IconButton(
             tooltip: 'Refresh',
             onPressed: _refresh,
-            icon: const Icon(
-              Icons.refresh_rounded,
-            ),
+            icon: const Icon(Icons.refresh_rounded),
           ),
         ],
       ),
-      body: Consumer2<
-          PurchaseProvider,
-          SupplierProvider>(
-        builder: (
-          context,
-          purchaseProvider,
-          supplierProvider,
-          child,
-        ) {
-          final List<PurchaseModel>
-              purchases =
-              purchaseProvider.purchases;
+      body: AppResponsivePage(
+        child: Consumer2<PurchaseProvider, SupplierProvider>(
+          builder: (context, purchaseProvider, supplierProvider, child) {
+            final List<PurchaseModel> purchases = purchaseProvider.purchases;
 
-          if (purchaseProvider.isLoading &&
-              purchases.isEmpty) {
-            return const Center(
-              child:
-                  CircularProgressIndicator(),
+            if (purchaseProvider.isLoading && purchases.isEmpty) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (purchaseProvider.errorMessage != null && purchases.isEmpty) {
+              return _buildErrorState(theme, purchaseProvider.errorMessage!);
+            }
+
+            final List<PurchaseModel> filteredPurchases = _getFilteredPurchases(
+              purchases,
             );
-          }
 
-          if (purchaseProvider.errorMessage !=
-                  null &&
-              purchases.isEmpty) {
-            return _buildErrorState(
-              theme,
-              purchaseProvider
-                  .errorMessage!,
-            );
-          }
-
-          final List<PurchaseModel>
-              filteredPurchases =
-              _getFilteredPurchases(
-            purchases,
-          );
-
-          return RefreshIndicator(
-            onRefresh: _refresh,
-            child: ListView(
-              physics:
-                  const AlwaysScrollableScrollPhysics(),
-              padding:
-                  const EdgeInsets.fromLTRB(
-                20,
-                20,
-                20,
-                110,
+            return RefreshIndicator(
+              onRefresh: _refresh,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 160),
+                children: [
+                  _buildHeader(theme, purchases),
+                  const SizedBox(height: 20),
+                  _buildSearchField(theme),
+                  const SizedBox(height: 12),
+                  _buildFilters(theme, supplierProvider.suppliers),
+                  const SizedBox(height: 20),
+                  _buildPurchaseList(theme, purchases, filteredPurchases),
+                ],
               ),
-              children: [
-                _buildHeader(
-                  theme,
-                  purchases,
-                ),
-                const SizedBox(
-                  height: 20,
-                ),
-                _buildSearchField(
-                  theme,
-                ),
-                const SizedBox(
-                  height: 12,
-                ),
-                _buildFilters(
-                  theme,
-                  supplierProvider
-                      .suppliers,
-                ),
-                const SizedBox(
-                  height: 20,
-                ),
-                _buildPurchaseList(
-                  theme,
-                  purchases,
-                  filteredPurchases,
-                ),
-              ],
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
-      floatingActionButton:
-          FloatingActionButton.extended(
-        onPressed:
-            _openAddPurchase,
-        icon: const Icon(
-          Icons.add_shopping_cart_rounded,
-        ),
-        label: const Text(
-          'Add Purchase',
-        ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _openAddPurchase,
+        icon: const Icon(Icons.add_shopping_cart_rounded),
+        label: const Text('Add Purchase'),
       ),
     );
   }
@@ -775,10 +582,7 @@ class _PurchasesScreenState
   // HEADER
   // ===========================================================================
 
-  Widget _buildHeader(
-    ThemeData theme,
-    List<PurchaseModel> purchases,
-  ) {
+  Widget _buildHeader(ThemeData theme, List<PurchaseModel> purchases) {
     double total = 0;
 
     double paid = 0;
@@ -789,156 +593,108 @@ class _PurchasesScreenState
 
     int unpaid = 0;
 
-    for (final PurchaseModel purchase
-        in purchases) {
+    for (final PurchaseModel purchase in purchases) {
       total += purchase.total;
 
       paid += purchase.paidAmount;
 
-      final double pending =
-          purchase.total -
-              purchase.paidAmount;
+      final double pending = purchase.total - purchase.paidAmount;
 
       if (pending > 0) {
         outstanding += pending;
       }
 
-      if (purchase.paymentStatus
-              .toLowerCase() ==
-          'partial') {
+      if (purchase.paymentStatus.toLowerCase() == 'partial') {
         partial++;
       }
 
-      if (purchase.paymentStatus
-              .toLowerCase() ==
-          'unpaid') {
+      if (purchase.paymentStatus.toLowerCase() == 'unpaid') {
         unpaid++;
       }
     }
 
     return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           'Purchase Management',
-          style: theme
-              .textTheme
-              .headlineSmall
-              ?.copyWith(
-            fontWeight:
-                FontWeight.bold,
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.bold,
           ),
         ),
-        const SizedBox(
-          height: 5,
-        ),
+        const SizedBox(height: 5),
         Text(
           'Track purchases, supplier payments and outstanding amounts.',
-          style: theme
-              .textTheme
-              .bodyMedium
-              ?.copyWith(
-            color: theme
-                .colorScheme
-                .onSurfaceVariant,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
-        const SizedBox(
-          height: 18,
-        ),
+        const SizedBox(height: 18),
         LayoutBuilder(
-          builder: (
-            context,
-            constraints,
-          ) {
-            final bool compact =
-                constraints.maxWidth <
-                    760;
+          builder: (context, constraints) {
+            final bool compact = constraints.maxWidth < 760;
 
-            final List<Widget>
-                cards = [
+            final List<Widget> cards = [
               _buildSummaryCard(
                 theme,
-                title:
-                    'Total Purchase',
-                value:
-                    _formatCurrency(total),
-                icon: Icons
-                    .shopping_cart_checkout_rounded,
-                color:
-                    AppColors.primary,
+                title: 'Total Purchase',
+                value: _formatCurrency(total),
+                icon: Icons.shopping_cart_checkout_rounded,
+                color: AppColors.primary,
               ),
               _buildSummaryCard(
                 theme,
                 title: 'Paid',
-                value:
-                    _formatCurrency(paid),
-                icon: Icons
-                    .check_circle_outline_rounded,
-                color:
-                    AppColors.success,
+                value: _formatCurrency(paid),
+                icon: Icons.check_circle_outline_rounded,
+                color: AppColors.success,
               ),
               _buildSummaryCard(
                 theme,
-                title:
-                    'Outstanding',
-                value:
-                    _formatCurrency(
-                  outstanding,
-                ),
-                icon: Icons
-                    .pending_actions_rounded,
-                color:
-                    AppColors.warning,
+                title: 'Outstanding',
+                value: _formatCurrency(outstanding),
+                icon: Icons.pending_actions_rounded,
+                color: AppColors.warning,
               ),
               _buildSummaryCard(
                 theme,
-                title:
-                    'Partial / Unpaid',
-                value:
-                    '${partial + unpaid}',
-                icon: Icons
-                    .receipt_long_outlined,
-                color:
-                    AppColors.danger,
+                title: 'Partial / Unpaid',
+                value: '${partial + unpaid}',
+                icon: Icons.receipt_long_outlined,
+                color: AppColors.danger,
               ),
             ];
 
             if (compact) {
+              if (constraints.maxWidth < 500) {
+                return Column(
+                  children: [
+                    cards[0],
+                    const SizedBox(height: 12),
+                    cards[1],
+                    const SizedBox(height: 12),
+                    cards[2],
+                    const SizedBox(height: 12),
+                    cards[3],
+                  ],
+                );
+              }
+
               return Column(
                 children: [
                   Row(
                     children: [
-                      Expanded(
-                        child:
-                            cards[0],
-                      ),
-                      const SizedBox(
-                        width: 12,
-                      ),
-                      Expanded(
-                        child:
-                            cards[1],
-                      ),
+                      Expanded(child: cards[0]),
+                      const SizedBox(width: 12),
+                      Expanded(child: cards[1]),
                     ],
                   ),
-                  const SizedBox(
-                    height: 12,
-                  ),
+                  const SizedBox(height: 12),
                   Row(
                     children: [
-                      Expanded(
-                        child:
-                            cards[2],
-                      ),
-                      const SizedBox(
-                        width: 12,
-                      ),
-                      Expanded(
-                        child:
-                            cards[3],
-                      ),
+                      Expanded(child: cards[2]),
+                      const SizedBox(width: 12),
+                      Expanded(child: cards[3]),
                     ],
                   ),
                 ],
@@ -947,31 +703,13 @@ class _PurchasesScreenState
 
             return Row(
               children: [
-                Expanded(
-                  child:
-                      cards[0],
-                ),
-                const SizedBox(
-                  width: 12,
-                ),
-                Expanded(
-                  child:
-                      cards[1],
-                ),
-                const SizedBox(
-                  width: 12,
-                ),
-                Expanded(
-                  child:
-                      cards[2],
-                ),
-                const SizedBox(
-                  width: 12,
-                ),
-                Expanded(
-                  child:
-                      cards[3],
-                ),
+                Expanded(child: cards[0]),
+                const SizedBox(width: 12),
+                Expanded(child: cards[1]),
+                const SizedBox(width: 12),
+                Expanded(child: cards[2]),
+                const SizedBox(width: 12),
+                Expanded(child: cards[3]),
               ],
             );
           },
@@ -993,65 +731,38 @@ class _PurchasesScreenState
   }) {
     return Card(
       child: Padding(
-        padding:
-            const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
         child: Row(
           children: [
             Container(
               width: 44,
               height: 44,
-              decoration:
-                  BoxDecoration(
-                color:
-                    color.withValues(
-                  alpha: 0.10,
-                ),
-                borderRadius:
-                    BorderRadius.circular(
-                  12,
-                ),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(
-                icon,
-                color: color,
-              ),
+              child: Icon(icon, color: color),
             ),
-            const SizedBox(
-              width: 12,
-            ),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     title,
                     maxLines: 1,
-                    overflow:
-                        TextOverflow.ellipsis,
-                    style: theme
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(
-                      color: theme
-                          .colorScheme
-                          .onSurfaceVariant,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
-                  const SizedBox(
-                    height: 4,
-                  ),
+                  const SizedBox(height: 4),
                   Text(
                     value,
                     maxLines: 1,
-                    overflow:
-                        TextOverflow.ellipsis,
-                    style: theme
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(
-                      fontWeight:
-                          FontWeight.w800,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ],
@@ -1067,46 +778,29 @@ class _PurchasesScreenState
   // SEARCH
   // ===========================================================================
 
-  Widget _buildSearchField(
-    ThemeData theme,
-  ) {
+  Widget _buildSearchField(ThemeData theme) {
     return TextField(
       onChanged: (value) {
         setState(() {
-          _searchQuery =
-              value.trim();
+          _searchQuery = value.trim();
         });
       },
-      decoration:
-          InputDecoration(
-        hintText:
-            'Search supplier, notes or payment method...',
-        prefixIcon:
-            const Icon(
-          Icons.search_rounded,
-        ),
-        suffixIcon:
-            _searchQuery.isEmpty
-                ? null
-                : IconButton(
-                    tooltip:
-                        'Clear',
-                    onPressed: () {
-                      setState(() {
-                        _searchQuery =
-                            '';
-                      });
-                    },
-                    icon:
-                        const Icon(
-                      Icons
-                          .clear_rounded,
-                    ),
-                  ),
+      decoration: InputDecoration(
+        hintText: 'Search supplier, notes or payment method...',
+        prefixIcon: const Icon(Icons.search_rounded),
+        suffixIcon: _searchQuery.isEmpty
+            ? null
+            : IconButton(
+                tooltip: 'Clear',
+                onPressed: () {
+                  setState(() {
+                    _searchQuery = '';
+                  });
+                },
+                icon: const Icon(Icons.clear_rounded),
+              ),
         filled: true,
-        fillColor: theme
-            .colorScheme
-            .surface,
+        fillColor: theme.colorScheme.surface,
       ),
     );
   }
@@ -1115,207 +809,108 @@ class _PurchasesScreenState
   // FILTERS
   // ===========================================================================
 
-  Widget _buildFilters(
-    ThemeData theme,
-    List<SupplierModel> suppliers,
-  ) {
+  Widget _buildFilters(ThemeData theme, List<SupplierModel> suppliers) {
     return LayoutBuilder(
-      builder: (
-        context,
-        constraints,
-      ) {
-        final bool stacked =
-            constraints.maxWidth <
-                700;
+      builder: (context, constraints) {
+        final bool stacked = constraints.maxWidth < 700;
 
-        final Widget statusDropdown =
-            DropdownButtonFormField<
-                String>(
-          initialValue:
-              _selectedStatus,
+        final Widget statusDropdown = DropdownButtonFormField<String>(
+          initialValue: _selectedStatus,
           isExpanded: true,
-          decoration:
-              const InputDecoration(
-            labelText:
-                'Payment Status',
-            prefixIcon:
-                Icon(
-              Icons
-                  .payments_outlined,
-            ),
+          decoration: const InputDecoration(
+            labelText: 'Payment Status',
+            prefixIcon: Icon(Icons.payments_outlined),
           ),
-          items:
-              _statusFilters.map(
-            (status) {
-              return DropdownMenuItem<
-                  String>(
-                value: status,
-                child: Text(
-                  status,
-                ),
-              );
-            },
-          ).toList(),
-          onChanged:
-              (value) {
-            if (value ==
-                null) {
+          items: _statusFilters.map((status) {
+            return DropdownMenuItem<String>(value: status, child: Text(status));
+          }).toList(),
+          onChanged: (value) {
+            if (value == null) {
               return;
             }
 
             setState(() {
-              _selectedStatus =
-                  value;
+              _selectedStatus = value;
             });
           },
         );
 
-        final List<
-                DropdownMenuItem<
-                    String>>
-            supplierItems = [
-          const DropdownMenuItem<
-              String>(
+        final List<DropdownMenuItem<String>> supplierItems = [
+          const DropdownMenuItem<String>(
             value: 'All',
-            child: Text(
-              'All Suppliers',
-            ),
+            child: Text('All Suppliers'),
           ),
-          ...suppliers.map(
-            (supplier) {
-              return DropdownMenuItem<
-                  String>(
-                value:
-                    supplier.id,
-                child: Text(
-                  supplier.name,
-                  overflow:
-                      TextOverflow.ellipsis,
-                ),
-              );
-            },
-          ),
+          ...suppliers.map((supplier) {
+            return DropdownMenuItem<String>(
+              value: supplier.id,
+              child: Text(supplier.name, overflow: TextOverflow.ellipsis),
+            );
+          }),
         ];
 
         final bool selectedSupplierStillExists =
-            _selectedSupplierId ==
-                    'All' ||
-                suppliers.any(
-                  (supplier) =>
-                      supplier.id ==
-                      _selectedSupplierId,
-                );
+            _selectedSupplierId == 'All' ||
+            suppliers.any((supplier) => supplier.id == _selectedSupplierId);
 
         if (!selectedSupplierStillExists) {
-          WidgetsBinding.instance
-              .addPostFrameCallback(
-            (_) {
-              if (!mounted) {
-                return;
-              }
-
-              setState(() {
-                _selectedSupplierId =
-                    'All';
-              });
-            },
-          );
-        }
-
-        final Widget supplierDropdown =
-            DropdownButtonFormField<
-                String>(
-          initialValue:
-              selectedSupplierStillExists
-                  ? _selectedSupplierId
-                  : 'All',
-          isExpanded: true,
-          decoration:
-              const InputDecoration(
-            labelText:
-                'Supplier',
-            prefixIcon:
-                Icon(
-              Icons
-                  .person_outline_rounded,
-            ),
-          ),
-          items:
-              supplierItems,
-          onChanged:
-              (value) {
-            if (value ==
-                null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) {
               return;
             }
 
             setState(() {
-              _selectedSupplierId =
-                  value;
+              _selectedSupplierId = 'All';
+            });
+          });
+        }
+
+        final Widget supplierDropdown = DropdownButtonFormField<String>(
+          initialValue: selectedSupplierStillExists
+              ? _selectedSupplierId
+              : 'All',
+          isExpanded: true,
+          decoration: const InputDecoration(
+            labelText: 'Supplier',
+            prefixIcon: Icon(Icons.person_outline_rounded),
+          ),
+          items: supplierItems,
+          onChanged: (value) {
+            if (value == null) {
+              return;
+            }
+
+            setState(() {
+              _selectedSupplierId = value;
             });
           },
         );
 
-        final Widget dateButton =
-            OutlinedButton.icon(
-          onPressed:
-              _selectDateRange,
-          icon: const Icon(
-            Icons
-                .date_range_rounded,
-          ),
-          label: Text(
-            _dateRangeLabel,
-          ),
+        final Widget dateButton = OutlinedButton.icon(
+          onPressed: _selectDateRange,
+          icon: const Icon(Icons.date_range_rounded),
+          label: Text(_dateRangeLabel),
         );
 
         if (stacked) {
           return Column(
             children: [
               statusDropdown,
-              const SizedBox(
-                height: 12,
-              ),
+              const SizedBox(height: 12),
               supplierDropdown,
-              const SizedBox(
-                height: 12,
-              ),
-              Align(
-                alignment:
-                    Alignment.centerLeft,
-                child:
-                    dateButton,
-              ),
+              const SizedBox(height: 12),
+              Align(alignment: Alignment.centerLeft, child: dateButton),
             ],
           );
         }
 
         return Row(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child:
-                  statusDropdown,
-            ),
-            const SizedBox(
-              width: 12,
-            ),
-            Expanded(
-              child:
-                  supplierDropdown,
-            ),
-            const SizedBox(
-              width: 12,
-            ),
-            Padding(
-              padding:
-                  const EdgeInsets.only(
-                top: 4,
-              ),
-              child:
-                  dateButton,
-            ),
+            Expanded(child: statusDropdown),
+            const SizedBox(width: 12),
+            Expanded(child: supplierDropdown),
+            const SizedBox(width: 12),
+            Padding(padding: const EdgeInsets.only(top: 4), child: dateButton),
           ],
         );
       },
@@ -1323,13 +918,11 @@ class _PurchasesScreenState
   }
 
   String get _dateRangeLabel {
-    if (_startDate == null &&
-        _endDate == null) {
+    if (_startDate == null && _endDate == null) {
       return 'Date Range';
     }
 
-    if (_startDate != null &&
-        _endDate != null) {
+    if (_startDate != null && _endDate != null) {
       return '${DateFormat('dd MMM yyyy').format(_startDate!)}'
           ' - '
           '${DateFormat('dd MMM yyyy').format(_endDate!)}';
@@ -1343,43 +936,26 @@ class _PurchasesScreenState
   }
 
   Future<void> _selectDateRange() async {
-    final DateTimeRange?
-        selectedRange =
+    final DateTimeRange? selectedRange =
         await AppDatePicker.showDateRangePicker(
-      context: context,
-      
-      initialEntryMode: DatePickerEntryMode.calendar,
-      firstDate: DateTime(
-        2020,
-        1,
-        1,
-      ),
-      lastDate: DateTime(
-        2100,
-        12,
-        31,
-      ),
-      initialDateRange:
-          _startDate != null &&
-                  _endDate != null
-              ? DateTimeRange(
-                  start: _startDate!,
-                  end: _endDate!,
-                )
-              : null,
-    );
+          context: context,
 
-    if (!mounted ||
-        selectedRange == null) {
+          initialEntryMode: DatePickerEntryMode.calendar,
+          firstDate: DateTime(2020, 1, 1),
+          lastDate: DateTime(2100, 12, 31),
+          initialDateRange: _startDate != null && _endDate != null
+              ? DateTimeRange(start: _startDate!, end: _endDate!)
+              : null,
+        );
+
+    if (!mounted || selectedRange == null) {
       return;
     }
 
     setState(() {
-      _startDate =
-          selectedRange.start;
+      _startDate = selectedRange.start;
 
-      _endDate =
-          selectedRange.end;
+      _endDate = selectedRange.end;
     });
   }
 
@@ -1390,46 +966,31 @@ class _PurchasesScreenState
   Widget _buildPurchaseList(
     ThemeData theme,
     List<PurchaseModel> allPurchases,
-    List<PurchaseModel>
-        filteredPurchases,
+    List<PurchaseModel> filteredPurchases,
   ) {
     if (allPurchases.isEmpty) {
       return _buildEmptyState(
         theme,
-        title:
-            'No purchases yet',
-        subtitle:
-            'Add your first purchase to start tracking supplier stock and payables.',
+        title: 'No purchases yet',
+        subtitle: 'Add your first purchase to start tracking supplier stock and payables.',
       );
     }
 
     if (filteredPurchases.isEmpty) {
       return _buildEmptyState(
         theme,
-        title:
-            'No matching purchases',
-        subtitle:
-            'Try changing your search or filters.',
+        title: 'No matching purchases',
+        subtitle: 'Try changing your search or filters.',
       );
     }
 
     return Column(
-      children:
-          filteredPurchases.map(
-        (purchase) {
-          return Padding(
-            padding:
-                const EdgeInsets.only(
-              bottom: 12,
-            ),
-            child:
-                _buildPurchaseCard(
-              theme,
-              purchase,
-            ),
-          );
-        },
-      ).toList(),
+      children: filteredPurchases.map((purchase) {
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: _buildPurchaseCard(theme, purchase),
+        );
+      }).toList(),
     );
   }
 
@@ -1437,178 +998,94 @@ class _PurchasesScreenState
   // PURCHASE CARD
   // ===========================================================================
 
-  Widget _buildPurchaseCard(
-    ThemeData theme,
-    PurchaseModel purchase,
-  ) {
-    final double outstanding =
-        (purchase.total -
-                purchase.paidAmount)
-            .clamp(
+  Widget _buildPurchaseCard(ThemeData theme, PurchaseModel purchase) {
+    final double outstanding = (purchase.total - purchase.paidAmount).clamp(
       0,
       double.infinity,
     );
 
-    final String status =
-        purchase.paymentStatus
-            .trim();
+    final String status = purchase.paymentStatus.trim();
 
-    final Color statusColor =
-        _statusColor(status);
+    final Color statusColor = _statusColor(status);
 
     return Card(
-      clipBehavior:
-          Clip.antiAlias,
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () =>
-            _openPurchaseDetails(
-          purchase,
-        ),
+        onTap: () => _openPurchaseDetails(purchase),
         child: Padding(
-          padding:
-              const EdgeInsets.all(
-            16,
-          ),
+          padding: const EdgeInsets.all(16),
           child: Column(
             children: [
               Row(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
                     width: 46,
                     height: 46,
-                    decoration:
-                        BoxDecoration(
-                      color: AppColors
-                          .primary
-                          .withValues(
-                        alpha: 0.10,
-                      ),
-                      borderRadius:
-                          BorderRadius
-                              .circular(
-                        13,
-                      ),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(13),
                     ),
-                    child:
-                        const Icon(
-                      Icons
-                          .shopping_cart_rounded,
-                      color:
-                          AppColors
-                              .primary,
+                    child: const Icon(
+                      Icons.shopping_cart_rounded,
+                      color: AppColors.primary,
                     ),
                   ),
-                  const SizedBox(
-                    width: 12,
-                  ),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment
-                              .start,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          purchase
-                                  .supplierName
-                                  .trim()
-                                  .isEmpty
+                          purchase.supplierName.trim().isEmpty
                               ? 'Unknown Supplier'
-                              : purchase
-                                  .supplierName,
+                              : purchase.supplierName,
                           maxLines: 1,
-                          overflow:
-                              TextOverflow
-                                  .ellipsis,
-                          style: theme
-                              .textTheme
-                              .titleMedium
-                              ?.copyWith(
-                            fontWeight:
-                                FontWeight
-                                    .w800,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
-                        const SizedBox(
-                          height: 4,
-                        ),
+                        const SizedBox(height: 4),
                         Text(
-                          DateFormat(
-                            'dd MMM yyyy, hh:mm a',
-                          ).format(
-                            purchase.date,
-                          ),
-                          style: theme
-                              .textTheme
-                              .bodySmall
-                              ?.copyWith(
-                            color: theme
-                                .colorScheme
-                                .onSurfaceVariant,
+                          DateFormat('dd MMM yyyy, hh:mm a')
+                              .format(purchase.date),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(
-                    width: 8,
-                  ),
-                  PopupMenuButton<
-                      String>(
-                    tooltip:
-                        'Purchase actions',
-                    onSelected:
-                        (value) {
-                      if (value ==
-                          'edit') {
-                        _openEditPurchase(
-                          purchase,
-                        );
-                      } else if (value ==
-                          'delete') {
-                        _deletePurchase(
-                          purchase,
-                        );
+                  const SizedBox(width: 8),
+                  PopupMenuButton<String>(
+                    tooltip: 'Purchase actions',
+                    onSelected: (value) {
+                      if (value == 'edit') {
+                        _openEditPurchase(purchase);
+                      } else if (value == 'delete') {
+                        _deletePurchase(purchase);
                       }
                     },
-                    itemBuilder:
-                        (context) {
+                    itemBuilder: (context) {
                       return const [
-                        PopupMenuItem<
-                            String>(
+                        PopupMenuItem<String>(
                           value: 'edit',
                           child: Row(
                             children: [
-                              Icon(
-                                Icons
-                                    .edit_outlined,
-                              ),
-                              SizedBox(
-                                width: 10,
-                              ),
-                              Text(
-                                'Edit',
-                              ),
+                              Icon(Icons.edit_outlined),
+                              SizedBox(width: 10),
+                              Text('Edit'),
                             ],
                           ),
                         ),
-                        PopupMenuItem<
-                            String>(
-                          value:
-                              'delete',
+                        PopupMenuItem<String>(
+                          value: 'delete',
                           child: Row(
                             children: [
-                              Icon(
-                                Icons
-                                    .delete_outline_rounded,
-                              ),
-                              SizedBox(
-                                width: 10,
-                              ),
-                              Text(
-                                'Delete',
-                              ),
+                              Icon(Icons.delete_outline_rounded),
+                              SizedBox(width: 10),
+                              Text('Delete'),
                             ],
                           ),
                         ),
@@ -1617,60 +1094,29 @@ class _PurchasesScreenState
                   ),
                 ],
               ),
-              const SizedBox(
-                height: 14,
-              ),
-              const Divider(
-                height: 1,
-              ),
-              const SizedBox(
-                height: 14,
-              ),
+              const SizedBox(height: 14),
+              const Divider(height: 1),
+              const SizedBox(height: 14),
               LayoutBuilder(
-                builder: (
-                  context,
-                  constraints,
-                ) {
-                  final bool compact =
-                      constraints
-                              .maxWidth <
-                          650;
+                builder: (context, constraints) {
+                  final bool compact = constraints.maxWidth < 650;
 
-                  final Widget
-                      totalBlock =
-                      _purchaseAmountBlock(
+                  final Widget totalBlock = _purchaseAmountBlock(
                     theme,
-                    label:
-                        'Total',
-                    value:
-                        _formatCurrency(
-                      purchase.total,
-                    ),
+                    label: 'Total',
+                    value: _formatCurrency(purchase.total),
                   );
 
-                  final Widget
-                      paidBlock =
-                      _purchaseAmountBlock(
+                  final Widget paidBlock = _purchaseAmountBlock(
                     theme,
-                    label:
-                        'Paid',
-                    value:
-                        _formatCurrency(
-                      purchase
-                          .paidAmount,
-                    ),
+                    label: 'Paid',
+                    value: _formatCurrency(purchase.paidAmount),
                   );
 
-                  final Widget
-                      outstandingBlock =
-                      _purchaseAmountBlock(
+                  final Widget outstandingBlock = _purchaseAmountBlock(
                     theme,
-                    label:
-                        'Outstanding',
-                    value:
-                        _formatCurrency(
-                      outstanding,
-                    ),
+                    label: 'Outstanding',
+                    value: _formatCurrency(outstanding),
                   );
 
                   if (compact) {
@@ -1678,38 +1124,17 @@ class _PurchasesScreenState
                       children: [
                         Row(
                           children: [
-                            Expanded(
-                              child:
-                                  totalBlock,
-                            ),
-                            const SizedBox(
-                              width: 12,
-                            ),
-                            Expanded(
-                              child:
-                                  paidBlock,
-                            ),
+                            Expanded(child: totalBlock),
+                            const SizedBox(width: 12),
+                            Expanded(child: paidBlock),
                           ],
                         ),
-                        const SizedBox(
-                          height: 12,
-                        ),
+                        const SizedBox(height: 12),
                         Row(
                           children: [
-                            Expanded(
-                              child:
-                                  outstandingBlock,
-                            ),
-                            const SizedBox(
-                              width: 12,
-                            ),
-                            Expanded(
-                              child:
-                                  _statusChip(
-                                status,
-                                statusColor,
-                              ),
-                            ),
+                            Expanded(child: outstandingBlock),
+                            const SizedBox(width: 12),
+                            Expanded(child: _statusChip(status, statusColor)),
                           ],
                         ),
                       ],
@@ -1718,22 +1143,10 @@ class _PurchasesScreenState
 
                   return Row(
                     children: [
-                      Expanded(
-                        child:
-                            totalBlock,
-                      ),
-                      Expanded(
-                        child:
-                            paidBlock,
-                      ),
-                      Expanded(
-                        child:
-                            outstandingBlock,
-                      ),
-                      _statusChip(
-                        status,
-                        statusColor,
-                      ),
+                      Expanded(child: totalBlock),
+                      Expanded(child: paidBlock),
+                      Expanded(child: outstandingBlock),
+                      _statusChip(status, statusColor),
                     ],
                   );
                 },
@@ -1751,84 +1164,49 @@ class _PurchasesScreenState
     required String value,
   }) {
     return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
-          style: theme
-              .textTheme
-              .bodySmall
-              ?.copyWith(
-            color: theme
-                .colorScheme
-                .onSurfaceVariant,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
-        const SizedBox(
-          height: 4,
-        ),
+        const SizedBox(height: 4),
         Text(
           value,
           maxLines: 1,
-          overflow:
-              TextOverflow.ellipsis,
-          style: theme
-              .textTheme
-              .titleSmall
-              ?.copyWith(
-            fontWeight:
-                FontWeight.w800,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w800,
           ),
         ),
       ],
     );
   }
 
-  Widget _statusChip(
-    String status,
-    Color color,
-  ) {
-    final String label =
-        status.trim().isEmpty
-            ? 'Unknown'
-            : status;
+  Widget _statusChip(String status, Color color) {
+    final String label = status.trim().isEmpty ? 'Unknown' : status;
 
     return Container(
-      padding:
-          const EdgeInsets.symmetric(
-        horizontal: 10,
-        vertical: 7,
-      ),
-      decoration:
-          BoxDecoration(
-        color:
-            color.withValues(
-          alpha: 0.10,
-        ),
-        borderRadius:
-            BorderRadius.circular(
-          10,
-        ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Text(
         label,
         style: TextStyle(
           color: color,
           fontSize: 12,
-          fontWeight:
-              FontWeight.w800,
+          fontWeight: FontWeight.w800,
         ),
       ),
     );
   }
 
-  Color _statusColor(
-    String status,
-  ) {
-    switch (status
-        .trim()
-        .toLowerCase()) {
+  Color _statusColor(String status) {
+    switch (status.trim().toLowerCase()) {
       case 'paid':
         return AppColors.success;
 
@@ -1854,49 +1232,28 @@ class _PurchasesScreenState
   }) {
     return Card(
       child: Padding(
-        padding:
-            const EdgeInsets.all(
-          28,
-        ),
+        padding: const EdgeInsets.all(28),
         child: Column(
           children: [
             Icon(
-              Icons
-                  .shopping_cart_outlined,
+              Icons.shopping_cart_outlined,
               size: 52,
-              color: theme
-                  .colorScheme
-                  .onSurfaceVariant,
+              color: theme.colorScheme.onSurfaceVariant,
             ),
-            const SizedBox(
-              height: 14,
-            ),
+            const SizedBox(height: 14),
             Text(
               title,
-              textAlign:
-                  TextAlign.center,
-              style: theme
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(
-                fontWeight:
-                    FontWeight.w800,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
               ),
             ),
-            const SizedBox(
-              height: 6,
-            ),
+            const SizedBox(height: 6),
             Text(
               subtitle,
-              textAlign:
-                  TextAlign.center,
-              style: theme
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(
-                color: theme
-                    .colorScheme
-                    .onSurfaceVariant,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ],
@@ -1909,71 +1266,39 @@ class _PurchasesScreenState
   // NO BUSINESS
   // ===========================================================================
 
-  Widget _buildNoBusinessState(
-    ThemeData theme,
-  ) {
+  Widget _buildNoBusinessState(ThemeData theme) {
     return Center(
       child: Padding(
-        padding:
-            const EdgeInsets.all(
-          24,
-        ),
+        padding: const EdgeInsets.all(24),
         child: Column(
-          mainAxisSize:
-              MainAxisSize.min,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              Icons
-                  .business_outlined,
+              Icons.business_outlined,
               size: 56,
-              color: theme
-                  .colorScheme
-                  .onSurfaceVariant,
+              color: theme.colorScheme.onSurfaceVariant,
             ),
-            const SizedBox(
-              height: 16,
-            ),
+            const SizedBox(height: 16),
             Text(
               'Business information is not available.',
-              textAlign:
-                  TextAlign.center,
-              style: theme
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(
-                fontWeight:
-                    FontWeight.w700,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(
-              height: 8,
-            ),
+            const SizedBox(height: 8),
             Text(
               'Please complete your business setup before managing purchases.',
-              textAlign:
-                  TextAlign.center,
-              style: theme
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(
-                color: theme
-                    .colorScheme
-                    .onSurfaceVariant,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
-            const SizedBox(
-              height: 18,
-            ),
+            const SizedBox(height: 18),
             FilledButton.icon(
-              onPressed:
-                  _initialize,
-              icon: const Icon(
-                Icons.refresh_rounded,
-              ),
-              label:
-                  const Text(
-                'Retry',
-              ),
+              onPressed: _initialize,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Retry'),
             ),
           ],
         ),
@@ -1985,71 +1310,39 @@ class _PurchasesScreenState
   // ERROR STATE
   // ===========================================================================
 
-  Widget _buildErrorState(
-    ThemeData theme,
-    String message,
-  ) {
+  Widget _buildErrorState(ThemeData theme, String message) {
     return Center(
       child: Padding(
-        padding:
-            const EdgeInsets.all(
-          24,
-        ),
+        padding: const EdgeInsets.all(24),
         child: Column(
-          mainAxisSize:
-              MainAxisSize.min,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              Icons
-                  .error_outline_rounded,
+              Icons.error_outline_rounded,
               size: 56,
-              color:
-                  AppColors.danger,
+              color: AppColors.danger,
             ),
-            const SizedBox(
-              height: 16,
-            ),
+            const SizedBox(height: 16),
             Text(
               'Unable to load purchases',
-              textAlign:
-                  TextAlign.center,
-              style: theme
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(
-                fontWeight:
-                    FontWeight.w800,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
               ),
             ),
-            const SizedBox(
-              height: 8,
-            ),
+            const SizedBox(height: 8),
             Text(
               message,
-              textAlign:
-                  TextAlign.center,
-              style: theme
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(
-                color: theme
-                    .colorScheme
-                    .onSurfaceVariant,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
-            const SizedBox(
-              height: 18,
-            ),
+            const SizedBox(height: 18),
             FilledButton.icon(
-              onPressed:
-                  _refresh,
-              icon: const Icon(
-                Icons.refresh_rounded,
-              ),
-              label:
-                  const Text(
-                'Retry',
-              ),
+              onPressed: _refresh,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Retry'),
             ),
           ],
         ),
@@ -2061,10 +1354,7 @@ class _PurchasesScreenState
   // PURCHASE DETAILS MESSAGE
   // ===========================================================================
 
-  void _showMessage(
-    String message, {
-    bool isError = false,
-  }) {
+  void _showMessage(String message, {bool isError = false}) {
     if (!mounted) {
       return;
     }
@@ -2073,30 +1363,18 @@ class _PurchasesScreenState
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content:
-              Text(message),
-          behavior:
-              SnackBarBehavior.floating,
-          backgroundColor:
-              isError
-                  ? AppColors.danger
-                  : AppColors.success,
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: isError ? AppColors.danger : AppColors.success,
         ),
       );
   }
 
-  String _cleanError(
-    Object error,
-  ) {
-    final String message =
-        error.toString();
+  String _cleanError(Object error) {
+    final String message = error.toString();
 
-    if (message.startsWith(
-      'Exception: ',
-    )) {
-      return message.substring(
-        'Exception: '.length,
-      );
+    if (message.startsWith('Exception: ')) {
+      return message.substring('Exception: '.length);
     }
 
     return message;
@@ -2106,9 +1384,7 @@ class _PurchasesScreenState
   // CURRENCY
   // ===========================================================================
 
-  String _formatCurrency(
-    double value,
-  ) {
+  String _formatCurrency(double value) {
     return AppNumberFormat.amount(value);
   }
 }
@@ -2117,313 +1393,171 @@ class _PurchasesScreenState
 // PURCHASE DETAILS SHEET
 // =============================================================================
 
-class _PurchaseDetailsSheet
-    extends StatelessWidget {
+class _PurchaseDetailsSheet extends StatelessWidget {
   final PurchaseModel purchase;
 
-  const _PurchaseDetailsSheet({
-    required this.purchase,
-  });
+  const _PurchaseDetailsSheet({required this.purchase});
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
-    final double outstanding =
-        (purchase.total -
-                purchase.paidAmount)
-            .clamp(
+    final double outstanding = (purchase.total - purchase.paidAmount).clamp(
       0,
       double.infinity,
     );
 
     return SafeArea(
       child: Padding(
-        padding:
-            const EdgeInsets.fromLTRB(
-          20,
-          4,
-          20,
-          20,
-        ),
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
         child: SingleChildScrollView(
           child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 'Purchase Details',
-                style: theme
-                    .textTheme
-                    .headlineSmall
-                    ?.copyWith(
-                  fontWeight:
-                      FontWeight.w800,
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
                 ),
               ),
-              const SizedBox(
-                height: 6,
-              ),
+              const SizedBox(height: 6),
               Text(
-                DateFormat(
-                  'dd MMM yyyy, hh:mm a',
-                ).format(
-                  purchase.date,
-                ),
-                style: theme
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(
-                  color: theme
-                      .colorScheme
-                      .onSurfaceVariant,
+                DateFormat('dd MMM yyyy, hh:mm a').format(purchase.date),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
-              const SizedBox(
-                height: 20,
-              ),
+              const SizedBox(height: 20),
               _DetailSection(
                 title: 'Supplier',
                 child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment
-                          .start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _InfoRow(
-                      icon: Icons
-                          .person_outline_rounded,
-                      label:
-                          'Supplier',
-                      value:
-                          purchase
-                              .supplierName,
+                      icon: Icons.person_outline_rounded,
+                      label: 'Supplier',
+                      value: purchase.supplierName,
                     ),
-                    if (purchase
-                        .supplierId
-                        .trim()
-                        .isNotEmpty)
+                    if (purchase.supplierId.trim().isNotEmpty)
                       Padding(
-                        padding:
-                            const EdgeInsets
-                                .only(
-                          top: 12,
-                        ),
-                        child:
-                            _InfoRow(
-                          icon: Icons
-                              .badge_outlined,
-                          label:
-                              'Supplier ID',
-                          value:
-                              purchase
-                                  .supplierId,
+                        padding: const EdgeInsets.only(top: 12),
+                        child: _InfoRow(
+                          icon: Icons.badge_outlined,
+                          label: 'Supplier ID',
+                          value: purchase.supplierId,
                         ),
                       ),
                   ],
                 ),
               ),
-              const SizedBox(
-                height: 16,
-              ),
+              const SizedBox(height: 16),
               _DetailSection(
                 title: 'Items',
                 child: Column(
-                  children: purchase
-                      .items
-                      .map(
-                    (item) {
-                      return Padding(
-                        padding:
-                            const EdgeInsets
-                                .only(
-                          bottom: 14,
-                        ),
-                        child: Row(
-                          crossAxisAlignment:
-                              CrossAxisAlignment
-                                  .start,
-                          children: [
-                            Expanded(
-                              child:
-                                  Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment
-                                        .start,
-                                children: [
-                                  Text(
-                                    item
-                                        .productName,
-                                    style: const TextStyle(
-                                      fontWeight:
-                                          FontWeight
-                                              .w700,
-                                    ),
+                  children: purchase.items.map((item) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 14),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  item.productName,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
                                   ),
-                                  const SizedBox(
-                                    height: 4,
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '${_formatNumber(item.quantity)} ${item.unit} × ${_formatCurrency(item.purchaseRate)}',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
                                   ),
-                                  Text(
-                                    '${_formatNumber(item.quantity)} ${item.unit} × ${_formatCurrency(item.purchaseRate)}',
-                                    style: theme
-                                        .textTheme
-                                        .bodySmall
-                                        ?.copyWith(
-                                      color: theme
-                                          .colorScheme
-                                          .onSurfaceVariant,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(
-                              width: 12,
-                            ),
-                            Text(
-                              _formatCurrency(
-                                item.total,
-                              ),
-                              style:
-                                  const TextStyle(
-                                fontWeight:
-                                    FontWeight
-                                        .w700,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ).toList(),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            _formatCurrency(item.total),
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
                 ),
               ),
-              const SizedBox(
-                height: 16,
-              ),
+              const SizedBox(height: 16),
               _DetailSection(
                 title: 'Payment Summary',
                 child: Column(
                   children: [
                     _SummaryRow(
-                      label:
-                          'Subtotal',
-                      value:
-                          _formatCurrency(
-                        purchase
-                            .subtotal,
-                      ),
+                      label: 'Subtotal',
+                      value: _formatCurrency(purchase.subtotal),
                     ),
-                    if (purchase
-                            .discount >
-                        0)
+                    if (purchase.discount > 0)
                       _SummaryRow(
-                        label:
-                            'Discount',
-                        value:
-                            '-${_formatCurrency(purchase.discount)}',
+                        label: 'Discount',
+                        value: '-${_formatCurrency(purchase.discount)}',
                       ),
-                    if (purchase
-                            .tax >
-                        0)
+                    if (purchase.tax > 0)
                       _SummaryRow(
-                        label:
-                            'Tax',
-                        value:
-                            _formatCurrency(
-                          purchase.tax,
-                        ),
+                        label: 'Tax',
+                        value: _formatCurrency(purchase.tax),
                       ),
-                    const Divider(
-                      height: 20,
-                    ),
+                    const Divider(height: 20),
                     _SummaryRow(
-                      label:
-                          'Total',
-                      value:
-                          _formatCurrency(
-                        purchase
-                            .total,
-                      ),
+                      label: 'Total',
+                      value: _formatCurrency(purchase.total),
                       bold: true,
                     ),
-                    const SizedBox(
-                      height: 8,
-                    ),
+                    const SizedBox(height: 8),
                     _SummaryRow(
-                      label:
-                          'Paid',
-                      value:
-                          _formatCurrency(
-                        purchase
-                            .paidAmount,
-                      ),
+                      label: 'Paid',
+                      value: _formatCurrency(purchase.paidAmount),
                     ),
-                    const SizedBox(
-                      height: 8,
-                    ),
+                    const SizedBox(height: 8),
                     _SummaryRow(
-                      label:
-                          'Outstanding',
-                      value:
-                          _formatCurrency(
-                        outstanding,
-                      ),
+                      label: 'Outstanding',
+                      value: _formatCurrency(outstanding),
                       bold: true,
                     ),
                   ],
                 ),
               ),
-              const SizedBox(
-                height: 16,
-              ),
+              const SizedBox(height: 16),
               _DetailSection(
                 title: 'Payment',
                 child: Column(
                   children: [
                     _InfoRow(
-                      icon: Icons
-                          .payments_outlined,
-                      label:
-                          'Payment Status',
-                      value:
-                          purchase
-                              .paymentStatus,
+                      icon: Icons.payments_outlined,
+                      label: 'Payment Status',
+                      value: purchase.paymentStatus,
                     ),
-                    const SizedBox(
-                      height: 12,
-                    ),
+                    const SizedBox(height: 12),
                     _InfoRow(
-                      icon: Icons
-                          .account_balance_wallet_outlined,
-                      label:
-                          'Payment Method',
-                      value: purchase
-                              .paymentMethod
-                              .trim()
-                              .isEmpty
+                      icon: Icons.account_balance_wallet_outlined,
+                      label: 'Payment Method',
+                      value: purchase.paymentMethod.trim().isEmpty
                           ? 'Not specified'
-                          : purchase
-                              .paymentMethod,
+                          : purchase.paymentMethod,
                     ),
                   ],
                 ),
               ),
-              if (purchase.notes
-                  .trim()
-                  .isNotEmpty) ...[
-                const SizedBox(
-                  height: 16,
-                ),
+              if (purchase.notes.trim().isNotEmpty) ...[
+                const SizedBox(height: 16),
                 _DetailSection(
                   title: 'Notes',
                   child: Text(
                     purchase.notes,
-                    style: theme
-                        .textTheme
-                        .bodyMedium,
+                    style: theme.textTheme.bodyMedium,
                   ),
                 ),
               ],
@@ -2439,47 +1573,30 @@ class _PurchaseDetailsSheet
 // DETAIL SECTION
 // =============================================================================
 
-class _DetailSection
-    extends StatelessWidget {
+class _DetailSection extends StatelessWidget {
   final String title;
 
   final Widget child;
 
-  const _DetailSection({
-    required this.title,
-    required this.child,
-  });
+  const _DetailSection({required this.title, required this.child});
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     return Card(
       child: Padding(
-        padding:
-            const EdgeInsets.all(
-          16,
-        ),
+        padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               title,
-              style: theme
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(
-                fontWeight:
-                    FontWeight.w800,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
               ),
             ),
-            const SizedBox(
-              height: 14,
-            ),
+            const SizedBox(height: 14),
             child,
           ],
         ),
@@ -2492,8 +1609,7 @@ class _DetailSection
 // INFO ROW
 // =============================================================================
 
-class _InfoRow
-    extends StatelessWidget {
+class _InfoRow extends StatelessWidget {
   final IconData icon;
 
   final String label;
@@ -2507,54 +1623,30 @@ class _InfoRow
   });
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     return Row(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(
-          icon,
-          size: 20,
-          color: theme
-              .colorScheme
-              .primary,
-        ),
-        const SizedBox(
-          width: 10,
-        ),
+        Icon(icon, size: 20, color: theme.colorScheme.primary),
+        const SizedBox(width: 10),
         SizedBox(
           width: 110,
           child: Text(
             label,
-            style: theme
-                .textTheme
-                .bodySmall
-                ?.copyWith(
-              color: theme
-                  .colorScheme
-                  .onSurfaceVariant,
-              fontWeight:
-                  FontWeight.w600,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ),
-        const SizedBox(
-          width: 10,
-        ),
+        const SizedBox(width: 10),
         Expanded(
           child: Text(
             value,
-            style: theme
-                .textTheme
-                .bodyMedium
-                ?.copyWith(
-              fontWeight:
-                  FontWeight.w600,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
             ),
           ),
         ),
@@ -2567,8 +1659,7 @@ class _InfoRow
 // SUMMARY ROW
 // =============================================================================
 
-class _SummaryRow
-    extends StatelessWidget {
+class _SummaryRow extends StatelessWidget {
   final String label;
 
   final String value;
@@ -2582,38 +1673,23 @@ class _SummaryRow
   });
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final ThemeData theme =
-        Theme.of(context);
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
 
     return Row(
       children: [
         Expanded(
           child: Text(
             label,
-            style: theme
-                .textTheme
-                .bodyMedium
-                ?.copyWith(
-              fontWeight:
-                  bold
-                      ? FontWeight.w800
-                      : FontWeight.w500,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: bold ? FontWeight.w800 : FontWeight.w500,
             ),
           ),
         ),
         Text(
           value,
-          style: theme
-              .textTheme
-              .bodyMedium
-              ?.copyWith(
-            fontWeight:
-                bold
-                    ? FontWeight.w800
-                    : FontWeight.w600,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
           ),
         ),
       ],
@@ -2625,9 +1701,7 @@ class _SummaryRow
 // HELPERS
 // =============================================================================
 
-String _formatCurrency(
-  double value,
-) {
+String _formatCurrency(double value) {
   return NumberFormat.currency(
     locale: 'en_IN',
     symbol: '₹',
@@ -2635,14 +1709,9 @@ String _formatCurrency(
   ).format(value);
 }
 
-String _formatNumber(
-  double value,
-) {
-  if (value ==
-      value.roundToDouble()) {
-    return value
-        .toInt()
-        .toString();
+String _formatNumber(double value) {
+  if (value == value.roundToDouble()) {
+    return value.toInt().toString();
   }
 
   return value.toStringAsFixed(2);

@@ -8,6 +8,7 @@ import '../../models/expense_model.dart';
 import '../../providers/business_provider.dart';
 import '../../providers/expense_provider.dart';
 import 'add_expense_screen.dart';
+import '../../core/widgets/app_responsive_page.dart';
 
 class ExpensesScreen extends StatefulWidget {
   const ExpensesScreen({super.key});
@@ -656,7 +657,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
           ) {
             if (expenseProvider.isLoading && expenseProvider.expenses.isEmpty) {
               return const Scaffold(
-                body: Center(child: CircularProgressIndicator()),
+                body: AppResponsivePage(child: Center(child: CircularProgressIndicator())),
               );
             }
 
@@ -695,7 +696,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
   Widget _buildPageError() {
     return Scaffold(
       appBar: AppBar(title: const Text('Expenses')),
-      body: Center(
+      body: AppResponsivePage(child: Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -722,14 +723,14 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
             ],
           ),
         ),
-      ),
+      )),
     );
   }
 
   Widget _buildProviderError(String error) {
     return Scaffold(
       appBar: AppBar(title: const Text('Expenses')),
-      body: Center(
+      body: AppResponsivePage(child: Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -764,7 +765,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
             ],
           ),
         ),
-      ),
+      )),
     );
   }
 
@@ -801,7 +802,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
         icon: const Icon(Icons.add_rounded),
         label: const Text('ADD EXPENSE'),
       ),
-      body: SafeArea(
+      body: AppResponsivePage(child: SafeArea(
         child: RefreshIndicator(
           onRefresh: _refresh,
           child: LayoutBuilder(
@@ -841,7 +842,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
             },
           ),
         ),
-      ),
+      )),
     );
   }
 
@@ -977,6 +978,19 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
             ),
           );
         }).toList(),
+      );
+    }
+
+    if (MediaQuery.sizeOf(context).width < 430) {
+      return Column(
+        children: cards
+            .map(
+              (Widget card) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: card,
+              ),
+            )
+            .toList(),
       );
     }
 

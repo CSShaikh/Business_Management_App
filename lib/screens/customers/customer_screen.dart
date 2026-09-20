@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+
 import '../../core/widgets/app_date_picker.dart';
 
 import 'package:flutter/material.dart';
@@ -18,6 +19,7 @@ import '../../providers/customer_provider.dart';
 import '../../providers/ledger_provider.dart';
 import '../../repositories/sale_repository.dart';
 import 'add_customer_screen.dart';
+import '../../core/widgets/app_responsive_page.dart';
 
 class CustomersScreen extends StatefulWidget {
   const CustomersScreen({super.key});
@@ -417,6 +419,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
               business: business,
               customer: customer,
               transactions: transactions,
+              customerSales: customerSales,
             );
           },
           onShare: () async {
@@ -426,6 +429,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
               business: business,
               customer: customer,
               transactions: transactions,
+              customerSales: customerSales,
             );
           },
         );
@@ -441,12 +445,14 @@ class _CustomersScreenState extends State<CustomersScreen> {
     required BusinessModel business,
     required CustomerModel customer,
     required List<LedgerTransactionModel> transactions,
+    required List<SaleModel> customerSales,
   }) async {
     try {
       await CustomerStatementPdfService.printStatement(
         business: business,
         customer: customer,
         transactions: transactions,
+        customerSales: customerSales,
       );
 
       if (!mounted) {
@@ -471,12 +477,14 @@ class _CustomersScreenState extends State<CustomersScreen> {
     required BusinessModel business,
     required CustomerModel customer,
     required List<LedgerTransactionModel> transactions,
+    required List<SaleModel> customerSales,
   }) async {
     try {
       await CustomerStatementPdfService.shareStatement(
         business: business,
         customer: customer,
         transactions: transactions,
+        customerSales: customerSales,
       );
 
       if (!mounted) {
@@ -509,7 +517,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
 
     final DateTimeRange? range = await AppDatePicker.showDateRangePicker(
       context: context,
-      
+
       initialEntryMode: DatePickerEntryMode.calendar,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
@@ -840,7 +848,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
       return Scaffold(
         backgroundColor: theme.scaffoldBackgroundColor,
         appBar: AppBar(title: const Text('Customers & Hotels')),
-        body: const Center(child: CircularProgressIndicator()),
+        body: AppResponsivePage(child: const Center(child: CircularProgressIndicator())),
       );
     }
 
@@ -848,7 +856,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
       return Scaffold(
         backgroundColor: theme.scaffoldBackgroundColor,
         appBar: AppBar(title: const Text('Customers & Hotels')),
-        body: _buildBusinessError(theme),
+        body: AppResponsivePage(child: _buildBusinessError(theme)),
       );
     }
 
@@ -856,7 +864,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
       return Scaffold(
         backgroundColor: theme.scaffoldBackgroundColor,
         appBar: AppBar(title: const Text('Customers & Hotels')),
-        body: _buildNoBusinessState(theme),
+        body: AppResponsivePage(child: _buildNoBusinessState(theme)),
       );
     }
 
@@ -866,7 +874,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
           return Scaffold(
             backgroundColor: theme.scaffoldBackgroundColor,
             appBar: AppBar(title: const Text('Customers & Hotels')),
-            body: const Center(child: CircularProgressIndicator()),
+            body: AppResponsivePage(child: const Center(child: CircularProgressIndicator())),
           );
         }
 
@@ -875,7 +883,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
           return Scaffold(
             backgroundColor: theme.scaffoldBackgroundColor,
             appBar: AppBar(title: const Text('Customers & Hotels')),
-            body: _buildCustomerError(theme, customerProvider.errorMessage!),
+            body: AppResponsivePage(child: _buildCustomerError(theme, customerProvider.errorMessage!)),
           );
         }
 
@@ -898,7 +906,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
               const SizedBox(width: 4),
             ],
           ),
-          body: RefreshIndicator(
+          body: AppResponsivePage(child: RefreshIndicator(
             onRefresh: _refresh,
             child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
@@ -943,7 +951,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                   ),
               ],
             ),
-          ),
+          )),
           floatingActionButton: FloatingActionButton.extended(
             onPressed: _openAddCustomer,
             icon: const Icon(Icons.add_rounded),
@@ -1606,12 +1614,16 @@ class _CustomerStatementDialog extends StatelessWidget {
           )
         : _totalByType('SALE');
 
-    final double totalPayments = customerSales.isNotEmpty
-        ? customerSales.fold<double>(
-            0,
-            (double total, SaleModel sale) => total + sale.paidAmount,
-          )
-        : _totalPayments();
+    // Use the customer ledger as the source for received payments so
+    // payments recorded later from the Payment screen also appear here.
+    final double ledgerPayments = _totalPayments();
+    final double salePayments = customerSales.fold<double>(
+      0,
+      (double total, SaleModel sale) => total + sale.paidAmount,
+    );
+    final double totalPayments = ledgerPayments > 0
+        ? ledgerPayments
+        : salePayments;
 
     final double balance = transactions.isEmpty
         ? 0
@@ -1720,7 +1732,7 @@ class _CustomerStatementDialog extends StatelessWidget {
             await onSendSalesBill();
           },
           icon: const Icon(Icons.send_outlined),
-          label: const Text('Send Sales Bill'),
+          label: const Text('Select Bill Dates'),
         ),
         TextButton(
           onPressed: () {

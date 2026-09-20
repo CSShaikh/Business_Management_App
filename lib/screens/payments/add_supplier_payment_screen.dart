@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import '../../core/widgets/app_date_picker.dart';
 
 import '../../core/theme/app_colors.dart';
@@ -11,14 +12,12 @@ import '../../repositories/business_repository.dart';
 import '../../repositories/supplier_repository.dart';
 import '../../repositories/supplier_payment_repository.dart';
 import '../../services/ledger/supplier_ledger_service.dart';
+import '../../core/widgets/app_responsive_page.dart';
 
 class AddSupplierPaymentScreen extends StatefulWidget {
   final SupplierPaymentModel? payment;
 
-  const AddSupplierPaymentScreen({
-    super.key,
-    this.payment,
-  });
+  const AddSupplierPaymentScreen({super.key, this.payment});
 
   bool get isEditMode => payment != null;
 
@@ -27,47 +26,36 @@ class AddSupplierPaymentScreen extends StatefulWidget {
       _AddSupplierPaymentScreenState();
 }
 
-class _AddSupplierPaymentScreenState
-    extends State<AddSupplierPaymentScreen> {
-  final GlobalKey<FormState> _formKey =
-      GlobalKey<FormState>();
+class _AddSupplierPaymentScreenState extends State<AddSupplierPaymentScreen> {
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
 
-  final BusinessRepository _businessRepository =
-      BusinessRepository();
+  final BusinessRepository _businessRepository = BusinessRepository();
 
-  final SupplierRepository _supplierRepository =
-      SupplierRepository();
+  final SupplierRepository _supplierRepository = SupplierRepository();
 
   final SupplierPaymentRepository _paymentRepository =
       SupplierPaymentRepository();
 
-  final SupplierLedgerService _supplierLedgerService =
-      SupplierLedgerService();
+  final SupplierLedgerService _supplierLedgerService = SupplierLedgerService();
 
-  final TextEditingController _amountController =
-      TextEditingController();
+  final TextEditingController _amountController = TextEditingController();
 
-  final TextEditingController _referenceController =
-      TextEditingController();
+  final TextEditingController _referenceController = TextEditingController();
 
-  final TextEditingController _notesController =
-      TextEditingController();
+  final TextEditingController _notesController = TextEditingController();
 
   final TextEditingController _supplierSearchController =
       TextEditingController();
 
-  final DateFormat _dateFormat =
-      DateFormat('dd MMM yyyy');
+  final DateFormat _dateFormat = DateFormat('dd MMM yyyy');
 
-  final NumberFormat _currencyFormat =
-      NumberFormat.currency(
+  final NumberFormat _currencyFormat = NumberFormat.currency(
     locale: 'en_IN',
     symbol: '₹',
     decimalDigits: 2,
   );
 
-  static const List<String> _paymentMethods =
-      <String>[
+  static const List<String> _paymentMethods = <String>[
     'Cash',
     'UPI',
     'Bank Transfer',
@@ -77,8 +65,7 @@ class _AddSupplierPaymentScreenState
 
   BusinessModel? _business;
 
-  List<SupplierModel> _suppliers =
-      <SupplierModel>[];
+  List<SupplierModel> _suppliers = <SupplierModel>[];
 
   SupplierModel? _selectedSupplier;
 
@@ -126,9 +113,8 @@ class _AddSupplierPaymentScreenState
     });
 
     try {
-      final BusinessModel? business =
-          await _businessRepository
-              .getBusinessForCurrentUser();
+      final BusinessModel? business = await _businessRepository
+          .getBusinessForCurrentUser();
 
       if (business == null) {
         throw StateError(
@@ -136,31 +122,23 @@ class _AddSupplierPaymentScreenState
         );
       }
 
-      final String businessId =
-          business.id.trim();
+      final String businessId = business.id.trim();
 
       if (businessId.isEmpty) {
-        throw StateError(
-          'Business ID is missing.',
-        );
+        throw StateError('Business ID is missing.');
       }
 
-      final List<SupplierModel> suppliers =
-          await _supplierRepository.getSuppliers(
-        businessId,
-      );
+      final List<SupplierModel> suppliers = await _supplierRepository
+          .getSuppliers(businessId);
 
       SupplierModel? selectedSupplier;
 
       if (widget.payment != null) {
-        final String paymentSupplierId =
-            widget.payment!.supplierId.trim();
+        final String paymentSupplierId = widget.payment!.supplierId.trim();
 
         if (paymentSupplierId.isNotEmpty) {
-          for (final SupplierModel supplier
-              in suppliers) {
-            if (supplier.id.trim() ==
-                paymentSupplierId) {
+          for (final SupplierModel supplier in suppliers) {
+            if (supplier.id.trim() == paymentSupplierId) {
               selectedSupplier = supplier;
               break;
             }
@@ -168,8 +146,7 @@ class _AddSupplierPaymentScreenState
 
           if (selectedSupplier == null) {
             try {
-              selectedSupplier =
-                  await _supplierRepository.getSupplier(
+              selectedSupplier = await _supplierRepository.getSupplier(
                 businessId,
                 paymentSupplierId,
               );
@@ -179,24 +156,17 @@ class _AddSupplierPaymentScreenState
           }
         }
 
-        _amountController.text =
-            widget.payment!.amount.toStringAsFixed(2);
+        _amountController.text = widget.payment!.amount.toStringAsFixed(2);
 
-        _referenceController.text =
-            widget.payment!.transactionReference;
+        _referenceController.text = widget.payment!.transactionReference;
 
-        _notesController.text =
-            widget.payment!.notes;
+        _notesController.text = widget.payment!.notes;
 
-        _paymentDate =
-            widget.payment!.date;
+        _paymentDate = widget.payment!.date;
 
-        final String existingMethod =
-            widget.payment!.paymentMethod.trim();
+        final String existingMethod = widget.payment!.paymentMethod.trim();
 
-        if (_paymentMethods.contains(
-          existingMethod,
-        )) {
+        if (_paymentMethods.contains(existingMethod)) {
           _paymentMethod = existingMethod;
         } else {
           _paymentMethod = 'Other';
@@ -228,11 +198,9 @@ class _AddSupplierPaymentScreenState
   }
 
   Future<void> _loadOutstanding() async {
-    final BusinessModel? business =
-        _business;
+    final BusinessModel? business = _business;
 
-    final SupplierModel? supplier =
-        _selectedSupplier;
+    final SupplierModel? supplier = _selectedSupplier;
 
     if (business == null ||
         supplier == null ||
@@ -248,9 +216,7 @@ class _AddSupplierPaymentScreenState
     }
 
     try {
-      double balance =
-          await _supplierLedgerService
-              .getSupplierBalance(
+      double balance = await _supplierLedgerService.getSupplierBalance(
         businessId: business.id.trim(),
         supplierId: supplier.id.trim(),
       );
@@ -262,8 +228,7 @@ class _AddSupplierPaymentScreenState
        * rejecting the original amount.
        */
       if (widget.payment != null &&
-          widget.payment!.supplierId.trim() ==
-              supplier.id.trim()) {
+          widget.payment!.supplierId.trim() == supplier.id.trim()) {
         balance += widget.payment!.amount;
       }
 
@@ -298,8 +263,7 @@ class _AddSupplierPaymentScreenState
       return;
     }
 
-    final SupplierModel? selected =
-        await showModalBottomSheet<SupplierModel>(
+    final SupplierModel? selected = await showModalBottomSheet<SupplierModel>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
@@ -311,8 +275,7 @@ class _AddSupplierPaymentScreenState
       },
     );
 
-    if (selected == null ||
-        !mounted) {
+    if (selected == null || !mounted) {
       return;
     }
 
@@ -334,17 +297,16 @@ class _AddSupplierPaymentScreenState
       return;
     }
 
-    final DateTime? selected =
-        await AppDatePicker.showDatePicker(
+    final DateTime? selected = await AppDatePicker.showDatePicker(
       context: context,
-      
-      initialEntryMode: DatePickerEntryMode.calendar,initialDate: _paymentDate,
+
+      initialEntryMode: DatePickerEntryMode.calendar,
+      initialDate: _paymentDate,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
     );
 
-    if (selected == null ||
-        !mounted) {
+    if (selected == null || !mounted) {
       return;
     }
 
@@ -365,33 +327,20 @@ class _AddSupplierPaymentScreenState
   // ===========================================================================
 
   double _parseAmount(String value) {
-    return double.tryParse(
-          value
-              .trim()
-              .replaceAll(',', ''),
-        ) ??
-        0;
+    return double.tryParse(value.trim().replaceAll(',', '')) ?? 0;
   }
 
   String _cleanError(Object error) {
-    final String message =
-        error.toString();
+    final String message = error.toString();
 
-    if (message.startsWith(
-      'Exception: ',
-    )) {
-      return message.substring(
-        'Exception: '.length,
-      );
+    if (message.startsWith('Exception: ')) {
+      return message.substring('Exception: '.length);
     }
 
     return message;
   }
 
-  void _showMessage(
-    String message, {
-    bool isError = false,
-  }) {
+  void _showMessage(String message, {bool isError = false}) {
     if (!mounted) {
       return;
     }
@@ -401,11 +350,8 @@ class _AddSupplierPaymentScreenState
       ..showSnackBar(
         SnackBar(
           content: Text(message),
-          behavior:
-              SnackBarBehavior.floating,
-          backgroundColor: isError
-              ? AppColors.danger
-              : AppColors.success,
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: isError ? AppColors.danger : AppColors.success,
         ),
       );
   }
@@ -423,80 +369,51 @@ class _AddSupplierPaymentScreenState
       return;
     }
 
-    final BusinessModel? business =
-        _business;
+    final BusinessModel? business = _business;
 
-    final SupplierModel? supplier =
-        _selectedSupplier;
+    final SupplierModel? supplier = _selectedSupplier;
 
     if (business == null) {
-      _showMessage(
-        'Business information is not available.',
-        isError: true,
-      );
+      _showMessage('Business information is not available.', isError: true);
       return;
     }
 
     if (supplier == null) {
-      _showMessage(
-        'Please select a supplier.',
-        isError: true,
-      );
+      _showMessage('Please select a supplier.', isError: true);
       return;
     }
 
-    final String businessId =
-        business.id.trim();
+    final String businessId = business.id.trim();
 
-    final String supplierId =
-        supplier.id.trim();
+    final String supplierId = supplier.id.trim();
 
-    final String supplierName =
-        supplier.name.trim();
+    final String supplierName = supplier.name.trim();
 
     if (businessId.isEmpty) {
-      _showMessage(
-        'Business ID is missing.',
-        isError: true,
-      );
+      _showMessage('Business ID is missing.', isError: true);
       return;
     }
 
     if (supplierId.isEmpty) {
-      _showMessage(
-        'Supplier ID is missing.',
-        isError: true,
-      );
+      _showMessage('Supplier ID is missing.', isError: true);
       return;
     }
 
     if (supplierName.isEmpty) {
-      _showMessage(
-        'Supplier name is missing.',
-        isError: true,
-      );
+      _showMessage('Supplier name is missing.', isError: true);
       return;
     }
 
-    final double amount =
-        _parseAmount(
-      _amountController.text,
-    );
+    final double amount = _parseAmount(_amountController.text);
 
-    if (!amount.isFinite ||
-        amount <= 0) {
-      _showMessage(
-        'Payment amount must be greater than zero.',
-        isError: true,
-      );
+    if (!amount.isFinite || amount <= 0) {
+      _showMessage('Payment amount must be greater than zero.', isError: true);
       return;
     }
 
-    final double currentOutstanding =
-        _outstanding;
+    final double currentOutstanding = _outstanding;
 
-    if (!currentOutstanding.isFinite ||
-        currentOutstanding < 0) {
+    if (!currentOutstanding.isFinite || currentOutstanding < 0) {
       _showMessage(
         'Unable to calculate supplier outstanding balance.',
         isError: true,
@@ -504,9 +421,7 @@ class _AddSupplierPaymentScreenState
       return;
     }
 
-    if (amount >
-        currentOutstanding +
-            0.000001) {
+    if (amount > currentOutstanding + 0.000001) {
       _showMessage(
         'Payment cannot be greater than outstanding payable '
         '(${_currencyFormat.format(currentOutstanding)}).',
@@ -546,20 +461,13 @@ class _AddSupplierPaymentScreenState
             : 'Supplier payment recorded and supplier ledger updated successfully.',
       );
 
-      await Future<void>.delayed(
-        const Duration(
-          milliseconds: 350,
-        ),
-      );
+      await Future<void>.delayed(const Duration(milliseconds: 350));
 
       if (!mounted) {
         return;
       }
 
-      Navigator.pop(
-        context,
-        true,
-      );
+      Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) {
         return;
@@ -597,51 +505,39 @@ class _AddSupplierPaymentScreenState
        * This protects against a stale balance if another payment was
        * recorded after the screen was opened.
        */
-      final double latestBalance =
-          await _supplierLedgerService
-              .getSupplierBalance(
-        businessId: businessId,
-        supplierId: supplier.id.trim(),
-      );
+      final double latestBalance = await _supplierLedgerService
+          .getSupplierBalance(
+            businessId: businessId,
+            supplierId: supplier.id.trim(),
+          );
 
-      if (latestBalance <=
-          0.000001) {
-        throw StateError(
-          'This supplier has no outstanding payable.',
-        );
+      if (latestBalance <= 0.000001) {
+        throw StateError('This supplier has no outstanding payable.');
       }
 
-      if (amount >
-          latestBalance +
-              0.000001) {
+      if (amount > latestBalance + 0.000001) {
         throw StateError(
           'Payment exceeds the current supplier outstanding payable '
           'of ${_currencyFormat.format(latestBalance)}.',
         );
       }
 
-      final DateTime now =
-          DateTime.now();
+      final DateTime now = DateTime.now();
 
-      final SupplierPaymentModel payment =
-          SupplierPaymentModel(
+      final SupplierPaymentModel payment = SupplierPaymentModel(
         id: '',
         businessId: businessId,
         supplierId: supplier.id.trim(),
         supplierName: supplier.name.trim(),
         amount: amount,
         date: _paymentDate,
-        paymentMethod:
-            _paymentMethod.trim(),
-        transactionReference:
-            _referenceController.text.trim(),
+        paymentMethod: _paymentMethod.trim(),
+        transactionReference: _referenceController.text.trim(),
         notes: _notesController.text.trim(),
         createdAt: now,
       );
 
-      createdPayment =
-          await _paymentRepository
-              .createPayment(payment);
+      createdPayment = await _paymentRepository.createPayment(payment);
 
       try {
         /*
@@ -651,8 +547,7 @@ class _AddSupplierPaymentScreenState
          * This reference is required so payment deletion/editing can
          * safely locate the exact ledger history for this payment.
          */
-        await _supplierLedgerService
-            .createSupplierPaymentLedgerEntry(
+        await _supplierLedgerService.createSupplierPaymentLedgerEntry(
           businessId: businessId,
           paymentAmount: amount,
           supplierId: supplier.id.trim(),
@@ -670,8 +565,7 @@ class _AddSupplierPaymentScreenState
          * a payment without its corresponding ledger transaction.
          */
         try {
-          await _paymentRepository
-              .deletePayment(
+          await _paymentRepository.deletePayment(
             businessId: businessId,
             paymentId: createdPayment.id,
           );
@@ -697,18 +591,15 @@ class _AddSupplierPaymentScreenState
   }) async {
     final List<LedgerTransactionModel> transactions =
         await _supplierLedgerService.getSupplierTransactions(
-      businessId: businessId,
-      supplierId: supplierId,
-    );
+          businessId: businessId,
+          supplierId: supplierId,
+        );
 
-    for (final LedgerTransactionModel transaction
-        in transactions) {
-      final String type =
-          transaction.transactionType.trim().toUpperCase();
+    for (final LedgerTransactionModel transaction in transactions) {
+      final String type = transaction.transactionType.trim().toUpperCase();
 
       if (transaction.referenceId.trim() == paymentId &&
-          type ==
-              SupplierLedgerService.supplierPaymentType) {
+          type == SupplierLedgerService.supplierPaymentType) {
         return transaction.amount > 0.000001;
       }
     }
@@ -725,34 +616,24 @@ class _AddSupplierPaymentScreenState
     required SupplierModel supplier,
     required double amount,
   }) async {
-    final SupplierPaymentModel? oldPayment =
-        widget.payment;
+    final SupplierPaymentModel? oldPayment = widget.payment;
 
     if (oldPayment == null) {
-      throw StateError(
-        'Existing supplier payment was not found.',
-      );
+      throw StateError('Existing supplier payment was not found.');
     }
 
-    final String oldPaymentId =
-        oldPayment.id.trim();
+    final String oldPaymentId = oldPayment.id.trim();
 
     if (oldPaymentId.isEmpty) {
-      throw StateError(
-        'Existing payment ID is missing.',
-      );
+      throw StateError('Existing payment ID is missing.');
     }
 
-    final String oldSupplierId =
-        oldPayment.supplierId.trim();
+    final String oldSupplierId = oldPayment.supplierId.trim();
 
-    final String oldSupplierName =
-        oldPayment.supplierName.trim();
+    final String oldSupplierName = oldPayment.supplierName.trim();
 
     if (oldSupplierId.isEmpty) {
-      throw StateError(
-        'Existing supplier ID is missing.',
-      );
+      throw StateError('Existing supplier ID is missing.');
     }
 
     bool oldLedgerReversed = false;
@@ -770,8 +651,7 @@ class _AddSupplierPaymentScreenState
        * by amount/date because multiple supplier payments can legitimately
        * have identical values. Guessing could corrupt the supplier balance.
        */
-      final bool oldLedgerExists =
-          await _hasActiveSupplierPaymentLedgerEntry(
+      final bool oldLedgerExists = await _hasActiveSupplierPaymentLedgerEntry(
         businessId: businessId,
         supplierId: oldSupplierId,
         paymentId: oldPaymentId,
@@ -789,8 +669,7 @@ class _AddSupplierPaymentScreenState
        * ledger must be reversed first. The new payment then gets posted
        * to the newly selected supplier.
        */
-      await _supplierLedgerService
-          .createSupplierPaymentReversal(
+      await _supplierLedgerService.createSupplierPaymentReversal(
         businessId: businessId,
         paymentAmount: oldPayment.amount,
         supplierId: oldSupplierId,
@@ -798,8 +677,7 @@ class _AddSupplierPaymentScreenState
             ? supplier.name.trim()
             : oldSupplierName,
         referenceId: oldPaymentId,
-        notes:
-            'Reversal for supplier payment $oldPaymentId.',
+        notes: 'Reversal for supplier payment $oldPaymentId.',
       );
 
       oldLedgerReversed = true;
@@ -811,46 +689,36 @@ class _AddSupplierPaymentScreenState
        * If editing the same supplier, reversing the old payment increases
        * the available payable by the old payment amount.
        */
-      final double latestBalance =
-          await _supplierLedgerService
-              .getSupplierBalance(
-        businessId: businessId,
-        supplierId: supplier.id.trim(),
-      );
+      final double latestBalance = await _supplierLedgerService
+          .getSupplierBalance(
+            businessId: businessId,
+            supplierId: supplier.id.trim(),
+          );
 
-      if (amount >
-          latestBalance +
-              0.000001) {
+      if (amount > latestBalance + 0.000001) {
         throw StateError(
           'Payment exceeds the current supplier outstanding payable '
           'of ${_currencyFormat.format(latestBalance)}.',
         );
       }
 
-      final SupplierPaymentModel updatedPayment =
-          oldPayment.copyWith(
+      final SupplierPaymentModel updatedPayment = oldPayment.copyWith(
         businessId: businessId,
         supplierId: supplier.id.trim(),
         supplierName: supplier.name.trim(),
         amount: amount,
         date: _paymentDate,
-        paymentMethod:
-            _paymentMethod.trim(),
-        transactionReference:
-            _referenceController.text.trim(),
+        paymentMethod: _paymentMethod.trim(),
+        transactionReference: _referenceController.text.trim(),
         notes: _notesController.text.trim(),
       );
 
-      await _paymentRepository
-          .updatePayment(
-        updatedPayment,
-      );
+      await _paymentRepository.updatePayment(updatedPayment);
 
       paymentUpdated = true;
 
       try {
-        await _supplierLedgerService
-            .createSupplierPaymentLedgerEntry(
+        await _supplierLedgerService.createSupplierPaymentLedgerEntry(
           businessId: businessId,
           paymentAmount: amount,
           supplierId: supplier.id.trim(),
@@ -868,10 +736,7 @@ class _AddSupplierPaymentScreenState
          * Restore the old payment document first.
          */
         try {
-          await _paymentRepository
-              .updatePayment(
-            oldPayment,
-          );
+          await _paymentRepository.updatePayment(oldPayment);
           paymentUpdated = false;
         } catch (_) {
           // Preserve original ledger error.
@@ -886,15 +751,13 @@ class _AddSupplierPaymentScreenState
        */
       if (newLedgerCreated) {
         try {
-          await _supplierLedgerService
-              .createSupplierPaymentReversal(
+          await _supplierLedgerService.createSupplierPaymentReversal(
             businessId: businessId,
             paymentAmount: amount,
             supplierId: supplier.id.trim(),
             supplierName: supplier.name.trim(),
             referenceId: oldPaymentId,
-            notes:
-                'Rollback reversal for supplier payment $oldPaymentId.',
+            notes: 'Rollback reversal for supplier payment $oldPaymentId.',
           );
         } catch (_) {
           // Preserve original error.
@@ -906,10 +769,7 @@ class _AddSupplierPaymentScreenState
        */
       if (paymentUpdated) {
         try {
-          await _paymentRepository
-              .updatePayment(
-            oldPayment,
-          );
+          await _paymentRepository.updatePayment(oldPayment);
         } catch (_) {
           // Preserve original error.
         }
@@ -921,8 +781,7 @@ class _AddSupplierPaymentScreenState
        */
       if (oldLedgerReversed) {
         try {
-          await _supplierLedgerService
-              .createSupplierPaymentLedgerEntry(
+          await _supplierLedgerService.createSupplierPaymentLedgerEntry(
             businessId: businessId,
             paymentAmount: oldPayment.amount,
             supplierId: oldSupplierId,
@@ -950,8 +809,7 @@ class _AddSupplierPaymentScreenState
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme =
-        Theme.of(context);
+    final ThemeData theme = Theme.of(context);
 
     if (_isLoading) {
       return Scaffold(
@@ -962,10 +820,7 @@ class _AddSupplierPaymentScreenState
                 : 'Add Supplier Payment',
           ),
         ),
-        body: const Center(
-          child:
-              CircularProgressIndicator(),
-        ),
+        body: AppResponsivePage(child: const Center(child: CircularProgressIndicator())),
       );
     }
 
@@ -978,130 +833,78 @@ class _AddSupplierPaymentScreenState
                 : 'Add Supplier Payment',
           ),
         ),
-        body: Center(
+        body: AppResponsivePage(child: Center(
           child: Padding(
-            padding:
-                const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(24),
             child: Column(
-              mainAxisSize:
-                  MainAxisSize.min,
+              mainAxisSize: MainAxisSize.min,
               children: <Widget>[
                 const Icon(
-                  Icons
-                      .error_outline_rounded,
+                  Icons.error_outline_rounded,
                   size: 54,
-                  color:
-                      AppColors.danger,
+                  color: AppColors.danger,
                 ),
-                const SizedBox(
-                  height: 14,
-                ),
+                const SizedBox(height: 14),
                 Text(
                   _errorMessage!,
-                  textAlign:
-                      TextAlign.center,
-                  style: theme
-                      .textTheme
-                      .bodyLarge,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyLarge,
                 ),
-                const SizedBox(
-                  height: 20,
-                ),
+                const SizedBox(height: 20),
                 OutlinedButton.icon(
-                  onPressed:
-                      _isSaving
-                          ? null
-                          : _initialize,
-                  icon: const Icon(
-                    Icons.refresh_rounded,
-                  ),
-                  label:
-                      const Text(
-                    'Retry',
-                  ),
+                  onPressed: _isSaving ? null : _initialize,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Retry'),
                 ),
               ],
             ),
           ),
-        ),
+        )),
       );
     }
 
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          widget.isEditMode
-              ? 'Edit Supplier Payment'
-              : 'Add Supplier Payment',
+          widget.isEditMode ? 'Edit Supplier Payment' : 'Add Supplier Payment',
         ),
       ),
-      body: SafeArea(
+      body: AppResponsivePage(child: SafeArea(
         child: Form(
           key: _formKey,
           child: LayoutBuilder(
-            builder: (
-              BuildContext context,
-              BoxConstraints constraints,
-            ) {
-              final bool isWide =
-                  constraints.maxWidth >=
-                      900;
+            builder: (BuildContext context, BoxConstraints constraints) {
+              final bool isWide = constraints.maxWidth >= 900;
 
               return SingleChildScrollView(
-                padding:
-                    const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(16),
                 child: Center(
                   child: ConstrainedBox(
-                    constraints:
-                        const BoxConstraints(
-                      maxWidth: 1100,
-                    ),
+                    constraints: const BoxConstraints(maxWidth: 1100),
                     child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment
-                              .stretch,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: <Widget>[
                         _buildHeader(),
-                        const SizedBox(
-                          height: 16,
-                        ),
+                        const SizedBox(height: 16),
                         if (isWide)
                           Row(
-                            crossAxisAlignment:
-                                CrossAxisAlignment
-                                    .start,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: <Widget>[
-                              Expanded(
-                                child:
-                                    _buildSupplierCard(),
-                              ),
-                              const SizedBox(
-                                width: 16,
-                              ),
-                              Expanded(
-                                child:
-                                    _buildPaymentCard(),
-                              ),
+                              Expanded(child: _buildSupplierCard()),
+                              const SizedBox(width: 16),
+                              Expanded(child: _buildPaymentCard()),
                             ],
                           )
                         else ...<Widget>[
                           _buildSupplierCard(),
-                          const SizedBox(
-                            height: 16,
-                          ),
+                          const SizedBox(height: 16),
                           _buildPaymentCard(),
                         ],
-                        const SizedBox(
-                          height: 16,
-                        ),
+                        const SizedBox(height: 16),
                         _buildNotesCard(),
-                        const SizedBox(
-                          height: 16,
-                        ),
+                        const SizedBox(height: 16),
                         _buildSummaryCard(),
-                        const SizedBox(
-                          height: 20,
-                        ),
+                        const SizedBox(height: 20),
                         _buildSaveButton(),
                       ],
                     ),
@@ -1111,48 +914,32 @@ class _AddSupplierPaymentScreenState
             },
           ),
         ),
-      ),
+      )),
     );
   }
 
   Widget _buildHeader() {
-    final bool isEdit =
-        widget.isEditMode;
+    final bool isEdit = widget.isEditMode;
 
     return Container(
       width: double.infinity,
-      padding:
-          const EdgeInsets.all(22),
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        gradient:
-            const LinearGradient(
-          colors: <Color>[
-            AppColors.primary,
-            AppColors.secondary,
-          ],
-          begin:
-              Alignment.topLeft,
-          end:
-              Alignment.bottomRight,
+        gradient: const LinearGradient(
+          colors: <Color>[AppColors.primary, AppColors.secondary],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        borderRadius:
-            BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
         children: <Widget>[
           Container(
             width: 56,
             height: 56,
-            decoration:
-                BoxDecoration(
-              color: Colors.white
-                  .withValues(
-                alpha: 0.16,
-              ),
-              borderRadius:
-                  BorderRadius.circular(
-                16,
-              ),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.16),
+              borderRadius: BorderRadius.circular(16),
             ),
             child: const Icon(
               Icons.payments_rounded,
@@ -1160,41 +947,28 @@ class _AddSupplierPaymentScreenState
               size: 30,
             ),
           ),
-          const SizedBox(
-            width: 16,
-          ),
+          const SizedBox(width: 16),
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
                   isEdit
                       ? 'Update supplier payment'
                       : 'Record supplier payment',
-                  style:
-                      const TextStyle(
-                    color:
-                        Colors.white,
+                  style: const TextStyle(
+                    color: Colors.white,
                     fontSize: 21,
-                    fontWeight:
-                        FontWeight.w800,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
-                const SizedBox(
-                  height: 5,
-                ),
+                const SizedBox(height: 5),
                 Text(
                   isEdit
                       ? 'Update payment details and keep the supplier ledger synchronized.'
                       : 'Record a payment against the supplier outstanding balance.',
-                  style:
-                      TextStyle(
-                    color: Colors
-                        .white
-                        .withValues(
-                      alpha: 0.86,
-                    ),
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.86),
                     fontSize: 13,
                   ),
                 ),
@@ -1209,117 +983,62 @@ class _AddSupplierPaymentScreenState
   Widget _buildSupplierCard() {
     return Card(
       child: Padding(
-        padding:
-            const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(18),
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             const _SectionTitle(
-              icon:
-                  Icons.business_rounded,
+              icon: Icons.business_rounded,
               title: 'Supplier',
-              subtitle:
-                  'Select the supplier receiving the payment',
+              subtitle: 'Select the supplier receiving the payment',
             ),
-            const SizedBox(
-              height: 16,
-            ),
+            const SizedBox(height: 16),
             InkWell(
-              onTap:
-                  _isSaving
-                      ? null
-                      : _selectSupplier,
-              borderRadius:
-                  BorderRadius.circular(
-                12,
-              ),
+              onTap: _isSaving ? null : _selectSupplier,
+              borderRadius: BorderRadius.circular(12),
               child: InputDecorator(
-                decoration:
-                    const InputDecoration(
-                  labelText:
-                      'Supplier',
-                  prefixIcon:
-                      Icon(
-                    Icons
-                        .business_outlined,
-                  ),
-                  suffixIcon:
-                      Icon(
-                    Icons
-                        .keyboard_arrow_down_rounded,
-                  ),
+                decoration: const InputDecoration(
+                  labelText: 'Supplier',
+                  prefixIcon: Icon(Icons.business_outlined),
+                  suffixIcon: Icon(Icons.keyboard_arrow_down_rounded),
                 ),
                 child: Text(
-                  _selectedSupplier
-                          ?.name ??
-                      'Select supplier',
+                  _selectedSupplier?.name ?? 'Select supplier',
                   style: TextStyle(
-                    color:
-                        _selectedSupplier ==
-                                null
-                            ? themeLightSecondary(
-                                context,
-                              )
-                            : null,
-                    fontWeight:
-                        _selectedSupplier ==
-                                null
-                            ? FontWeight.w400
-                            : FontWeight.w600,
+                    color: _selectedSupplier == null
+                        ? themeLightSecondary(context)
+                        : null,
+                    fontWeight: _selectedSupplier == null
+                        ? FontWeight.w400
+                        : FontWeight.w600,
                   ),
                 ),
               ),
             ),
-            if (_selectedSupplier !=
-                null) ...<Widget>[
-              const SizedBox(
-                height: 12,
-              ),
+            if (_selectedSupplier != null) ...<Widget>[
+              const SizedBox(height: 12),
               Container(
-                width:
-                    double.infinity,
-                padding:
-                    const EdgeInsets.all(
-                  12,
-                ),
-                decoration:
-                    BoxDecoration(
-                  color: AppColors
-                      .primary
-                      .withValues(
-                    alpha: 0.06,
-                  ),
-                  borderRadius:
-                      BorderRadius.circular(
-                    10,
-                  ),
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: Column(
                   children: <Widget>[
                     _supplierInfoRow(
-                      Icons
-                          .phone_rounded,
-                      _selectedSupplier!
-                              .mobile
-                              .trim()
-                              .isEmpty
+                      Icons.phone_rounded,
+                      _selectedSupplier!.mobile.trim().isEmpty
                           ? 'Mobile number not available'
-                          : _selectedSupplier!
-                              .mobile,
+                          : _selectedSupplier!.mobile,
                     ),
-                    if (_selectedSupplier!
-                        .contactPerson
+                    if (_selectedSupplier!.contactPerson
                         .trim()
                         .isNotEmpty) ...<Widget>[
-                      const SizedBox(
-                        height: 7,
-                      ),
+                      const SizedBox(height: 7),
                       _supplierInfoRow(
-                        Icons
-                            .person_outline_rounded,
-                        _selectedSupplier!
-                            .contactPerson,
+                        Icons.person_outline_rounded,
+                        _selectedSupplier!.contactPerson,
                       ),
                     ],
                   ],
@@ -1332,38 +1051,16 @@ class _AddSupplierPaymentScreenState
     );
   }
 
-  Color? themeLightSecondary(
-    BuildContext context,
-  ) {
-    return Theme.of(context)
-        .colorScheme
-        .onSurfaceVariant;
+  Color? themeLightSecondary(BuildContext context) {
+    return Theme.of(context).colorScheme.onSurfaceVariant;
   }
 
-  Widget _supplierInfoRow(
-    IconData icon,
-    String text,
-  ) {
+  Widget _supplierInfoRow(IconData icon, String text) {
     return Row(
       children: <Widget>[
-        Icon(
-          icon,
-          size: 17,
-          color:
-              AppColors.primary,
-        ),
-        const SizedBox(
-          width: 8,
-        ),
-        Expanded(
-          child: Text(
-            text,
-            style:
-                const TextStyle(
-              fontSize: 13,
-            ),
-          ),
-        ),
+        Icon(icon, size: 17, color: AppColors.primary),
+        const SizedBox(width: 8),
+        Expanded(child: Text(text, style: const TextStyle(fontSize: 13))),
       ],
     );
   }
@@ -1371,105 +1068,54 @@ class _AddSupplierPaymentScreenState
   Widget _buildPaymentCard() {
     return Card(
       child: Padding(
-        padding:
-            const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(18),
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             const _SectionTitle(
-              icon:
-                  Icons.receipt_long_rounded,
-              title:
-                  'Payment Details',
-              subtitle:
-                  'Enter amount, date and payment method',
+              icon: Icons.receipt_long_rounded,
+              title: 'Payment Details',
+              subtitle: 'Enter amount, date and payment method',
             ),
-            const SizedBox(
-              height: 16,
-            ),
+            const SizedBox(height: 16),
             _buildAmountField(),
-            const SizedBox(
-              height: 14,
-            ),
+            const SizedBox(height: 14),
             InkWell(
-              onTap:
-                  _isSaving
-                      ? null
-                      : _selectDate,
-              borderRadius:
-                  BorderRadius.circular(
-                12,
-              ),
+              onTap: _isSaving ? null : _selectDate,
+              borderRadius: BorderRadius.circular(12),
               child: InputDecorator(
-                decoration:
-                    const InputDecoration(
-                  labelText:
-                      'Payment Date',
-                  prefixIcon:
-                      Icon(
-                    Icons
-                        .calendar_month_rounded,
-                  ),
-                  suffixIcon:
-                      Icon(
-                    Icons
-                        .edit_calendar_rounded,
-                  ),
+                decoration: const InputDecoration(
+                  labelText: 'Payment Date',
+                  prefixIcon: Icon(Icons.calendar_month_rounded),
+                  suffixIcon: Icon(Icons.edit_calendar_rounded),
                 ),
-                child: Text(
-                  _dateFormat.format(
-                    _paymentDate,
-                  ),
-                ),
+                child: Text(_dateFormat.format(_paymentDate)),
               ),
             ),
-            const SizedBox(
-              height: 14,
-            ),
-            DropdownButtonFormField<
-                String>(
-              initialValue:
-                  _paymentMethod,
-              decoration:
-                  const InputDecoration(
-                labelText:
-                    'Payment Method',
-                prefixIcon:
-                    Icon(
-                  Icons
-                      .account_balance_wallet_rounded,
-                ),
+            const SizedBox(height: 14),
+            DropdownButtonFormField<String>(
+              initialValue: _paymentMethod,
+              decoration: const InputDecoration(
+                labelText: 'Payment Method',
+                prefixIcon: Icon(Icons.account_balance_wallet_rounded),
               ),
-              items:
-                  _paymentMethods.map(
-                (
-                  String method,
-                ) {
-                  return DropdownMenuItem<
-                      String>(
-                    value: method,
-                    child:
-                        Text(method),
-                  );
-                },
-              ).toList(),
-              onChanged:
-                  _isSaving
-                      ? null
-                      : (
-                          String? value,
-                        ) {
-                          if (value ==
-                              null) {
-                            return;
-                          }
+              items: _paymentMethods.map((String method) {
+                return DropdownMenuItem<String>(
+                  value: method,
+                  child: Text(method),
+                );
+              }).toList(),
+              onChanged: _isSaving
+                  ? null
+                  : (String? value) {
+                      if (value == null) {
+                        return;
+                      }
 
-                          setState(() {
-                            _paymentMethod =
-                                value;
-                          });
-                        },
+                      setState(() {
+                        _paymentMethod = value;
+                      });
+                    },
             ),
           ],
         ),
@@ -1479,36 +1125,18 @@ class _AddSupplierPaymentScreenState
 
   Widget _buildAmountField() {
     return TextFormField(
-      controller:
-          _amountController,
+      controller: _amountController,
       enabled: !_isSaving,
-      keyboardType:
-          const TextInputType
-              .numberWithOptions(
-        decimal: true,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: const InputDecoration(
+        labelText: 'Payment Amount',
+        hintText: 'Enter amount',
+        prefixIcon: Icon(Icons.currency_rupee_rounded),
       ),
-      decoration:
-          const InputDecoration(
-        labelText:
-            'Payment Amount',
-        hintText:
-            'Enter amount',
-        prefixIcon:
-            Icon(
-          Icons
-              .currency_rupee_rounded,
-        ),
-      ),
-      validator: (
-        String? value,
-      ) {
-        final double amount =
-            _parseAmount(
-          value ?? '',
-        );
+      validator: (String? value) {
+        final double amount = _parseAmount(value ?? '');
 
-        if (!amount.isFinite ||
-            amount <= 0) {
+        if (!amount.isFinite || amount <= 0) {
           return 'Enter a valid payment amount';
         }
 
@@ -1525,60 +1153,37 @@ class _AddSupplierPaymentScreenState
   Widget _buildNotesCard() {
     return Card(
       child: Padding(
-        padding:
-            const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(18),
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             const _SectionTitle(
-              icon:
-                  Icons.notes_rounded,
+              icon: Icons.notes_rounded,
               title: 'Notes',
-              subtitle:
-                  'Optional payment reference and notes',
+              subtitle: 'Optional payment reference and notes',
             ),
-            const SizedBox(
-              height: 16,
-            ),
+            const SizedBox(height: 16),
             TextFormField(
-              controller:
-                  _referenceController,
+              controller: _referenceController,
               enabled: !_isSaving,
-              textInputAction:
-                  TextInputAction.next,
+              textInputAction: TextInputAction.next,
               maxLength: 100,
-              decoration:
-                  const InputDecoration(
-                labelText:
-                    'Transaction Reference',
-                hintText:
-                    'Optional transaction ID / reference',
-                prefixIcon:
-                    Icon(
-                  Icons
-                      .receipt_long_rounded,
-                ),
+              decoration: const InputDecoration(
+                labelText: 'Transaction Reference',
+                hintText: 'Optional transaction ID / reference',
+                prefixIcon: Icon(Icons.receipt_long_rounded),
               ),
             ),
-            const SizedBox(
-              height: 8,
-            ),
+            const SizedBox(height: 8),
             TextFormField(
-              controller:
-                  _notesController,
+              controller: _notesController,
               enabled: !_isSaving,
               maxLines: 4,
               maxLength: 500,
-              decoration:
-                  const InputDecoration(
+              decoration: const InputDecoration(
                 labelText: 'Notes',
-                hintText:
-                    'Add optional payment notes',
-                prefixIcon:
-                    Icon(
-                  Icons.notes_rounded,
-                ),
+                hintText: 'Add optional payment notes',
+                prefixIcon: Icon(Icons.notes_rounded),
               ),
             ),
           ],
@@ -1588,68 +1193,38 @@ class _AddSupplierPaymentScreenState
   }
 
   Widget _buildSummaryCard() {
-    final double amount =
-        _parseAmount(
-      _amountController.text,
-    );
+    final double amount = _parseAmount(_amountController.text);
 
-    final double remaining =
-        (_outstanding - amount)
-            .clamp(
-      0,
-      double.infinity,
-    );
+    final double remaining = (_outstanding - amount).clamp(0, double.infinity);
 
     return Card(
       child: Padding(
-        padding:
-            const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(18),
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             const _SectionTitle(
-              icon:
-                  Icons.account_balance_wallet_rounded,
-              title:
-                  'Payment Summary',
-              subtitle:
-                  'Review payable balance before saving',
+              icon: Icons.account_balance_wallet_rounded,
+              title: 'Payment Summary',
+              subtitle: 'Review payable balance before saving',
             ),
-            const SizedBox(
-              height: 18,
-            ),
+            const SizedBox(height: 18),
             _summaryRow(
               'Current Outstanding',
-              _currencyFormat.format(
-                _outstanding,
-              ),
-              valueColor:
-                  AppColors.danger,
+              _currencyFormat.format(_outstanding),
+              valueColor: AppColors.danger,
             ),
-            const SizedBox(
-              height: 12,
-            ),
+            const SizedBox(height: 12),
             _summaryRow(
               'This Payment',
-              _currencyFormat.format(
-                amount,
-              ),
-              valueColor:
-                  AppColors.primary,
+              _currencyFormat.format(amount),
+              valueColor: AppColors.primary,
             ),
-            const Divider(
-              height: 28,
-            ),
+            const Divider(height: 28),
             _summaryRow(
               'Remaining Payable',
-              _currencyFormat.format(
-                remaining,
-              ),
-              valueColor:
-                  remaining > 0
-                      ? AppColors.danger
-                      : AppColors.success,
+              _currencyFormat.format(remaining),
+              valueColor: remaining > 0 ? AppColors.danger : AppColors.success,
               large: true,
             ),
           ],
@@ -1664,82 +1239,75 @@ class _AddSupplierPaymentScreenState
     Color? valueColor,
     bool large = false,
   }) {
-    return Row(
-      children: <Widget>[
-        Expanded(
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize:
-                  large ? 15 : 14,
-              fontWeight:
-                  large
-                      ? FontWeight.w800
-                      : FontWeight.w600,
-            ),
-          ),
-        ),
-        const SizedBox(
-          width: 12,
-        ),
-        Text(
-          value,
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final bool compact = constraints.maxWidth < 360;
+        final Text labelText = Text(
+          label,
+          maxLines: compact ? 2 : 1,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            fontSize:
-                large ? 18 : 15,
-            fontWeight:
-                FontWeight.w800,
+            fontSize: large ? 15 : 14,
+            fontWeight: large ? FontWeight.w800 : FontWeight.w600,
+          ),
+        );
+        final Text valueText = Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: large ? 18 : 15,
+            fontWeight: FontWeight.w800,
             color: valueColor,
           ),
-        ),
-      ],
+        );
+
+        if (compact) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[labelText, const SizedBox(height: 4), valueText],
+          );
+        }
+
+        return Row(
+          children: <Widget>[
+            Expanded(child: labelText),
+            const SizedBox(width: 12),
+            Flexible(child: valueText),
+          ],
+        );
+      },
     );
   }
 
   Widget _buildSaveButton() {
-    final double amount =
-        _parseAmount(
-      _amountController.text,
-    );
+    final double amount = _parseAmount(_amountController.text);
 
-    final bool validAmount =
-        amount > 0 &&
-            amount <=
-                _outstanding +
-                    0.000001;
+    final bool validAmount = amount > 0 && amount <= _outstanding + 0.000001;
 
     return SizedBox(
       width: double.infinity,
       height: 52,
       child: FilledButton.icon(
-        onPressed:
-            _isSaving ||
-                    !validAmount ||
-                    _selectedSupplier ==
-                        null
-                ? null
-                : _savePayment,
+        onPressed: _isSaving || !validAmount || _selectedSupplier == null
+            ? null
+            : _savePayment,
         icon: _isSaving
             ? const SizedBox(
                 width: 19,
                 height: 19,
-                child:
-                    CircularProgressIndicator(
+                child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color:
-                      Colors.white,
+                  color: Colors.white,
                 ),
               )
-            : const Icon(
-                Icons
-                    .check_circle_outline_rounded,
-              ),
+            : const Icon(Icons.check_circle_outline_rounded),
         label: Text(
           _isSaving
               ? 'Saving...'
               : widget.isEditMode
-                  ? 'Update Payment'
-                  : 'Save Payment',
+              ? 'Update Payment'
+              : 'Save Payment',
         ),
       ),
     );
@@ -1762,72 +1330,61 @@ class _SectionTitle extends StatelessWidget {
   });
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    return Row(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
-      children: <Widget>[
-        Container(
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final bool compact = constraints.maxWidth < 420;
+        final Widget textContent = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              subtitle,
+              maxLines: compact ? 3 : 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        );
+
+        final Widget iconBox = Container(
           width: 42,
           height: 42,
-          decoration:
-              BoxDecoration(
-            color: AppColors.primary
-                .withValues(
-              alpha: 0.10,
-            ),
-            borderRadius:
-                BorderRadius.circular(
-              12,
-            ),
+          decoration: BoxDecoration(
+            color: AppColors.primary.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(12),
           ),
-          child: Icon(
-            icon,
-            color:
-                AppColors.primary,
-            size: 21,
-          ),
-        ),
-        const SizedBox(
-          width: 12,
-        ),
-        Expanded(
-          child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
+          child: Icon(icon, color: AppColors.primary, size: 21),
+        );
+
+        if (compact) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight:
-                      FontWeight.w800,
-                ),
-              ),
-              const SizedBox(
-                height: 3,
-              ),
-              Text(
-                subtitle,
-                style: Theme.of(
-                  context,
-                )
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(
-                  color: Theme.of(
-                    context,
-                  )
-                      .colorScheme
-                      .onSurfaceVariant,
-                ),
-              ),
+              iconBox,
+              const SizedBox(height: 10),
+              textContent,
             ],
-          ),
-        ),
-      ],
+          );
+        }
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            iconBox,
+            const SizedBox(width: 12),
+            Expanded(child: textContent),
+          ],
+        );
+      },
     );
   }
 }
@@ -1836,8 +1393,7 @@ class _SectionTitle extends StatelessWidget {
 // SUPPLIER PICKER
 // =============================================================================
 
-class _SupplierPickerSheet
-    extends StatefulWidget {
+class _SupplierPickerSheet extends StatefulWidget {
   final List<SupplierModel> suppliers;
   final SupplierModel? selectedSupplier;
 
@@ -1847,16 +1403,11 @@ class _SupplierPickerSheet
   });
 
   @override
-  State<_SupplierPickerSheet>
-      createState() =>
-          _SupplierPickerSheetState();
+  State<_SupplierPickerSheet> createState() => _SupplierPickerSheetState();
 }
 
-class _SupplierPickerSheetState
-    extends State<_SupplierPickerSheet> {
-  final TextEditingController
-      _searchController =
-      TextEditingController();
+class _SupplierPickerSheetState extends State<_SupplierPickerSheet> {
+  final TextEditingController _searchController = TextEditingController();
 
   String _query = '';
 
@@ -1864,9 +1415,7 @@ class _SupplierPickerSheetState
   void initState() {
     super.initState();
 
-    _searchController.addListener(
-      _handleSearchChanged,
-    );
+    _searchController.addListener(_handleSearchChanged);
   }
 
   void _handleSearchChanged() {
@@ -1875,220 +1424,110 @@ class _SupplierPickerSheetState
     }
 
     setState(() {
-      _query =
-          _searchController.text
-              .trim()
-              .toLowerCase();
+      _query = _searchController.text.trim().toLowerCase();
     });
   }
 
   @override
   void dispose() {
-    _searchController
-        .removeListener(
-      _handleSearchChanged,
-    );
+    _searchController.removeListener(_handleSearchChanged);
 
     _searchController.dispose();
 
     super.dispose();
   }
 
-  List<SupplierModel>
-      get _filteredSuppliers {
+  List<SupplierModel> get _filteredSuppliers {
     if (_query.isEmpty) {
       return widget.suppliers;
     }
 
-    return widget.suppliers
-        .where(
-      (
-        SupplierModel supplier,
-      ) {
-        return supplier.name
-                .toLowerCase()
-                .contains(_query) ||
-            supplier.contactPerson
-                .toLowerCase()
-                .contains(_query) ||
-            supplier.mobile
-                .toLowerCase()
-                .contains(_query) ||
-            supplier.email
-                .toLowerCase()
-                .contains(_query) ||
-            supplier.address
-                .toLowerCase()
-                .contains(_query) ||
-            supplier.gstNumber
-                .toLowerCase()
-                .contains(_query);
-      },
-    ).toList();
+    return widget.suppliers.where((SupplierModel supplier) {
+      return supplier.name.toLowerCase().contains(_query) ||
+          supplier.contactPerson.toLowerCase().contains(_query) ||
+          supplier.mobile.toLowerCase().contains(_query) ||
+          supplier.email.toLowerCase().contains(_query) ||
+          supplier.address.toLowerCase().contains(_query) ||
+          supplier.gstNumber.toLowerCase().contains(_query);
+    }).toList();
   }
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final List<SupplierModel>
-        suppliers =
-        _filteredSuppliers;
+  Widget build(BuildContext context) {
+    final List<SupplierModel> suppliers = _filteredSuppliers;
 
     return SafeArea(
       child: SizedBox(
-        height:
-            MediaQuery.sizeOf(
-                  context,
-                ).height *
-                0.78,
+        height: MediaQuery.sizeOf(context).height * 0.78,
         child: Padding(
-          padding:
-              const EdgeInsets.fromLTRB(
-            16,
-            4,
-            16,
-            16,
-          ),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
           child: Column(
             children: <Widget>[
               Text(
                 'Select Supplier',
-                style: Theme.of(
-                  context,
-                )
-                    .textTheme
-                    .titleLarge
-                    ?.copyWith(
-                  fontWeight:
-                      FontWeight.w800,
-                ),
+                style: Theme.of(context).textTheme.titleLarge
+                    ?.copyWith(fontWeight: FontWeight.w800),
               ),
-              const SizedBox(
-                height: 14,
-              ),
+              const SizedBox(height: 14),
               TextField(
-                controller:
-                    _searchController,
+                controller: _searchController,
                 autofocus: true,
-                decoration:
-                    InputDecoration(
-                  hintText:
-                      'Search supplier...',
-                  prefixIcon:
-                      const Icon(
-                    Icons
-                        .search_rounded,
-                  ),
-                  suffixIcon:
-                      _query.isEmpty
-                          ? null
-                          : IconButton(
-                              onPressed:
-                                  () {
-                                _searchController
-                                    .clear();
-                              },
-                              icon:
-                                  const Icon(
-                                Icons
-                                    .clear_rounded,
-                              ),
-                            ),
+                decoration: InputDecoration(
+                  hintText: 'Search supplier...',
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  suffixIcon: _query.isEmpty
+                      ? null
+                      : IconButton(
+                          onPressed: () {
+                            _searchController.clear();
+                          },
+                          icon: const Icon(Icons.clear_rounded),
+                        ),
                 ),
               ),
-              const SizedBox(
-                height: 12,
-              ),
+              const SizedBox(height: 12),
               Expanded(
                 child: suppliers.isEmpty
-                    ? const Center(
-                        child: Text(
-                          'No suppliers found.',
-                        ),
-                      )
+                    ? const Center(child: Text('No suppliers found.'))
                     : ListView.separated(
-                        itemCount:
-                            suppliers.length,
-                        separatorBuilder:
-                            (
-                          BuildContext
-                              context,
-                          int index,
-                        ) {
-                          return const Divider(
-                            height: 1,
-                          );
+                        itemCount: suppliers.length,
+                        separatorBuilder: (BuildContext context, int index) {
+                          return const Divider(height: 1);
                         },
-                        itemBuilder:
-                            (
-                          BuildContext
-                              context,
-                          int index,
-                        ) {
-                          final SupplierModel
-                              supplier =
-                              suppliers[
-                                  index];
+                        itemBuilder: (BuildContext context, int index) {
+                          final SupplierModel supplier = suppliers[index];
 
-                          final bool
-                              selected =
-                              widget
-                                      .selectedSupplier
-                                      ?.id ==
-                                  supplier.id;
+                          final bool selected =
+                              widget.selectedSupplier?.id == supplier.id;
 
                           return ListTile(
-                            contentPadding:
-                                const EdgeInsets
-                                    .symmetric(
+                            contentPadding: const EdgeInsets.symmetric(
                               vertical: 5,
                             ),
-                            leading:
-                                CircleAvatar(
-                              backgroundColor:
-                                  AppColors
-                                      .primary
-                                      .withValues(
+                            leading: CircleAvatar(
+                              backgroundColor: AppColors.primary.withValues(
                                 alpha: 0.10,
                               ),
-                              child:
-                                  const Icon(
-                                Icons
-                                    .business_rounded,
-                                color:
-                                    AppColors
-                                        .primary,
+                              child: const Icon(
+                                Icons.business_rounded,
+                                color: AppColors.primary,
                               ),
                             ),
-                            title:
-                                Text(
+                            title: Text(
                               supplier.name,
-                              style:
-                                  const TextStyle(
-                                fontWeight:
-                                    FontWeight.w700,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
                               ),
                             ),
-                            subtitle:
-                                _buildSubtitle(
-                              supplier,
-                            ),
-                            trailing:
-                                selected
-                                    ? const Icon(
-                                        Icons
-                                            .check_circle_rounded,
-                                        color:
-                                            AppColors
-                                                .success,
-                                      )
-                                    : null,
+                            subtitle: _buildSubtitle(supplier),
+                            trailing: selected
+                                ? const Icon(
+                                    Icons.check_circle_rounded,
+                                    color: AppColors.success,
+                                  )
+                                : null,
                             onTap: () {
-                              Navigator.pop(
-                                context,
-                                supplier,
-                              );
+                              Navigator.pop(context, supplier);
                             },
                           );
                         },
@@ -2101,35 +1540,22 @@ class _SupplierPickerSheetState
     );
   }
 
-  Widget? _buildSubtitle(
-    SupplierModel supplier,
-  ) {
-    final String mobile =
-        supplier.mobile.trim();
+  Widget? _buildSubtitle(SupplierModel supplier) {
+    final String mobile = supplier.mobile.trim();
 
-    final String contact =
-        supplier.contactPerson.trim();
+    final String contact = supplier.contactPerson.trim();
 
-    if (mobile.isEmpty &&
-        contact.isEmpty) {
+    if (mobile.isEmpty && contact.isEmpty) {
       return null;
     }
 
-    if (mobile.isNotEmpty &&
-        contact.isNotEmpty) {
-      return Text(
-        '$contact • $mobile',
-        overflow:
-            TextOverflow.ellipsis,
-      );
+    if (mobile.isNotEmpty && contact.isNotEmpty) {
+      return Text('$contact • $mobile', overflow: TextOverflow.ellipsis);
     }
 
     return Text(
-      mobile.isNotEmpty
-          ? mobile
-          : contact,
-      overflow:
-          TextOverflow.ellipsis,
+      mobile.isNotEmpty ? mobile : contact,
+      overflow: TextOverflow.ellipsis,
     );
   }
 }

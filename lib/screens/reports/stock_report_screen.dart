@@ -6,12 +6,14 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:public_file_saver/public_file_saver.dart';
 
+import '../../core/services/business_pdf_branding.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/app_date_picker.dart';
 import '../../models/business_model.dart';
 import '../../models/product_model.dart';
 import '../../repositories/business_repository.dart';
 import '../../repositories/product_repository.dart';
+import '../../core/widgets/app_responsive_page.dart';
 
 class StockReportScreen extends StatefulWidget {
   const StockReportScreen({super.key});
@@ -274,7 +276,7 @@ class _StockReportScreenState extends State<StockReportScreen> {
           ),
         ],
       ),
-      body: _loading
+      body: AppResponsivePage(child: _loading
           ? const Center(child: CircularProgressIndicator())
           : _errorMessage != null
           ? _buildErrorState(theme)
@@ -321,7 +323,7 @@ class _StockReportScreenState extends State<StockReportScreen> {
                   );
                 },
               ),
-            ),
+            )),
     );
   }
 
@@ -383,6 +385,8 @@ class _StockReportScreenState extends State<StockReportScreen> {
       final pw.Document document = pw.Document();
       final List<ProductModel> products = _filteredProducts;
 
+      final pw.MemoryImage? logo = await BusinessPdfBranding.loadLogo(_business!);
+
       document.addPage(
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
@@ -395,6 +399,19 @@ class _StockReportScreenState extends State<StockReportScreen> {
             ),
           ),
           build: (context) => [
+            pw.Container(
+              width: 52,
+              height: 52,
+              padding: const pw.EdgeInsets.all(4),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.grey300),
+                borderRadius: pw.BorderRadius.circular(8),
+              ),
+              child: logo == null
+                  ? pw.Center(child: pw.Text('LOGO', style: const pw.TextStyle(fontSize: 7)))
+                  : pw.Image(logo, fit: pw.BoxFit.contain),
+            ),
+            pw.SizedBox(height: 8),
             pw.Text(
               _business!.businessName,
               style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),

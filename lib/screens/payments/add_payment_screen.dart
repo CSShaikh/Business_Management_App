@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import '../../core/widgets/app_date_picker.dart';
 
 import '../../core/theme/app_colors.dart';
@@ -22,6 +23,7 @@ import '../../repositories/supplier_repository.dart';
 import '../../services/ledger/ledger_service.dart';
 import '../../services/ledger/supplier_ledger_service.dart';
 import '../../services/payment/payment_ledger_service.dart';
+import '../../core/widgets/app_responsive_page.dart';
 
 class AddPaymentScreen extends StatefulWidget {
   final PaymentModel? payment;
@@ -451,8 +453,9 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
 
     final DateTime? selected = await AppDatePicker.showDatePicker(
       context: context,
-      
-      initialEntryMode: DatePickerEntryMode.calendar,initialDate: _paymentDate,
+
+      initialEntryMode: DatePickerEntryMode.calendar,
+      initialDate: _paymentDate,
       firstDate: DateTime(2000),
       lastDate: DateTime(now.year + 2, 12, 31),
     );
@@ -586,7 +589,8 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
           // balanceBefore here can incorrectly reject an otherwise valid
           // full settlement. Prefer the displayed source balance and fall
           // back to the ledger only when the screen could not calculate it.
-          final double balanceBefore = _selectedPartyBalance ??
+          final double balanceBefore =
+              _selectedPartyBalance ??
               await _ledgerService.getCustomerBalance(
                 businessId: businessId,
                 customerId: customer.id.trim(),
@@ -598,10 +602,9 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
             );
           }
 
-          final double balanceAfter =
-              (balanceBefore - amount).abs() <= 0.01
-                  ? 0
-                  : balanceBefore - amount;
+          final double balanceAfter = (balanceBefore - amount).abs() <= 0.01
+              ? 0
+              : balanceBefore - amount;
 
           createdNewLedger = await _ledgerService.createTransaction(
             businessId: businessId,
@@ -1287,39 +1290,62 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
               ],
             ),
             const SizedBox(height: 18),
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: _summaryItem(
-                    label: 'Amount',
-                    value: _formatAmount(amount),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _summaryItem(label: 'Method', value: _paymentMethod),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: _summaryItem(
-                    label: _isSupplierPayment ? 'Supplier' : 'Customer',
-                    value: _isSupplierPayment
-                        ? (_selectedSupplier?.name.trim() ?? '')
-                        : (_selectedCustomer?.name.trim() ?? ''),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _summaryItem(
-                    label: 'Date',
-                    value: _dateFormat.format(_paymentDate),
-                  ),
-                ),
-              ],
+            LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints constraints) {
+                final bool compact = constraints.maxWidth < 520;
+                final Widget amountItem = _summaryItem(
+                  label: 'Amount',
+                  value: _formatAmount(amount),
+                );
+                final Widget methodItem = _summaryItem(
+                  label: 'Method',
+                  value: _paymentMethod,
+                );
+                final Widget partyItem = _summaryItem(
+                  label: _isSupplierPayment ? 'Supplier' : 'Customer',
+                  value: _isSupplierPayment
+                      ? (_selectedSupplier?.name.trim() ?? '')
+                      : (_selectedCustomer?.name.trim() ?? ''),
+                );
+                final Widget dateItem = _summaryItem(
+                  label: 'Date',
+                  value: _dateFormat.format(_paymentDate),
+                );
+
+                if (compact) {
+                  return Column(
+                    children: <Widget>[
+                      amountItem,
+                      const SizedBox(height: 10),
+                      methodItem,
+                      const SizedBox(height: 10),
+                      partyItem,
+                      const SizedBox(height: 10),
+                      dateItem,
+                    ],
+                  );
+                }
+
+                return Column(
+                  children: <Widget>[
+                    Row(
+                      children: <Widget>[
+                        Expanded(child: amountItem),
+                        const SizedBox(width: 12),
+                        Expanded(child: methodItem),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: <Widget>[
+                        Expanded(child: partyItem),
+                        const SizedBox(width: 12),
+                        Expanded(child: dateItem),
+                      ],
+                    ),
+                  ],
+                );
+              },
             ),
           ],
         ),
@@ -1598,7 +1624,7 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
       appBar: AppBar(
         title: Text(widget.isEditMode ? 'Edit Payment' : 'Add Payment'),
       ),
-      body: SafeArea(
+      body: AppResponsivePage(child: SafeArea(
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : _errorMessage != null && _business == null
@@ -1629,7 +1655,7 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
                   },
                 ),
               ),
-      ),
+      )),
     );
   }
 }
