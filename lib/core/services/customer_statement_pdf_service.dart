@@ -37,8 +37,9 @@ class CustomerStatementPdfService {
         .toSet();
 
     for (final SaleModel sale in customerSales) {
-      if (sale.id.trim().isEmpty || saleReferences.contains(sale.id.trim()))
+      if (sale.id.trim().isEmpty || saleReferences.contains(sale.id.trim())) {
         continue;
+      }
       sortedTransactions.add(
         LedgerTransactionModel(
           id: 'pdf_sale_${sale.id}',
@@ -586,8 +587,9 @@ class CustomerStatementPdfService {
       }
     }
     if (transaction.notes.trim().isNotEmpty) return transaction.notes.trim();
-    if (transaction.referenceId.trim().isNotEmpty)
+    if (transaction.referenceId.trim().isNotEmpty) {
       return 'Ref: ${transaction.referenceId.trim()}';
+    }
     return _transactionLabel(transaction.transactionType.trim().toUpperCase());
   }
 
