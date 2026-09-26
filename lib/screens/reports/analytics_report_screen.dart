@@ -1113,7 +1113,7 @@ class _AnalyticsReportScreenState extends State<AnalyticsReportScreen> {
         crossAxisCount: isDesktop ? 3 : 2,
         crossAxisSpacing: 12,
         mainAxisSpacing: 12,
-        mainAxisExtent: isDesktop ? 180 : 156,
+        mainAxisExtent: isDesktop ? 116 : 112,
       ),
       itemBuilder: (context, index) {
         final item = items[index];

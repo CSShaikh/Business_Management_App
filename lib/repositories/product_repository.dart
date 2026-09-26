@@ -303,6 +303,78 @@ class ProductRepository extends BaseRepository {
     return null;
   }
 
+  /// Assigns a supplier to a legacy/direct product that currently has no
+  /// supplier. This lets the first purchase reuse the existing product
+  /// instead of creating a duplicate product document.
+  Future<ProductModel> assignSupplierToProduct({
+    required String businessId,
+    required String productId,
+    required String supplierId,
+    required String supplierName,
+  }) async {
+    final String normalizedBusinessId = businessId.trim();
+    final String normalizedProductId = productId.trim();
+    final String normalizedSupplierId = supplierId.trim();
+    final String normalizedSupplierName = supplierName.trim();
+
+    if (normalizedBusinessId.isEmpty) {
+      throw ArgumentError('Business ID cannot be empty.');
+    }
+    if (normalizedProductId.isEmpty) {
+      throw ArgumentError('Product ID cannot be empty.');
+    }
+    if (normalizedSupplierId.isEmpty) {
+      throw ArgumentError('Supplier ID cannot be empty.');
+    }
+
+    final DocumentReference<Map<String, dynamic>> document = _products(
+      normalizedBusinessId,
+    ).doc(normalizedProductId);
+
+    final DocumentSnapshot<Map<String, dynamic>> snapshot =
+        await document.get();
+
+    if (!snapshot.exists || snapshot.data() == null) {
+      throw StateError('Product not found.');
+    }
+
+    final ProductModel existingProduct = _fromMap(
+      snapshot.data()!,
+      snapshot.id,
+      normalizedBusinessId,
+    );
+
+    // Never overwrite an already supplier-specific product with another
+    // supplier. Such a purchase must use/create a separate variant.
+    if (existingProduct.supplierId.trim().isNotEmpty &&
+        existingProduct.supplierId.trim() != normalizedSupplierId) {
+      throw StateError('Product is already assigned to another supplier.');
+    }
+
+    await document.update({
+      'supplierId': normalizedSupplierId,
+      'supplierName': normalizedSupplierName,
+      'updatedAt': Timestamp.fromDate(DateTime.now()),
+    });
+
+    return ProductModel(
+      id: existingProduct.id,
+      businessId: existingProduct.businessId,
+      name: existingProduct.name,
+      category: existingProduct.category,
+      unit: existingProduct.unit,
+      purchasePrice: existingProduct.purchasePrice,
+      sellingPrice: existingProduct.sellingPrice,
+      currentStock: existingProduct.currentStock,
+      minimumStock: existingProduct.minimumStock,
+      isActive: existingProduct.isActive,
+      supplierId: normalizedSupplierId,
+      supplierName: normalizedSupplierName,
+      createdAt: existingProduct.createdAt,
+      updatedAt: DateTime.now(),
+    );
+  }
+
   Future<ProductModel> createSupplierVariant({
     required ProductModel baseProduct,
     required String supplierId,

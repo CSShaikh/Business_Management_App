@@ -170,6 +170,24 @@ class BusinessRepository extends BaseRepository {
   }
 
   // ---------------------------------------------------------------------------
+  // UPDATE BUSINESS LOGO
+  // ---------------------------------------------------------------------------
+
+  Future<void> updateBusinessLogo({
+    required String businessId,
+    required String logoData,
+  }) async {
+    if (businessId.trim().isEmpty) {
+      return;
+    }
+
+    await _businesses.doc(businessId.trim()).update({
+      'logoUrl': logoData,
+      'updatedAt': Timestamp.now(),
+    });
+  }
+
+  // ---------------------------------------------------------------------------
   // DELETE BUSINESS
   // ---------------------------------------------------------------------------
 

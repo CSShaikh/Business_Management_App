@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import '../../core/widgets/app_metric_card.dart';
 import '../../core/widgets/app_date_picker.dart';
 
 import 'package:flutter/material.dart';
@@ -946,7 +947,7 @@ class _ExpenseReportScreenState extends State<ExpenseReportScreen> {
         crossAxisCount: isDesktop ? 4 : 2,
         crossAxisSpacing: 14,
         mainAxisSpacing: 14,
-        mainAxisExtent: isDesktop ? 180 : 156,
+        mainAxisExtent: isDesktop ? 116 : 112,
       ),
       itemBuilder: (context, index) {
         return _SummaryCard(item: items[index]);
@@ -1434,75 +1435,15 @@ class _SummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-
-    return Container(
-      padding: const EdgeInsets.all(17),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(17),
-        border: Border.all(color: item.color.withValues(alpha: 0.20)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: item.color.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(item.icon, color: item.color, size: 21),
-              ),
-              const Spacer(),
-              Icon(
-                Icons.arrow_outward_rounded,
-                color: item.color.withValues(alpha: 0.65),
-                size: 18,
-              ),
-            ],
-          ),
-          const Spacer(),
-          Text(
-            item.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            item.value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            item.subtitle,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: item.color,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
+    return AppMetricCard(
+      title: item.title,
+      value: item.value,
+      subtitle: item.subtitle,
+      icon: item.icon,
+      color: item.color,
     );
   }
 }
-
-// =============================================================================
-// SECTION HEADER
-// =============================================================================
 
 class _SectionHeader extends StatelessWidget {
   final IconData icon;

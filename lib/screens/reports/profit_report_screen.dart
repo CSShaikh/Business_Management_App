@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import '../../core/widgets/app_metric_card.dart';
 import '../../core/widgets/app_date_picker.dart';
 
 import 'package:flutter/material.dart';
@@ -1110,7 +1111,7 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
           crossAxisCount: 3,
           crossAxisSpacing: 14,
           mainAxisSpacing: 14,
-          mainAxisExtent: 180,
+          mainAxisExtent: 116,
         ),
         itemBuilder: (context, index) {
           return _SummaryCard(item: items[index]);
@@ -1120,7 +1121,7 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final int columns = constraints.maxWidth >= 650 ? 2 : 1;
+        final int columns = constraints.maxWidth < 360 ? 1 : 2;
 
         // final double ratio =
         //     columns == 2 ? 2.0 : 2.5;
@@ -1133,7 +1134,7 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
             crossAxisCount: columns,
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
-            mainAxisExtent: columns >= 3 ? 180 : 156,
+            mainAxisExtent: 112,
           ),
           itemBuilder: (context, index) {
             return _SummaryCard(item: items[index]);
@@ -1669,72 +1670,15 @@ class _SummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: item.color.withValues(alpha: 0.18)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: item.color.withValues(alpha: 0.11),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(item.icon, color: item.color, size: 23),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  item.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  item.value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  item.subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontSize: 10,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    return AppMetricCard(
+      title: item.title,
+      value: item.value,
+      subtitle: item.subtitle,
+      icon: item.icon,
+      color: item.color,
     );
   }
 }
-
-// ============================================================================
-// MONTHLY TILE
-// ============================================================================
 
 class _MonthlyProfitTile extends StatelessWidget {
   final _MonthlyProfitData data;

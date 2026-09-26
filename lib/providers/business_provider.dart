@@ -19,6 +19,8 @@ class BusinessProvider extends ChangeNotifier {
 
   String? _errorMessage;
 
+  Future<BusinessModel?>? _loadBusinessFuture;
+
   StreamSubscription<BusinessModel?>?
       _businessSubscription;
 
@@ -68,18 +70,29 @@ class BusinessProvider extends ChangeNotifier {
   // LOAD CURRENT USER BUSINESS
   // ============================================================
 
-  Future<BusinessModel?> loadBusiness() async {
-    if (_isLoading) {
-      return _business;
+  Future<BusinessModel?> loadBusiness() {
+    final Future<BusinessModel?>? activeLoad = _loadBusinessFuture;
+    if (activeLoad != null) {
+      return activeLoad;
     }
 
+    final Future<BusinessModel?> future = _loadBusinessInternal();
+    _loadBusinessFuture = future;
+
+    return future.whenComplete(() {
+      if (identical(_loadBusinessFuture, future)) {
+        _loadBusinessFuture = null;
+      }
+    });
+  }
+
+  Future<BusinessModel?> _loadBusinessInternal() async {
     _setLoading(true);
     _clearError();
 
     try {
       final BusinessModel? business =
-          await _repository
-              .getBusinessForCurrentUser();
+          await _repository.getBusinessForCurrentUser();
 
       _business = business;
 

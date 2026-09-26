@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../../core/navigation/app_navigation_controller.dart';
+import 'package:flutter/services.dart';
+
+import '../../core/utils/validators.dart';
+
 import '../../core/theme/app_colors.dart';
 import '../../models/customer_model.dart';
 import '../../repositories/customer_repository.dart';
@@ -117,6 +122,9 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
         return;
       }
 
+      if (!widget.isEditMode) {
+        AppNavigationController.requestHome();
+      }
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) {
@@ -376,22 +384,12 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
           hint: 'Enter mobile number',
           icon: Icons.phone_outlined,
           keyboardType: TextInputType.phone,
-          maxLength: 15,
-          validator: (value) {
-            final mobile = value?.trim() ?? '';
-
-            if (mobile.isEmpty) {
-              return null;
-            }
-
-            final digits = mobile.replaceAll(RegExp(r'\D'), '');
-
-            if (digits.length < 10 || digits.length > 15) {
-              return 'Enter a valid mobile number';
-            }
-
-            return null;
-          },
+          inputFormatters: AppValidators.mobileInputFormatters,
+          maxLength: 10,
+          validator: (value) => AppValidators.optionalMobile(
+            value,
+            fieldName: 'Mobile number',
+          ),
         ),
         _buildTextField(
           controller: _emailController,
@@ -543,6 +541,7 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
     required IconData icon,
     bool required = false,
     TextInputType? keyboardType,
+    List<TextInputFormatter>? inputFormatters,
     TextCapitalization textCapitalization = TextCapitalization.none,
     int maxLines = 1,
     int? maxLength,
@@ -551,6 +550,7 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
+      inputFormatters: inputFormatters,
       textCapitalization: textCapitalization,
       maxLines: maxLines,
       maxLength: maxLength,

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../models/business_model.dart';
+import '../../models/supplier_model.dart';
 import '../../repositories/business_repository.dart';
 import '../customers/add_customer_screen.dart';
 import '../customers/customer_screen.dart';
@@ -16,6 +17,7 @@ import '../profile/profile_screen.dart';
 import '../purchases/add_purchase_screen.dart';
 import '../purchases/purchases_screen.dart';
 import '../reports/reports_screen.dart';
+import '../suppliers/add_supplier_screen.dart';
 import '../suppliers/suppliers_screen.dart';
 import '../sales/add_sale_screen.dart';
 import '../sales/sales_screen.dart';
@@ -259,12 +261,22 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   ),
                   _AddOptionTile(
                     icon: Icons.person_add_alt_1_rounded,
-                    title: 'Add Hotel / Customer',
+                    title: 'Add Customer',
                     subtitle: 'Create a customer profile',
                     color: AppColors.secondary,
                     onTap: () {
                       Navigator.pop(bottomSheetContext);
                       _openAddCustomer();
+                    },
+                  ),
+                  _AddOptionTile(
+                    icon: Icons.local_shipping_rounded,
+                    title: 'Add Supplier',
+                    subtitle: 'Create a new supplier profile',
+                    color: AppColors.secondary,
+                    onTap: () {
+                      Navigator.pop(bottomSheetContext);
+                      _openAddSupplier();
                     },
                   ),
                   _AddOptionTile(
@@ -508,6 +520,46 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   }
 
   // ============================================================
+  // ADD SUPPLIER
+  // ============================================================
+
+  Future<void> _openAddSupplier() async {
+    if (!mounted) {
+      return;
+    }
+
+    final BusinessModel? business = await _getCurrentBusiness();
+
+    if (!mounted || business == null) {
+      return;
+    }
+
+    final String businessId = business.id.trim();
+
+    if (businessId.isEmpty) {
+      _showMessage('Business ID is missing.', isError: true);
+      return;
+    }
+
+    final SupplierModel? supplier = await _pushOnSection<SupplierModel>(
+      _suppliersIndex,
+      AddSupplierScreen(businessId: businessId),
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    // AddSupplierScreen returns SupplierModel after a successful save.
+    // The Suppliers screen remains the source of truth for the list.
+    if (supplier != null) {
+      _openSuppliers();
+    } else {
+      _openSuppliers();
+    }
+  }
+
+  // ============================================================
   // ADD PRODUCT
   // ============================================================
 
@@ -592,14 +644,16 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         ? _currentIndex
         : _homeIndex;
 
-    final NavigatorState? activeNavigator = _navigatorKeys[safeIndex].currentState;
+    final NavigatorState? activeNavigator =
+        _navigatorKeys[safeIndex].currentState;
     final bool childCanPop = activeNavigator?.canPop() ?? false;
 
     return PopScope(
       canPop: safeIndex == _homeIndex && !childCanPop,
       onPopInvokedWithResult: (bool didPop, Object? result) {
         if (didPop || !mounted) return;
-        final NavigatorState? navigator = _navigatorKeys[safeIndex].currentState;
+        final NavigatorState? navigator =
+            _navigatorKeys[safeIndex].currentState;
         if (navigator != null && navigator.canPop()) {
           navigator.pop();
         } else if (safeIndex != _homeIndex) {
@@ -616,6 +670,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     final int bottomIndex = _mobileBottomIndexForScreen(selectedIndex);
 
     return Scaffold(
+      extendBody: false,
       resizeToAvoidBottomInset: true,
       body: _buildIndexedContent(selectedIndex),
       floatingActionButton: FloatingActionButton(
@@ -625,44 +680,114 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         child: const Icon(Icons.add_rounded),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: bottomIndex,
-        onDestinationSelected: (int index) {
-          if (index == 4) {
-            _showMoreNavigation();
-            return;
-          }
+      bottomNavigationBar: _buildBottomBar(bottomIndex),
+    );
+  }
 
-          final int screenIndex = _mobileScreenIndexForBottomIndex(index);
-          _onNavigationItemTapped(screenIndex);
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home_rounded),
-            label: 'Home',
+  Widget _buildBottomBar(int selectedIndex) {
+    const List<({IconData icon, IconData selectedIcon, String label})> items = [
+      (
+        icon: Icons.home_outlined,
+        selectedIcon: Icons.home_rounded,
+        label: 'Home',
+      ),
+      (
+        icon: Icons.inventory_2_outlined,
+        selectedIcon: Icons.inventory_2_rounded,
+        label: 'Products',
+      ),
+      (
+        icon: Icons.point_of_sale_outlined,
+        selectedIcon: Icons.point_of_sale_rounded,
+        label: 'Sales',
+      ),
+      (
+        icon: Icons.shopping_cart_outlined,
+        selectedIcon: Icons.shopping_cart_rounded,
+        label: 'Purchases',
+      ),
+      (
+        icon: Icons.more_horiz_rounded,
+        selectedIcon: Icons.more_horiz_rounded,
+        label: 'More',
+      ),
+    ];
+
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+
+    return SafeArea(
+      top: false,
+      bottom: true,
+      maintainBottomViewPadding: true,
+      child: Container(
+        height: 72,
+        decoration: BoxDecoration(
+          // Intentionally opaque: the bottom navigation must NOT be transparent.
+          color: scheme.surface,
+          border: Border(
+            top: BorderSide(
+              color: scheme.outlineVariant.withValues(alpha: 0.35),
+              width: 1,
+            ),
           ),
-          NavigationDestination(
-            icon: Icon(Icons.inventory_2_outlined),
-            selectedIcon: Icon(Icons.inventory_2_rounded),
-            label: 'Products',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.point_of_sale_outlined),
-            selectedIcon: Icon(Icons.point_of_sale_rounded),
-            label: 'Sales',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.shopping_cart_outlined),
-            selectedIcon: Icon(Icons.shopping_cart_rounded),
-            label: 'Purchases',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.more_horiz_rounded),
-            selectedIcon: Icon(Icons.more_horiz_rounded),
-            label: 'More',
-          ),
-        ],
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.06),
+              blurRadius: 10,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            for (int i = 0; i < items.length; i++)
+              Expanded(
+                child: InkWell(
+                  onTap: () {
+                    if (i == 4) {
+                      _showMoreNavigation();
+                    } else {
+                      _onNavigationItemTapped(
+                        _mobileScreenIndexForBottomIndex(i),
+                      );
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(16),
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          i == selectedIndex
+                              ? items[i].selectedIcon
+                              : items[i].icon,
+                          size: 25,
+                          color: i == selectedIndex
+                              ? scheme.primary
+                              : scheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          items[i].label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.labelMedium
+                              ?.copyWith(
+                                fontWeight: i == selectedIndex
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                                color: i == selectedIndex
+                                    ? scheme.primary
+                                    : scheme.onSurfaceVariant,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

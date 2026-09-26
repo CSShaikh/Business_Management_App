@@ -20,7 +20,8 @@ class AppResponsivePage extends StatelessWidget {
         final bool compact = constraints.maxWidth < 600;
         final bool tablet = constraints.maxWidth >= 600 && constraints.maxWidth < 1000;
         final double horizontal = compact ? 12 : (tablet ? 18 : 24);
-        final double vertical = compact ? 12 : 18;
+        final double vertical = compact ? 10 : 18;
+        final double bottomInset = MediaQuery.viewInsetsOf(context).bottom;
 
         return ColoredBox(
           color: Theme.of(context).scaffoldBackgroundColor,
@@ -32,9 +33,11 @@ class AppResponsivePage extends StatelessWidget {
               child: ConstrainedBox(
                 constraints: BoxConstraints(maxWidth: maxWidth),
                 child: Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: horizontal,
-                    vertical: vertical,
+                  padding: EdgeInsets.fromLTRB(
+                    horizontal,
+                    vertical,
+                    horizontal,
+                    vertical + (bottomInset > 0 ? 8 : 0),
                   ),
                   child: child,
                 ),

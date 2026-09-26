@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -118,8 +119,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
           localLogo = await LocalLogoStorage.read(
             businessId: business.id.trim(),
           );
+          if ((localLogo == null || localLogo.isEmpty) &&
+              refreshedUser.uid.trim().isNotEmpty) {
+            localLogo = await LocalLogoStorage.read(
+              businessId: refreshedUser.uid.trim(),
+            );
+          }
         } catch (_) {
           localLogo = null;
+        }
+
+        if ((localLogo == null || localLogo.isEmpty) &&
+            business.logoUrl.trim().startsWith('data:image/')) {
+          try {
+            final String value = business.logoUrl.trim();
+            final int comma = value.indexOf(',');
+            if (comma > 0) {
+              localLogo = base64Decode(value.substring(comma + 1));
+            }
+          } catch (_) {}
         }
       }
 
@@ -260,6 +278,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // ===========================================================================
   // LOGOUT
   // ===========================================================================
+  // ===========================================================================
+  // LOGOUT
+  // ===========================================================================
 
   Future<void> _logout() async {
     if (_isLoggingOut) {
@@ -299,11 +320,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       },
     );
 
-    if (confirmed != true) {
-      return;
-    }
-
-    if (!mounted) {
+    if (confirmed != true || !mounted) {
       return;
     }
 
@@ -312,15 +329,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
 
     try {
+      // Firebase session completely sign out
       await _authRepository.logout();
 
       if (!mounted) {
         return;
       }
 
-      Navigator.of(context).pushAndRemoveUntil(
+      // IMPORTANT:
+      // ProfileScreen is inside MainNavigationScreen's nested navigator.
+      // rootNavigator removes MainNavigationScreen as well, so the
+      // bottom navigation cannot remain visible after logout.
+      Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
         MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
-        (route) => false,
+        (Route<dynamic> route) => false,
       );
     } on FirebaseAuthException catch (e) {
       if (!mounted) {
@@ -344,7 +366,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _showMessage('Logout failed. Please try again.');
     }
   }
-
   // ===========================================================================
   // MESSAGE
   // ===========================================================================
@@ -952,6 +973,8 @@ class _BusinessProfileSheet extends StatefulWidget {
 class _BusinessProfileSheetState extends State<_BusinessProfileSheet> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
 
+  final BusinessRepository _businessRepository = BusinessRepository();
+
   late final TextEditingController _businessNameController;
 
   late final TextEditingController _mobileController;
@@ -1020,9 +1043,13 @@ class _BusinessProfileSheetState extends State<_BusinessProfileSheet> {
     }
 
     try {
-      final Uint8List? bytes = await LocalLogoStorage.read(
-        businessId: businessId,
-      );
+      Uint8List? bytes = await LocalLogoStorage.read(businessId: businessId);
+      if ((bytes == null || bytes.isEmpty) &&
+          widget.business.ownerId.trim().isNotEmpty) {
+        bytes = await LocalLogoStorage.read(
+          businessId: widget.business.ownerId.trim(),
+        );
+      }
 
       if (!mounted || bytes == null || bytes.isEmpty) {
         return;
@@ -1157,11 +1184,33 @@ class _BusinessProfileSheetState extends State<_BusinessProfileSheet> {
       if (_logoChanged && businessId.isNotEmpty) {
         if (_logoRemoved || _logoBytes == null || _logoBytes!.isEmpty) {
           await LocalLogoStorage.delete(businessId: businessId);
+          await _businessRepository.updateBusinessLogo(
+            businessId: businessId,
+            logoData: '',
+          );
+          if (widget.business.ownerId.trim().isNotEmpty) {
+            await LocalLogoStorage.delete(
+              businessId: widget.business.ownerId.trim(),
+            );
+          }
         } else {
           await LocalLogoStorage.save(
             businessId: businessId,
             bytes: _logoBytes!,
           );
+          if (_logoBytes!.lengthInBytes <= 600000) {
+            await _businessRepository.updateBusinessLogo(
+              businessId: businessId,
+              logoData: 'data:image/png;base64,${base64Encode(_logoBytes!)}',
+            );
+          }
+          if (widget.business.ownerId.trim().isNotEmpty &&
+              widget.business.ownerId.trim() != businessId) {
+            await LocalLogoStorage.save(
+              businessId: widget.business.ownerId.trim(),
+              bytes: _logoBytes!,
+            );
+          }
         }
       }
 

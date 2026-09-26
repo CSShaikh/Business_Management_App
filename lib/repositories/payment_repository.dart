@@ -34,6 +34,22 @@ class PaymentRepository extends BaseRepository {
     final businessId =
         payment.businessId.trim();
 
+    final transactionReference = payment.transactionReference.trim();
+    if (transactionReference.isNotEmpty) {
+      final duplicateSnapshot = await _payments(businessId)
+          .where('transactionReference', isEqualTo: transactionReference)
+          .limit(2)
+          .get();
+      final bool duplicateExists = duplicateSnapshot.docs.any(
+        (doc) => doc.id != payment.id.trim(),
+      );
+      if (duplicateExists) {
+        throw StateError(
+          'Payment reference $transactionReference already exists.',
+        );
+      }
+    }
+
     final collectionRef =
         _payments(businessId);
 
@@ -298,6 +314,19 @@ class PaymentRepository extends BaseRepository {
 
     final normalizedBusinessId =
         payment.businessId.trim();
+
+    final transactionReference = payment.transactionReference.trim();
+    if (transactionReference.isNotEmpty) {
+      final duplicateSnapshot = await _payments(normalizedBusinessId)
+          .where('transactionReference', isEqualTo: transactionReference)
+          .limit(2)
+          .get();
+      if (duplicateSnapshot.docs.any((doc) => doc.id != normalizedPaymentId)) {
+        throw StateError(
+          'Payment reference $transactionReference already exists.',
+        );
+      }
+    }
 
     final existingDocument =
         await _payments(

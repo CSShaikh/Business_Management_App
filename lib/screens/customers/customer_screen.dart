@@ -160,32 +160,6 @@ class _CustomersScreenState extends State<CustomersScreen> {
   }
 
   // ============================================================
-  // ADD CUSTOMER
-  // ============================================================
-
-  Future<void> _openAddCustomer() async {
-    final BusinessModel? business = _business;
-
-    if (business == null || business.id.trim().isEmpty) {
-      _showMessage('Business information is not available.', isError: true);
-      return;
-    }
-
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => AddCustomerScreen(businessId: business.id),
-      ),
-    );
-
-    if (!mounted) {
-      return;
-    }
-
-    await _refresh();
-  }
-
-  // ============================================================
   // EDIT CUSTOMER
   // ============================================================
 
@@ -944,7 +918,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
     if (_loadingBusiness) {
       return Scaffold(
         backgroundColor: theme.scaffoldBackgroundColor,
-        appBar: AppBar(title: const Text('Customers & Hotels')),
+        appBar: AppBar(title: const Text('Customers')),
         body: AppResponsivePage(
           child: const Center(child: CircularProgressIndicator()),
         ),
@@ -954,7 +928,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
     if (_businessError != null && _business == null) {
       return Scaffold(
         backgroundColor: theme.scaffoldBackgroundColor,
-        appBar: AppBar(title: const Text('Customers & Hotels')),
+        appBar: AppBar(title: const Text('Customers')),
         body: AppResponsivePage(child: _buildBusinessError(theme)),
       );
     }
@@ -962,7 +936,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
     if (_business == null) {
       return Scaffold(
         backgroundColor: theme.scaffoldBackgroundColor,
-        appBar: AppBar(title: const Text('Customers & Hotels')),
+        appBar: AppBar(title: const Text('Customers')),
         body: AppResponsivePage(child: _buildNoBusinessState(theme)),
       );
     }
@@ -972,7 +946,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
         if (customerProvider.isLoading && customerProvider.customers.isEmpty) {
           return Scaffold(
             backgroundColor: theme.scaffoldBackgroundColor,
-            appBar: AppBar(title: const Text('Customers & Hotels')),
+            appBar: AppBar(title: const Text('Customers')),
             body: AppResponsivePage(
               child: const Center(child: CircularProgressIndicator()),
             ),
@@ -983,7 +957,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
             customerProvider.customers.isEmpty) {
           return Scaffold(
             backgroundColor: theme.scaffoldBackgroundColor,
-            appBar: AppBar(title: const Text('Customers & Hotels')),
+            appBar: AppBar(title: const Text('Customers')),
             body: AppResponsivePage(
               child: _buildCustomerError(theme, customerProvider.errorMessage!),
             ),
@@ -999,7 +973,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
         return Scaffold(
           backgroundColor: theme.scaffoldBackgroundColor,
           appBar: AppBar(
-            title: const Text('Customers & Hotels'),
+            title: const Text('Customers'),
             actions: [
               IconButton(
                 tooltip: 'Refresh',
@@ -1060,11 +1034,6 @@ class _CustomersScreenState extends State<CustomersScreen> {
               ),
             ),
           ),
-          floatingActionButton: FloatingActionButton.extended(
-            onPressed: _openAddCustomer,
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Add Customer'),
-          ),
         );
       },
     );
@@ -1085,7 +1054,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Customers & Hotels',
+                  'Customers',
                   style: theme.textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
@@ -1101,11 +1070,6 @@ class _CustomersScreenState extends State<CustomersScreen> {
             ),
           ),
           const SizedBox(width: 12),
-          FilledButton.icon(
-            onPressed: _openAddCustomer,
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Add'),
-          ),
         ],
       ),
     );
@@ -1165,7 +1129,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
       child: TextField(
         onChanged: _setSearchQuery,
         decoration: InputDecoration(
-          hintText: 'Search hotel, owner, mobile, email, address or GST...',
+          hintText: 'Search customer, owner, mobile, email, address or GST...',
           prefixIcon: const Icon(Icons.search_rounded),
           suffixIcon: _searchQuery.isEmpty
               ? null
@@ -1215,20 +1179,13 @@ class _CustomersScreenState extends State<CustomersScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              isSearchResult ? 'Try a different search term.' : 'Add your first hotel or customer to start managing sales and payments.',
+              isSearchResult ? 'Try a different search term.' : 'Add your first customer to start managing sales and payments.',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
-            if (!isSearchResult) ...[
-              const SizedBox(height: 20),
-              FilledButton.icon(
-                onPressed: _openAddCustomer,
-                icon: const Icon(Icons.add_rounded),
-                label: const Text('Add Customer'),
-              ),
-            ],
+            if (!isSearchResult) ...[const SizedBox(height: 20)],
           ],
         ),
       ),

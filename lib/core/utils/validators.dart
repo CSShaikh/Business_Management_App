@@ -1,3 +1,5 @@
+import 'package:flutter/services.dart';
+
 /// Common validators used across the application.
 ///
 /// Keep reusable form-validation logic here so that individual
@@ -51,6 +53,17 @@ class AppValidators {
   // MOBILE NUMBER
   // ============================================================
 
+  /// Input formatters used by every mobile-number field in the app.
+  ///
+  /// Business/customer/supplier mobile numbers are intentionally stored as
+  /// plain Indian 10-digit numbers. Country-code prefixes such as +91/91 are
+  /// not accepted in the form fields.
+  static List<TextInputFormatter> get mobileInputFormatters =>
+      <TextInputFormatter>[
+        FilteringTextInputFormatter.digitsOnly,
+        LengthLimitingTextInputFormatter(10),
+      ];
+
   static String? mobile(
     String? value, {
     String fieldName = 'Mobile number',
@@ -61,14 +74,8 @@ class AppValidators {
       return '$fieldName is required.';
     }
 
-    final String normalized =
-        text.replaceAll(RegExp(r'[\s\-()]'), '');
-
-    final RegExp mobileRegex =
-        RegExp(r'^(?:\+91|91)?[6-9]\d{9}$');
-
-    if (!mobileRegex.hasMatch(normalized)) {
-      return 'Enter a valid $fieldName.';
+    if (!RegExp(r'^[6-9]\d{9}$').hasMatch(text)) {
+      return '$fieldName must contain exactly 10 digits and start with 6, 7, 8 or 9.';
     }
 
     return null;

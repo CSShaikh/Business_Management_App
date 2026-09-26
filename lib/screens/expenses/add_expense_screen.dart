@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../core/navigation/app_navigation_controller.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/widgets/app_date_picker.dart';
@@ -374,6 +376,9 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
             : 'Expense saved successfully.',
       );
 
+      if (!widget.isEditMode) {
+        AppNavigationController.requestHome();
+      }
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) {

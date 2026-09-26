@@ -510,7 +510,8 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
         ProductModel resolvedProduct = item.product;
         final String supplierId = _selectedSupplier!.id.trim();
 
-        if (supplierId.isNotEmpty && item.product.supplierId.trim() != supplierId) {
+        if (supplierId.isNotEmpty &&
+            item.product.supplierId.trim() != supplierId) {
           final ProductModel? existingVariant =
               await _productRepository.findSupplierVariant(
             businessId: _business!.id,
@@ -518,13 +519,34 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
             supplierId: supplierId,
           );
 
-          resolvedProduct = existingVariant ??
-              await _productRepository.createSupplierVariant(
-                baseProduct: item.product,
-                supplierId: supplierId,
-                supplierName: _selectedSupplier!.name,
-                purchasePrice: item.purchaseRate,
-              );
+          if (existingVariant != null) {
+            // Same product + same supplier: keep using the existing
+            // supplier-specific product. Stock will be increased on this
+            // exact product ID by PurchaseStockService.
+            resolvedProduct = existingVariant;
+          } else if (item.product.supplierId.trim().isEmpty) {
+            // First supplier purchase for a product that was added directly
+            // from Add Product. Reuse that existing product document instead
+            // of creating a second listing.
+            resolvedProduct =
+                await _productRepository.assignSupplierToProduct(
+              businessId: _business!.id,
+              productId: item.product.id,
+              supplierId: supplierId,
+              supplierName: _selectedSupplier!.name,
+            );
+          } else {
+            // Same product + different supplier: create a separate supplier
+            // variant. Future purchases from this supplier will find and
+            // reuse this exact variant.
+            resolvedProduct =
+                await _productRepository.createSupplierVariant(
+              baseProduct: item.product,
+              supplierId: supplierId,
+              supplierName: _selectedSupplier!.name,
+              purchasePrice: item.purchaseRate,
+            );
+          }
         }
 
         purchaseItems.add(

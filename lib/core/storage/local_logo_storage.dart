@@ -27,6 +27,10 @@ class LocalLogoStorage {
     return platform.readLogo(businessId: businessId);
   }
 
+  static Future<Uint8List?> readAny() {
+    return platform.readAnyLogo();
+  }
+
   static Future<void> delete({required String businessId}) {
     return platform.deleteLogo(businessId: businessId);
   }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -306,8 +307,39 @@ class _DashboardHomeScreenState extends State<DashboardHomeScreen> {
       Uint8List? localLogo;
       try {
         localLogo = await LocalLogoStorage.read(businessId: businessId);
+
+        // Business ids can differ on older/duplicate records. The owner id
+        // is stable, so use it as a second lookup key.
+        if ((localLogo == null || localLogo.isEmpty) &&
+            business.ownerId.trim().isNotEmpty) {
+          localLogo = await LocalLogoStorage.read(
+            businessId: business.ownerId.trim(),
+          );
+        }
       } catch (_) {
         localLogo = null;
+      }
+
+      // Final fallback: logo saved in the business document. This makes the
+      // logo survive app reinstall/device changes when a local copy is gone.
+      if ((localLogo == null || localLogo.isEmpty) &&
+          business.logoUrl.trim().startsWith('data:image/')) {
+        try {
+          final String value = business.logoUrl.trim();
+          final int comma = value.indexOf(',');
+          if (comma > 0) {
+            final Uint8List decoded = base64Decode(value.substring(comma + 1));
+            if (decoded.isNotEmpty) {
+              localLogo = decoded;
+              try {
+                await LocalLogoStorage.save(
+                  businessId: businessId,
+                  bytes: decoded,
+                );
+              } catch (_) {}
+            }
+          }
+        } catch (_) {}
       }
 
       _watchDashboardData(businessId);
@@ -612,10 +644,28 @@ class _DashboardHomeScreenState extends State<DashboardHomeScreen> {
                     width: 48,
                     height: 48,
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.14),
+                      color: Colors.white,
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: const Icon(Icons.business_center_rounded, color: Colors.white, size: 25),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(14),
+                      child: _businessLogoBytes != null &&
+                              _businessLogoBytes!.isNotEmpty
+                          ? Image.memory(
+                              _businessLogoBytes!,
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, _, _) => const Icon(
+                                Icons.business_center_rounded,
+                                color: AppColors.primary,
+                                size: 25,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.business_center_rounded,
+                              color: AppColors.primary,
+                              size: 25,
+                            ),
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(

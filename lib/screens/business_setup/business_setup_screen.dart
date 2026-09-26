@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -49,6 +50,9 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
     'Retail',
     'Restaurant',
     'Manufacturing',
+    'Supplier',
+    'Service',
+    'A/C Technician',
     'Other',
   ];
 
@@ -288,6 +292,28 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
             businessId: savedBusinessId,
             bytes: _logoBytes!,
           );
+
+          // Keep a cloud fallback in the business document as well. This is
+          // intentionally limited so the Firestore document stays small.
+          // The device-local copy above remains the primary image source.
+          if (_logoBytes!.lengthInBytes <= 600000) {
+            final String logoData =
+                'data:image/png;base64,${base64Encode(_logoBytes!)}';
+            await _businessRepository.updateBusinessLogo(
+              businessId: savedBusinessId,
+              logoData: logoData,
+            );
+          }
+          // Also keep an owner-based copy. The owner id is stable even if
+          // the business document id changes or an older duplicate business
+          // record is returned by the repository.
+          if (user.uid.trim().isNotEmpty &&
+              user.uid.trim() != savedBusinessId) {
+            await LocalLogoStorage.save(
+              businessId: user.uid.trim(),
+              bytes: _logoBytes!,
+            );
+          }
         } catch (_) {
           if (mounted) {
             _showMessage(

@@ -7,6 +7,7 @@ import 'package:printing/printing.dart';
 import '../../core/services/professional_sales_bill_pdf_service.dart';
 import '../../core/services/sale_stock_service.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/widgets/app_responsive_page.dart';
 import '../../models/business_model.dart';
 import '../../models/customer_model.dart';
 import '../../models/ledger_transaction_model.dart';
@@ -856,72 +857,120 @@ class _SalesScreenState extends State<SalesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+
     if (_loadingBusiness) {
-      return const Center(child: CircularProgressIndicator());
+      return Scaffold(
+        backgroundColor: theme.scaffoldBackgroundColor,
+        appBar: AppBar(
+          title: const Text('Sales'),
+          actions: [
+            IconButton(
+              tooltip: 'Refresh',
+              onPressed: _loadBusiness,
+              icon: const Icon(Icons.refresh_rounded),
+            ),
+            const SizedBox(width: 4),
+          ],
+        ),
+        body: const AppResponsivePage(
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      );
     }
 
     if (_businessError != null) {
-      return _buildErrorState();
+      return Scaffold(
+        backgroundColor: theme.scaffoldBackgroundColor,
+        appBar: AppBar(
+          title: const Text('Sales'),
+          actions: [
+            IconButton(
+              tooltip: 'Refresh',
+              onPressed: _loadBusiness,
+              icon: const Icon(Icons.refresh_rounded),
+            ),
+            const SizedBox(width: 4),
+          ],
+        ),
+        body: AppResponsivePage(child: _buildErrorState()),
+      );
     }
 
     final BusinessModel? business = _business;
-
     final Stream<List<SaleModel>>? salesStream = _salesStream;
 
     if (business == null || salesStream == null) {
-      return _buildNoBusinessState();
+      return Scaffold(
+        backgroundColor: theme.scaffoldBackgroundColor,
+        appBar: AppBar(
+          title: const Text('Sales'),
+          actions: [
+            IconButton(
+              tooltip: 'Refresh',
+              onPressed: _loadBusiness,
+              icon: const Icon(Icons.refresh_rounded),
+            ),
+            const SizedBox(width: 4),
+          ],
+        ),
+        body: AppResponsivePage(child: _buildNoBusinessState()),
+      );
     }
 
-    return StreamBuilder<List<SaleModel>>(
-      stream: salesStream,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting &&
-            !snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        if (snapshot.hasError) {
-          return _buildStreamErrorState(snapshot.error.toString());
-        }
-
-        final List<SaleModel> allSales = snapshot.data ?? <SaleModel>[];
-
-        final List<SaleModel> sales = _filterSales(allSales);
-
-        return RefreshIndicator(
-          onRefresh: _loadBusiness,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final bool isDesktop = constraints.maxWidth >= 900;
-
-              return SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: EdgeInsets.symmetric(
-                  horizontal: isDesktop ? 28 : 16,
-                  vertical: 20,
-                ),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 1200),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildHeader(isDesktop),
-                        const SizedBox(height: 20),
-                        _buildSummary(allSales, isDesktop),
-                        const SizedBox(height: 20),
-                        _buildSearchCard(),
-                        const SizedBox(height: 20),
-                        _buildSalesSection(sales),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            },
+    return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
+      appBar: AppBar(
+        title: const Text('Sales'),
+        actions: [
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: _loadBusiness,
+            icon: const Icon(Icons.refresh_rounded),
           ),
-        );
-      },
+          const SizedBox(width: 4),
+        ],
+      ),
+      body: StreamBuilder<List<SaleModel>>(
+        stream: salesStream,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting &&
+              !snapshot.hasData) {
+            return const AppResponsivePage(
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
+
+          if (snapshot.hasError) {
+            return AppResponsivePage(
+              child: _buildStreamErrorState(snapshot.error.toString()),
+            );
+          }
+
+          final List<SaleModel> allSales = snapshot.data ?? <SaleModel>[];
+          final List<SaleModel> sales = _filterSales(allSales);
+
+          return RefreshIndicator(
+            onRefresh: _loadBusiness,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1250),
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
+                  children: [
+                    _buildHeader(allSales),
+                    const SizedBox(height: 18),
+                    _buildSearchCard(),
+                    const SizedBox(height: 20),
+                    _buildSalesSection(sales),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -929,58 +978,9 @@ class _SalesScreenState extends State<SalesScreen> {
   // HEADER
   // ===========================================================================
 
-  Widget _buildHeader(bool isDesktop) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Container(
-          width: 52,
-          height: 52,
-          decoration: BoxDecoration(
-            color: AppColors.success.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: const Icon(
-            Icons.point_of_sale_rounded,
-            color: AppColors.success,
-            size: 27,
-          ),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Sales',
-                style: Theme.of(context).textTheme.headlineSmall
-                    ?.copyWith(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                'Manage sales, invoices and payments.',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-        ),
-        if (isDesktop)
-          FilledButton.icon(
-            onPressed: _openAddSale,
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('New Sale'),
-          ),
-      ],
-    );
-  }
+  Widget _buildHeader(List<SaleModel> sales) {
+    final ThemeData theme = Theme.of(context);
 
-  // ===========================================================================
-  // SUMMARY
-  // ===========================================================================
-
-  Widget _buildSummary(List<SaleModel> sales, bool isDesktop) {
     double total = 0;
     double paid = 0;
     double outstanding = 0;
@@ -989,13 +989,10 @@ class _SalesScreenState extends State<SalesScreen> {
       if (sale.total.isFinite && sale.total > 0) {
         total += sale.total;
       }
-
       if (sale.paidAmount.isFinite && sale.paidAmount > 0) {
         paid += sale.paidAmount;
       }
-
       final double balance = sale.total - sale.paidAmount;
-
       if (balance.isFinite && balance > 0) {
         outstanding += balance;
       }
@@ -1004,56 +1001,117 @@ class _SalesScreenState extends State<SalesScreen> {
     final int count = sales.length;
 
     final List<Widget> cards = [
-      _SummaryMetricCard(
-        icon: Icons.receipt_long_rounded,
-        title: 'Total Sales',
-        value: _formatCurrency(total),
-        subtitle: '$count invoice${count == 1 ? '' : 's'}',
-        color: AppColors.primary,
+      _buildSummaryCard(
+        'Total Sales',
+        _formatCurrency(total),
+        '$count invoice${count == 1 ? '' : 's'}',
+        Icons.receipt_long_rounded,
+        AppColors.primary,
       ),
-      _SummaryMetricCard(
-        icon: Icons.payments_rounded,
-        title: 'Collected',
-        value: _formatCurrency(paid),
-        subtitle: 'Amount received',
-        color: AppColors.success,
+      _buildSummaryCard(
+        'Collected',
+        _formatCurrency(paid),
+        'Amount received',
+        Icons.payments_rounded,
+        AppColors.success,
       ),
-      _SummaryMetricCard(
-        icon: Icons.account_balance_wallet_outlined,
-        title: 'Outstanding',
-        value: _formatCurrency(outstanding),
-        subtitle: 'Amount pending',
-        color: AppColors.warning,
+      _buildSummaryCard(
+        'Outstanding',
+        _formatCurrency(outstanding),
+        'Amount pending',
+        Icons.account_balance_wallet_outlined,
+        AppColors.warning,
       ),
     ];
 
-    if (isDesktop) {
-      return Row(
-        children: cards
-            .map(
-              (card) => Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 12),
-                  child: card,
-                ),
-              ),
-            )
-            .toList(),
-      );
-    }
-
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        cards[0],
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(child: cards[1]),
-            const SizedBox(width: 12),
-            Expanded(child: cards[2]),
-          ],
+        Text(
+          'Sales Management',
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 5),
+        Text(
+          'Manage your sales, invoices and customer payments.',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 18),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final bool singleColumn = constraints.maxWidth < 420;
+            final bool compact = constraints.maxWidth < 600;
+
+            if (singleColumn) {
+              return Column(
+                children: [
+                  cards[0],
+                  const SizedBox(height: 12),
+                  cards[1],
+                  const SizedBox(height: 12),
+                  cards[2],
+                ],
+              );
+            }
+
+            if (compact) {
+              return Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(child: cards[0]),
+                      const SizedBox(width: 12),
+                      Expanded(child: cards[1]),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: SizedBox(
+                      width: (constraints.maxWidth - 12) / 2,
+                      child: cards[2],
+                    ),
+                  ),
+                ],
+              );
+            }
+
+            return Row(
+              children: [
+                Expanded(child: cards[0]),
+                const SizedBox(width: 12),
+                Expanded(child: cards[1]),
+                const SizedBox(width: 12),
+                Expanded(child: cards[2]),
+              ],
+            );
+          },
         ),
       ],
+    );
+  }
+
+  // ===========================================================================
+  // SUMMARY
+  // ===========================================================================
+
+  Widget _buildSummaryCard(
+    String title,
+    String value,
+    String subtitle,
+    IconData icon,
+    Color color,
+  ) {
+    return _SummaryMetricCard(
+      title: title,
+      value: value,
+      subtitle: subtitle,
+      icon: icon,
+      color: color,
     );
   }
 
@@ -1062,28 +1120,22 @@ class _SalesScreenState extends State<SalesScreen> {
   // ===========================================================================
 
   Widget _buildSearchCard() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: TextField(
-          controller: _searchController,
-          textInputAction: TextInputAction.search,
-          decoration: InputDecoration(
-            hintText: 'Search invoice, customer or product...',
-            prefixIcon: const Icon(Icons.search_rounded),
-            suffixIcon: _searchController.text.isEmpty
-                ? null
-                : IconButton(
-                    tooltip: 'Clear search',
-                    onPressed: () {
-                      _searchController.clear();
-                    },
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-            border: InputBorder.none,
-            filled: false,
-          ),
-        ),
+    final ThemeData theme = Theme.of(context);
+    return TextField(
+      controller: _searchController,
+      textInputAction: TextInputAction.search,
+      decoration: InputDecoration(
+        hintText: 'Search invoice, customer or product...',
+        prefixIcon: const Icon(Icons.search_rounded),
+        suffixIcon: _searchQuery.isEmpty
+            ? null
+            : IconButton(
+                tooltip: 'Clear search',
+                onPressed: () => _searchController.clear(),
+                icon: const Icon(Icons.clear_rounded),
+              ),
+        filled: true,
+        fillColor: theme.cardColor,
       ),
     );
   }

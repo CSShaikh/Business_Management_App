@@ -28,6 +28,22 @@ class SupplierPaymentRepository {
 
     final String businessId = payment.businessId.trim();
 
+    final String transactionReference = payment.transactionReference.trim();
+    if (transactionReference.isNotEmpty) {
+      final duplicateSnapshot = await _payments(businessId)
+          .where('transactionReference', isEqualTo: transactionReference)
+          .limit(2)
+          .get();
+      final bool duplicateExists = duplicateSnapshot.docs.any(
+        (doc) => doc.id != payment.id.trim(),
+      );
+      if (duplicateExists) {
+        throw StateError(
+          'Payment reference $transactionReference already exists.',
+        );
+      }
+    }
+
     // Respect a caller-provided ID when one exists. This allows a payment
     // transaction to be linked to its ledger entry before the payment document
     // is committed, which prevents the new payment from reducing the payable
@@ -144,6 +160,19 @@ class SupplierPaymentRepository {
       throw ArgumentError(
         'Payment ID cannot be empty when updating a payment.',
       );
+    }
+
+    final String transactionReference = payment.transactionReference.trim();
+    if (transactionReference.isNotEmpty) {
+      final duplicateSnapshot = await _payments(payment.businessId)
+          .where('transactionReference', isEqualTo: transactionReference)
+          .limit(2)
+          .get();
+      if (duplicateSnapshot.docs.any((doc) => doc.id != paymentId)) {
+        throw StateError(
+          'Payment reference $transactionReference already exists.',
+        );
+      }
     }
 
     await _payments(payment.businessId).doc(paymentId).update(payment.toMap());

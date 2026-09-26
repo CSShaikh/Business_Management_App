@@ -33,6 +33,7 @@ class CustomerRepository extends BaseRepository {
     _validateCustomer(customer);
 
     final businessId = customer.businessId.trim();
+    await _ensureNoDuplicateCustomer(customer, businessId: businessId);
 
     final doc = _customers(businessId).doc();
 
@@ -165,6 +166,12 @@ class CustomerRepository extends BaseRepository {
         'Customer ID cannot be empty.',
       );
     }
+
+    await _ensureNoDuplicateCustomer(
+      customer,
+      businessId: businessId,
+      ignoreCustomerId: customerId,
+    );
 
     final customerRef = _customers(
       businessId,
@@ -351,6 +358,34 @@ class CustomerRepository extends BaseRepository {
         data['updatedAt'],
       ),
     );
+  }
+
+  Future<void> _ensureNoDuplicateCustomer(
+    CustomerModel customer, {
+    required String businessId,
+    String? ignoreCustomerId,
+  }) async {
+    final String mobile = customer.mobile.trim();
+    final String name = customer.name.trim().toLowerCase();
+    final String address = customer.address.trim().toLowerCase();
+    if (mobile.isEmpty && name.isEmpty) return;
+
+    final snapshot = await _customers(businessId).get();
+    for (final doc in snapshot.docs) {
+      if (ignoreCustomerId != null && doc.id == ignoreCustomerId.trim()) {
+        continue;
+      }
+      final data = doc.data();
+      final existingMobile = data['mobile']?.toString().trim() ?? '';
+      final existingName = data['name']?.toString().trim().toLowerCase() ?? '';
+      final existingAddress = data['address']?.toString().trim().toLowerCase() ?? '';
+      if (mobile.isNotEmpty && existingMobile == mobile) {
+        throw StateError('A customer with mobile $mobile already exists.');
+      }
+      if (mobile.isEmpty && existingName == name && existingAddress == address) {
+        throw StateError('This customer already exists.');
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------

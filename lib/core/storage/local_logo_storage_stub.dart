@@ -37,6 +37,23 @@ Future<Uint8List?> readLogo({required String businessId}) async {
   }
 }
 
+Future<Uint8List?> readAnyLogo() async {
+  try {
+    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    const String prefix = 'business_management_app.local_logo.';
+    for (final String key in preferences.getKeys()) {
+      if (!key.startsWith(prefix)) continue;
+      final String? encoded = preferences.getString(key);
+      if (encoded == null || encoded.isEmpty) continue;
+      try {
+        final Uint8List bytes = base64Decode(encoded);
+        if (bytes.isNotEmpty) return bytes;
+      } catch (_) {}
+    }
+  } catch (_) {}
+  return null;
+}
+
 Future<void> deleteLogo({required String businessId}) async {
   final SharedPreferences preferences = await SharedPreferences.getInstance();
   await preferences.remove(_key(businessId));

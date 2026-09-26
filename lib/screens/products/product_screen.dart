@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/widgets/app_metric_card.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/business_model.dart';
 import '../../models/product_model.dart';
@@ -131,21 +132,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
     }
   }
 
-  Future<void> _openAddProduct() async {
-    final String? businessId = _businessId;
 
-    if (businessId == null || businessId.trim().isEmpty) {
-      _showMessage('Business information not available.', isError: true);
-      return;
-    }
-
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => AddProductScreen(businessId: businessId),
-      ),
-    );
-  }
 
   Future<void> _openEditProduct(ProductModel product) async {
     final String? businessId = _businessId;
@@ -381,11 +368,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
           },
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openAddProduct,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Add Product'),
-      ),
     );
   }
 
@@ -496,110 +478,13 @@ class _ProductsScreenState extends State<ProductsScreen> {
         const SizedBox(height: 18),
         LayoutBuilder(
           builder: (context, constraints) {
-            final bool singleColumn = constraints.maxWidth < 420;
-            final bool compact = constraints.maxWidth < 600;
-
-            if (singleColumn) {
-              return Column(
-                children: [
-                  _buildSummaryCard(
-                    theme,
-                    'Products',
-                    totalProducts.toString(),
-                    Icons.inventory_2_outlined,
-                    AppColors.primary,
-                  ),
-                  const SizedBox(height: 12),
-                  _buildSummaryCard(
-                    theme,
-                    'Active',
-                    activeProducts.toString(),
-                    Icons.check_circle_outline_rounded,
-                    AppColors.success,
-                  ),
-                  const SizedBox(height: 12),
-                  _buildSummaryCard(
-                    theme,
-                    'Low Stock',
-                    lowStockProducts.toString(),
-                    Icons.warning_amber_rounded,
-                    AppColors.warning,
-                  ),
-                ],
-              );
-            }
-
-            if (compact) {
-              return Column(
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildSummaryCard(
-                          theme,
-                          'Products',
-                          totalProducts.toString(),
-                          Icons.inventory_2_outlined,
-                          AppColors.primary,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildSummaryCard(
-                          theme,
-                          'Active',
-                          activeProducts.toString(),
-                          Icons.check_circle_outline_rounded,
-                          AppColors.success,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  _buildSummaryCard(
-                    theme,
-                    'Low Stock',
-                    lowStockProducts.toString(),
-                    Icons.warning_amber_rounded,
-                    AppColors.warning,
-                  ),
-                ],
-              );
-            }
-
-            return Row(
-              children: [
-                Expanded(
-                  child: _buildSummaryCard(
-                    theme,
-                    'Products',
-                    totalProducts.toString(),
-                    Icons.inventory_2_outlined,
-                    AppColors.primary,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildSummaryCard(
-                    theme,
-                    'Active',
-                    activeProducts.toString(),
-                    Icons.check_circle_outline_rounded,
-                    AppColors.success,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildSummaryCard(
-                    theme,
-                    'Low Stock',
-                    lowStockProducts.toString(),
-                    Icons.warning_amber_rounded,
-                    AppColors.warning,
-                  ),
-                ),
-              ],
-            );
+            final List<Widget> cards = [
+              _buildSummaryCard(theme, 'Products', totalProducts.toString(), Icons.inventory_2_outlined, AppColors.primary),
+              _buildSummaryCard(theme, 'Active', activeProducts.toString(), Icons.check_circle_outline_rounded, AppColors.success),
+              _buildSummaryCard(theme, 'Low Stock', lowStockProducts.toString(), Icons.warning_amber_rounded, AppColors.warning),
+            ];
+            final int columns = constraints.maxWidth < 700 ? 2 : 3;
+            return GridView.builder(itemCount: cards.length, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: columns, crossAxisSpacing: 12, mainAxisSpacing: 12, mainAxisExtent: constraints.maxWidth < 700 ? 112 : 116), itemBuilder: (_, index) => cards[index]);
           },
         ),
       ],
@@ -613,98 +498,12 @@ class _ProductsScreenState extends State<ProductsScreen> {
     IconData icon,
     Color color,
   ) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: theme.dividerColor.withValues(alpha: 0.35)),
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final bool narrow = constraints.maxWidth < 300;
-
-          if (narrow) {
-            return Row(
-              children: [
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(icon, color: color, size: 22),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        value,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            );
-          }
-
-          return Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, color: color, size: 22),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      value,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          );
-        },
-      ),
+    return AppMetricCard(
+      title: title,
+      value: value,
+      subtitle: title == 'Low Stock' ? 'Needs attention' : 'Inventory overview',
+      icon: icon,
+      color: color,
     );
   }
 
@@ -1123,12 +922,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
-            ),
-            const SizedBox(height: 22),
-            FilledButton.icon(
-              onPressed: _openAddProduct,
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('Add Product'),
             ),
           ],
         ),

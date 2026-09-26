@@ -300,11 +300,6 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
         allSuppliers,
         filteredSuppliers,
       )),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openAddSupplier,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Add Supplier'),
-      ),
     );
   }
 

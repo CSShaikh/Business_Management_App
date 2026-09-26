@@ -25,6 +25,7 @@ import 'supplier_report_screen.dart';
 import 'purchase_report_screen.dart';
 import 'sales_report_screen.dart';
 import '../../core/widgets/app_responsive_page.dart';
+import '../../core/widgets/app_metric_card.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -232,7 +233,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
   DateTime _periodStart() {
     final DateTime now = DateTime.now();
     if (_selectedPeriod == 'Weekly') {
-      return DateTime(now.year, now.month, now.day).subtract(const Duration(days: 6));
+      return DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ).subtract(const Duration(days: 6));
     }
     if (_selectedPeriod == 'Monthly') {
       return DateTime(now.year, now.month, 1);
@@ -244,13 +249,22 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final DateTime start = _periodStart();
     final DateTime end = DateTime.now();
     final DateTime local = date.toLocal();
-    return !local.isBefore(start) && local.isBefore(end.add(const Duration(days: 1)));
+    return !local.isBefore(start) &&
+        local.isBefore(end.add(const Duration(days: 1)));
   }
 
-  List<SaleModel> get _periodSales => _sales.where((item) => _inSelectedPeriod(item.date)).toList(growable: false);
-  List<PurchaseModel> get _periodPurchases => _purchases.where((item) => _inSelectedPeriod(item.date)).toList(growable: false);
-  List<ExpenseModel> get _periodExpenses => _expenses.where((item) => _inSelectedPeriod(item.date)).toList(growable: false);
-  List<PaymentModel> get _periodPayments => _payments.where((item) => _inSelectedPeriod(item.date)).toList(growable: false);
+  List<SaleModel> get _periodSales => _sales
+      .where((item) => _inSelectedPeriod(item.date))
+      .toList(growable: false);
+  List<PurchaseModel> get _periodPurchases => _purchases
+      .where((item) => _inSelectedPeriod(item.date))
+      .toList(growable: false);
+  List<ExpenseModel> get _periodExpenses => _expenses
+      .where((item) => _inSelectedPeriod(item.date))
+      .toList(growable: false);
+  List<PaymentModel> get _periodPayments => _payments
+      .where((item) => _inSelectedPeriod(item.date))
+      .toList(growable: false);
 
   void _selectPeriod(String period) {
     if (_selectedPeriod == period) return;
@@ -266,11 +280,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   double get _totalPurchases {
-    return _periodPurchases.fold<double>(0, (sum, purchase) => sum + purchase.total);
+    return _periodPurchases.fold<double>(
+      0,
+      (sum, purchase) => sum + purchase.total,
+    );
   }
 
   double get _totalExpenses {
-    return _periodExpenses.fold<double>(0, (sum, expense) => sum + expense.amount);
+    return _periodExpenses.fold<double>(
+      0,
+      (sum, expense) => sum + expense.amount,
+    );
   }
 
   /// Total customer receipts across the available sales/payment records.
@@ -433,7 +453,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
       return Scaffold(
         backgroundColor: theme.scaffoldBackgroundColor,
         appBar: AppBar(title: const Text('Reports')),
-        body: AppResponsivePage(child: const Center(child: CircularProgressIndicator())),
+        body: AppResponsivePage(
+          child: const Center(child: CircularProgressIndicator()),
+        ),
       );
     }
 
@@ -441,35 +463,37 @@ class _ReportsScreenState extends State<ReportsScreen> {
       return Scaffold(
         backgroundColor: theme.scaffoldBackgroundColor,
         appBar: AppBar(title: const Text('Reports')),
-        body: AppResponsivePage(child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.error_outline_rounded,
-                  size: 54,
-                  color: theme.colorScheme.error,
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  _errorMessage!,
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
+        body: AppResponsivePage(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.error_outline_rounded,
+                    size: 54,
+                    color: theme.colorScheme.error,
                   ),
-                ),
-                const SizedBox(height: 18),
-                FilledButton.icon(
-                  onPressed: _initialize,
-                  icon: const Icon(Icons.refresh_rounded),
-                  label: const Text('Try Again'),
-                ),
-              ],
+                  const SizedBox(height: 14),
+                  Text(
+                    _errorMessage!,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  FilledButton.icon(
+                    onPressed: _initialize,
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('Try Again'),
+                  ),
+                ],
+              ),
             ),
           ),
-        )),
+        ),
       );
     }
 
@@ -496,44 +520,46 @@ class _ReportsScreenState extends State<ReportsScreen> {
           const SizedBox(width: 6),
         ],
       ),
-      body: AppResponsivePage(child: RefreshIndicator(
-        onRefresh: _refresh,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final double maxWidth = isDesktop ? 1250 : 1000;
+      body: AppResponsivePage(
+        child: RefreshIndicator(
+          onRefresh: _refresh,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final double maxWidth = isDesktop ? 1250 : 1000;
 
-            return SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 30),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: maxWidth),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _buildHeader(theme, isDesktop),
-                      const SizedBox(height: 14),
-                      _buildPeriodSelector(theme),
-                      const SizedBox(height: 18),
-                      _buildOverview(theme, isDesktop),
-                      const SizedBox(height: 22),
-                      _buildQuickSummary(theme),
-                      const SizedBox(height: 18),
-                      _buildPeriodDetails(theme),
-                      const SizedBox(height: 22),
-                      _buildReportGrid(theme),
-                      const SizedBox(height: 22),
-                      _buildInventorySnapshot(theme),
-                      const SizedBox(height: 22),
-                      _buildReportTips(theme),
-                    ],
+              return SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 30),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: maxWidth),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildHeader(theme, isDesktop),
+                        const SizedBox(height: 14),
+                        _buildPeriodSelector(theme),
+                        const SizedBox(height: 18),
+                        _buildOverview(theme, isDesktop),
+                        const SizedBox(height: 22),
+                        _buildQuickSummary(theme),
+                        const SizedBox(height: 18),
+                        _buildPeriodDetails(theme),
+                        const SizedBox(height: 22),
+                        _buildReportGrid(theme),
+                        const SizedBox(height: 22),
+                        _buildInventorySnapshot(theme),
+                        const SizedBox(height: 22),
+                        _buildReportTips(theme),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            );
-          },
+              );
+            },
+          ),
         ),
-      )),
+      ),
     );
   }
 
@@ -554,8 +580,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     child: FilledButton.tonal(
                       onPressed: () => _selectPeriod(period),
                       style: FilledButton.styleFrom(
-                        backgroundColor: selected ? theme.colorScheme.primary : null,
-                        foregroundColor: selected ? theme.colorScheme.onPrimary : null,
+                        backgroundColor: selected
+                            ? theme.colorScheme.primary
+                            : null,
+                        foregroundColor: selected
+                            ? theme.colorScheme.onPrimary
+                            : null,
                         padding: const EdgeInsets.symmetric(vertical: 13),
                       ),
                       child: Text(period),
@@ -706,13 +736,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
           builder: (context, constraints) {
             final double width = constraints.maxWidth;
 
-            int columns = 1;
-
-            if (width >= 1050) {
-              columns = 3;
-            } else if (width >= 650) {
-              columns = 2;
-            }
+            int columns = width < 360 ? 1 : 2;
+            if (width >= 1050) columns = 3;
 
             const double spacing = 12;
 
@@ -736,61 +761,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   Widget _metricCard(ThemeData theme, _MetricItem metric) {
-    return Container(
-      padding: const EdgeInsets.all(17),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: metric.color.withValues(alpha: 0.20)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(
-              alpha: theme.brightness == Brightness.dark ? 0.08 : 0.035,
-            ),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: metric.color.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(13),
-            ),
-            child: Icon(metric.icon, color: metric.color, size: 23),
-          ),
-          const SizedBox(width: 13),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  metric.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  metric.value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    return AppMetricCard(
+      title: metric.title,
+      value: metric.value,
+      subtitle: _selectedPeriod,
+      icon: metric.icon,
+      color: metric.color,
     );
   }
 
@@ -799,6 +775,33 @@ class _ReportsScreenState extends State<ReportsScreen> {
   // ===========================================================================
 
   Widget _buildQuickSummary(ThemeData theme) {
+    final List<_MetricItem> metrics = [
+      _MetricItem(
+        title: 'Amount Received',
+        value: _currency(_totalPayments),
+        icon: Icons.payments_rounded,
+        color: AppColors.success,
+      ),
+      _MetricItem(
+        title: 'Outstanding',
+        value: _currency(_outstandingSales),
+        icon: Icons.pending_actions_rounded,
+        color: AppColors.warning,
+      ),
+      _MetricItem(
+        title: 'Gross Profit',
+        value: _currency(_grossProfit),
+        icon: Icons.account_balance_wallet_rounded,
+        color: AppColors.secondary,
+      ),
+      _MetricItem(
+        title: 'Profit Margin',
+        value: '${_profitMargin.toStringAsFixed(1)}%',
+        icon: Icons.percent_rounded,
+        color: AppColors.info,
+      ),
+    ];
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -809,124 +812,97 @@ class _ReportsScreenState extends State<ReportsScreen> {
           Icons.dashboard_customize_rounded,
         ),
         const SizedBox(height: 12),
-        Card(
-          elevation: 0,
-          child: Column(
-            children: [
-              _summaryRow(
-                theme,
-                'Amount Received',
-                _currency(_totalPayments),
-                Icons.payments_rounded,
-                AppColors.success,
-              ),
-              const Divider(height: 1),
-              _summaryRow(
-                theme,
-                'Outstanding',
-                _currency(_outstandingSales),
-                Icons.pending_actions_rounded,
-                AppColors.warning,
-              ),
-              const Divider(height: 1),
-              _summaryRow(
-                theme,
-                'Gross Profit',
-                _currency(_grossProfit),
-                Icons.account_balance_wallet_rounded,
-                AppColors.secondary,
-              ),
-              const Divider(height: 1),
-              _summaryRow(
-                theme,
-                'Profit Margin',
-                '${_profitMargin.toStringAsFixed(1)}%',
-                Icons.percent_rounded,
-                AppColors.info,
-              ),
-            ],
-          ),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final int columns = constraints.maxWidth < 360 ? 1 : 2;
+            const double gap = 10;
+            final double width =
+                (constraints.maxWidth - (gap * (columns - 1))) / columns;
+            return Wrap(
+              spacing: gap,
+              runSpacing: gap,
+              children: metrics
+                  .map(
+                    (metric) => SizedBox(
+                      width: width,
+                      child: _metricCard(theme, metric),
+                    ),
+                  )
+                  .toList(),
+            );
+          },
         ),
       ],
     );
   }
 
-  Widget _summaryRow(
-    ThemeData theme,
-    String label,
-    String value,
-    IconData icon,
-    Color color,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-      child: Row(
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(11),
-            ),
-            child: Icon(icon, size: 19, color: color),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              label,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          Text(
-            value,
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildPeriodDetails(ThemeData theme) {
     final List<_PeriodDetail> details = [
-      _PeriodDetail('Sales', _periodSales.length, _currency(_totalSales), Icons.point_of_sale_rounded, AppColors.success),
-      _PeriodDetail('Purchases', _periodPurchases.length, _currency(_totalPurchases), Icons.shopping_bag_rounded, AppColors.primary),
-      _PeriodDetail('Expenses', _periodExpenses.length, _currency(_totalExpenses), Icons.receipt_long_rounded, AppColors.warning),
-      _PeriodDetail('Received', _periodPayments.length, _currency(_totalPayments), Icons.payments_rounded, AppColors.info),
+      _PeriodDetail(
+        'Sales',
+        _periodSales.length,
+        _currency(_totalSales),
+        Icons.point_of_sale_rounded,
+        AppColors.success,
+      ),
+      _PeriodDetail(
+        'Purchases',
+        _periodPurchases.length,
+        _currency(_totalPurchases),
+        Icons.shopping_bag_rounded,
+        AppColors.primary,
+      ),
+      _PeriodDetail(
+        'Expenses',
+        _periodExpenses.length,
+        _currency(_totalExpenses),
+        Icons.receipt_long_rounded,
+        AppColors.warning,
+      ),
+      _PeriodDetail(
+        'Received',
+        _periodPayments.length,
+        _currency(_totalPayments),
+        Icons.payments_rounded,
+        AppColors.info,
+      ),
     ];
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionTitle(theme, '$_selectedPeriod Details', 'Complete transaction totals for the selected period', Icons.view_column_rounded),
+        _sectionTitle(
+          theme,
+          '$_selectedPeriod Details',
+          'Complete transaction totals for the selected period',
+          Icons.view_column_rounded,
+        ),
         const SizedBox(height: 12),
         LayoutBuilder(
           builder: (context, constraints) {
-            final int columns = constraints.maxWidth >= 900 ? 4 : constraints.maxWidth >= 560 ? 2 : 1;
-            final double gap = 10;
-            final double width = (constraints.maxWidth - (gap * (columns - 1))) / columns;
+            final int columns = constraints.maxWidth < 360
+                ? 1
+                : (constraints.maxWidth >= 900 ? 4 : 2);
+            const double gap = 10;
+            final double width =
+                (constraints.maxWidth - (gap * (columns - 1))) / columns;
             return Wrap(
               spacing: gap,
               runSpacing: gap,
-              children: details.map((item) => SizedBox(width: width, child: Card(
-                margin: EdgeInsets.zero,
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Row(children: [
-                    Icon(item.icon, color: item.color),
-                    const SizedBox(width: 10),
-                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(item.title, style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 3),
-                      Text(item.amount, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
-                    ])),
-                    Text('${item.count}', style: theme.textTheme.titleSmall?.copyWith(color: item.color, fontWeight: FontWeight.w900)),
-                  ]),
-                ),
-              ))).toList(),
+              children: details
+                  .map(
+                    (item) => SizedBox(
+                      width: width,
+                      child: AppMetricCard(
+                        title: item.title,
+                        value: item.amount,
+                        subtitle: '${item.count} transactions',
+                        icon: item.icon,
+                        color: item.color,
+                      ),
+                    ),
+                  )
+                  .toList(),
             );
           },
         ),
@@ -953,13 +929,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
           builder: (context, constraints) {
             final double width = constraints.maxWidth;
 
-            int columns = 1;
-
-            if (width >= 1050) {
-              columns = 3;
-            } else if (width >= 650) {
-              columns = 2;
-            }
+            int columns = width < 360 ? 1 : 2;
+            if (width >= 1050) columns = 3;
 
             const double spacing = 12;
 
@@ -1052,75 +1023,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   Widget _reportCard(ThemeData theme, _ReportItem report) {
-    return Material(
-      color: theme.colorScheme.surface,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        onTap: report.onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: report.color.withValues(alpha: 0.16)),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 46,
-                height: 46,
-                decoration: BoxDecoration(
-                  color: report.color.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(13),
-                ),
-                child: Icon(report.icon, color: report.color, size: 23),
-              ),
-              const SizedBox(width: 13),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      report.title,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      report.description,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        height: 1.35,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Text(
-                          'Open Report',
-                          style: TextStyle(
-                            color: report.color,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Icon(
-                          Icons.arrow_forward_rounded,
-                          size: 15,
-                          color: report.color,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return AppMetricCard(
+      title: report.title,
+      value: 'Open Report',
+      subtitle: report.description,
+      icon: report.icon,
+      color: report.color,
+      onTap: report.onTap,
     );
   }
 
@@ -1143,7 +1052,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           builder: (context, constraints) {
             final double width = constraints.maxWidth;
 
-            int columns = 1;
+            int columns = width < 360 ? 1 : 2;
 
             if (width >= 900) {
               columns = 3;
@@ -1292,7 +1201,13 @@ class _PeriodDetail {
   final String amount;
   final IconData icon;
   final Color color;
-  const _PeriodDetail(this.title, this.count, this.amount, this.icon, this.color);
+  const _PeriodDetail(
+    this.title,
+    this.count,
+    this.amount,
+    this.icon,
+    this.color,
+  );
 }
 
 class _MetricItem {

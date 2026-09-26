@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/widgets/app_metric_card.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/app_date_picker.dart';
 import '../../models/expense_model.dart';
@@ -345,17 +346,6 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
   // ADD EXPENSE
   // ---------------------------------------------------------------------------
 
-  Future<void> _openAddExpense() async {
-    await Navigator.of(context)
-        .push(MaterialPageRoute(builder: (_) => const AddExpenseScreen()));
-
-    if (!mounted) {
-      return;
-    }
-
-    await context.read<ExpenseProvider>().refresh();
-  }
-
   // ---------------------------------------------------------------------------
   // EDIT EXPENSE
   // ---------------------------------------------------------------------------
@@ -657,7 +647,9 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
           ) {
             if (expenseProvider.isLoading && expenseProvider.expenses.isEmpty) {
               return const Scaffold(
-                body: AppResponsivePage(child: Center(child: CircularProgressIndicator())),
+                body: AppResponsivePage(
+                  child: Center(child: CircularProgressIndicator()),
+                ),
               );
             }
 
@@ -696,76 +688,80 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
   Widget _buildPageError() {
     return Scaffold(
       appBar: AppBar(title: const Text('Expenses')),
-      body: AppResponsivePage(child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.business_center_outlined,
-                size: 56,
-                color: AppColors.warning,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                _pageError ?? 'Business profile not found.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 16),
-              FilledButton.icon(
-                onPressed: _initialize,
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text('RETRY'),
-              ),
-            ],
+      body: AppResponsivePage(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.business_center_outlined,
+                  size: 56,
+                  color: AppColors.warning,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  _pageError ?? 'Business profile not found.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: _initialize,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('RETRY'),
+                ),
+              ],
+            ),
           ),
         ),
-      )),
+      ),
     );
   }
 
   Widget _buildProviderError(String error) {
     return Scaffold(
       appBar: AppBar(title: const Text('Expenses')),
-      body: AppResponsivePage(child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.cloud_off_rounded,
-                size: 56,
-                color: AppColors.danger,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Unable to load expenses.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                error,
-                textAlign: TextAlign.center,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              const SizedBox(height: 18),
-              FilledButton.icon(
-                onPressed: _refresh,
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text('RETRY'),
-              ),
-            ],
+      body: AppResponsivePage(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.cloud_off_rounded,
+                  size: 56,
+                  color: AppColors.danger,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Unable to load expenses.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  error,
+                  textAlign: TextAlign.center,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 18),
+                FilledButton.icon(
+                  onPressed: _refresh,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('RETRY'),
+                ),
+              ],
+            ),
           ),
         ),
-      )),
+      ),
     );
   }
 
@@ -797,52 +793,49 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openAddExpense,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('ADD EXPENSE'),
-      ),
-      body: AppResponsivePage(child: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: _refresh,
-          child: LayoutBuilder(
-            builder: (BuildContext context, BoxConstraints constraints) {
-              final bool isDesktop = constraints.maxWidth >= 1000;
+      body: AppResponsivePage(
+        child: SafeArea(
+          child: RefreshIndicator(
+            onRefresh: _refresh,
+            child: LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints constraints) {
+                final bool isDesktop = constraints.maxWidth >= 1000;
 
-              return Center(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxWidth: isDesktop ? 1250 : double.infinity,
-                  ),
-                  child: SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 110),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildHeader(allExpenses.length, todayTotal),
-                        const SizedBox(height: 16),
-                        _buildSummaryCards(
-                          totalExpenses: totalExpenses,
-                          todayTotal: todayTotal,
-                          filteredTotal: filteredTotal,
-                          totalCount: allExpenses.length,
-                          filteredCount: filteredExpenses.length,
-                          isDesktop: isDesktop,
-                        ),
-                        const SizedBox(height: 16),
-                        _buildFilters(isDesktop: isDesktop),
-                        const SizedBox(height: 16),
-                        _buildExpenseList(filteredExpenses),
-                      ],
+                return Center(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: isDesktop ? 1250 : double.infinity,
+                    ),
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 110),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildHeader(allExpenses.length, todayTotal),
+                          const SizedBox(height: 16),
+                          _buildSummaryCards(
+                            totalExpenses: totalExpenses,
+                            todayTotal: todayTotal,
+                            filteredTotal: filteredTotal,
+                            totalCount: allExpenses.length,
+                            filteredCount: filteredExpenses.length,
+                            isDesktop: isDesktop,
+                          ),
+                          const SizedBox(height: 16),
+                          _buildFilters(isDesktop: isDesktop),
+                          const SizedBox(height: 16),
+                          _buildExpenseList(filteredExpenses),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
         ),
-      )),
+      ),
     );
   }
 
@@ -968,44 +961,19 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
       ),
     ];
 
-    if (isDesktop) {
-      return Row(
-        children: cards.map((Widget card) {
-          return Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(right: 10),
-              child: card,
-            ),
-          );
-        }).toList(),
-      );
-    }
-
-    if (MediaQuery.sizeOf(context).width < 430) {
-      return Column(
-        children: cards
-            .map(
-              (Widget card) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: card,
-              ),
-            )
-            .toList(),
-      );
-    }
-
-    return Column(
-      children: [
-        Row(
-          children: [
-            Expanded(child: cards[0]),
-            const SizedBox(width: 10),
-            Expanded(child: cards[1]),
-          ],
-        ),
-        const SizedBox(height: 10),
-        cards[2],
-      ],
+    final double width = MediaQuery.sizeOf(context).width;
+    final int columns = isDesktop ? 3 : (width < 700 ? 2 : 3);
+    return GridView.builder(
+      itemCount: cards.length,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: columns,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+        mainAxisExtent: width < 700 ? 112 : 116,
+      ),
+      itemBuilder: (_, index) => cards[index],
     );
   }
 
@@ -1016,64 +984,14 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
     required String subtitle,
     required Color color,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: Theme.of(context).dividerColor.withValues(alpha: 0.5),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(13),
-            ),
-            child: Icon(icon, color: color, size: 21),
-          ),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall
-                      ?.copyWith(color: color),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    return AppMetricCard(
+      title: title,
+      value: value,
+      subtitle: subtitle,
+      icon: icon,
+      color: color,
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // FILTERS
-  // ---------------------------------------------------------------------------
 
   Widget _buildFilters({required bool isDesktop}) {
     return Container(
@@ -1441,12 +1359,6 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
               onPressed: _clearFilters,
               icon: const Icon(Icons.filter_alt_off_rounded),
               label: const Text('CLEAR FILTERS'),
-            )
-          else
-            FilledButton.icon(
-              onPressed: _openAddExpense,
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('ADD EXPENSE'),
             ),
         ],
       ),

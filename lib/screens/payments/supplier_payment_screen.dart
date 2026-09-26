@@ -396,16 +396,7 @@ class _SupplierPaymentScreenState extends State<SupplierPaymentScreen> {
   // ADD / EDIT
   // ===========================================================================
 
-  Future<void> _openAddPayment() async {
-    final bool? result = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute<bool>(builder: (_) => const AddSupplierPaymentScreen()),
-    );
 
-    if (result == true) {
-      await _refresh();
-    }
-  }
 
   Future<void> _openEditPayment(SupplierPaymentModel payment) async {
     if (_isDeleting) {
@@ -819,11 +810,6 @@ class _SupplierPaymentScreenState extends State<SupplierPaymentScreen> {
           },
         ),
       )),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _isDeleting ? null : _openAddPayment,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Add Payment'),
-      ),
     );
   }
 
@@ -852,14 +838,6 @@ class _SupplierPaymentScreenState extends State<SupplierPaymentScreen> {
             ],
           ),
         ),
-        if (isDesktop) ...[
-          const SizedBox(width: 16),
-          FilledButton.icon(
-            onPressed: _isDeleting ? null : _openAddPayment,
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Add Payment'),
-          ),
-        ],
       ],
     );
   }
@@ -1311,18 +1289,11 @@ class _SupplierPaymentScreenState extends State<SupplierPaymentScreen> {
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
-            const SizedBox(height: 18),
             if (hasFilters)
               OutlinedButton.icon(
                 onPressed: _clearFilters,
                 icon: const Icon(Icons.filter_alt_off_rounded),
                 label: const Text('CLEAR FILTERS'),
-              )
-            else
-              FilledButton.icon(
-                onPressed: _openAddPayment,
-                icon: const Icon(Icons.add_rounded),
-                label: const Text('ADD PAYMENT'),
               ),
           ],
         ),

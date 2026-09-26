@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/widgets/app_metric_card.dart';
 import '../../core/widgets/app_date_picker.dart';
 
 import '../../core/services/purchase_stock_service.dart';
@@ -240,16 +241,7 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
   // ADD PURCHASE
   // ===========================================================================
 
-  Future<void> _openAddPurchase() async {
-    final bool? result = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute<bool>(builder: (_) => const AddPurchaseScreen()),
-    );
 
-    if (result == true) {
-      await _refresh();
-    }
-  }
 
   // ===========================================================================
   // EDIT PURCHASE
@@ -570,11 +562,6 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
           },
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openAddPurchase,
-        icon: const Icon(Icons.add_shopping_cart_rounded),
-        label: const Text('Add Purchase'),
-      ),
     );
   }
 
@@ -632,8 +619,6 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
         const SizedBox(height: 18),
         LayoutBuilder(
           builder: (context, constraints) {
-            final bool compact = constraints.maxWidth < 760;
-
             final List<Widget> cards = [
               _buildSummaryCard(
                 theme,
@@ -665,53 +650,8 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
               ),
             ];
 
-            if (compact) {
-              if (constraints.maxWidth < 500) {
-                return Column(
-                  children: [
-                    cards[0],
-                    const SizedBox(height: 12),
-                    cards[1],
-                    const SizedBox(height: 12),
-                    cards[2],
-                    const SizedBox(height: 12),
-                    cards[3],
-                  ],
-                );
-              }
-
-              return Column(
-                children: [
-                  Row(
-                    children: [
-                      Expanded(child: cards[0]),
-                      const SizedBox(width: 12),
-                      Expanded(child: cards[1]),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(child: cards[2]),
-                      const SizedBox(width: 12),
-                      Expanded(child: cards[3]),
-                    ],
-                  ),
-                ],
-              );
-            }
-
-            return Row(
-              children: [
-                Expanded(child: cards[0]),
-                const SizedBox(width: 12),
-                Expanded(child: cards[1]),
-                const SizedBox(width: 12),
-                Expanded(child: cards[2]),
-                const SizedBox(width: 12),
-                Expanded(child: cards[3]),
-              ],
-            );
+            final int columns = constraints.maxWidth < 700 ? 2 : 4;
+            return GridView.builder(itemCount: cards.length, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: columns, crossAxisSpacing: 12, mainAxisSpacing: 12, mainAxisExtent: constraints.maxWidth < 700 ? 112 : 116), itemBuilder: (_, index) => cards[index]);
           },
         ),
       ],
@@ -729,48 +669,12 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
     required IconData icon,
     required Color color,
   }) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: color),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    value,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+    return AppMetricCard(
+      title: title,
+      value: value,
+      subtitle: 'Purchase overview',
+      icon: icon,
+      color: color,
     );
   }
 

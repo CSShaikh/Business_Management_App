@@ -49,6 +49,20 @@ class SaleRepository extends BaseRepository {
     final String requestedSaleId =
         sale.id.trim();
 
+    final String invoiceNumber = sale.invoiceNumber.trim();
+    if (invoiceNumber.isNotEmpty) {
+      final duplicateSnapshot = await sales
+          .where('invoiceNumber', isEqualTo: invoiceNumber)
+          .limit(2)
+          .get();
+      final bool duplicateExists = duplicateSnapshot.docs.any(
+        (doc) => doc.id != requestedSaleId,
+      );
+      if (duplicateExists) {
+        throw StateError('Invoice $invoiceNumber already exists.');
+      }
+    }
+
     final DocumentReference<Map<String, dynamic>>
         document = requestedSaleId.isEmpty
             ? sales.doc()

@@ -998,7 +998,7 @@ class _PaymentReportScreenState
         crossAxisSpacing: 14,
         mainAxisSpacing: 14,
         mainAxisExtent:
-            isDesktop ? 180 : 156,
+            isDesktop ? 190 : 205,
       ),
       itemBuilder: (
         context,

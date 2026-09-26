@@ -21,17 +21,16 @@ class SupplierRepository extends BaseRepository {
   // Create Supplier
   // ---------------------------------------------------------------------------
 
-  Future<void> createSupplier(
+  Future<SupplierModel> createSupplier(
     SupplierModel supplier,
   ) async {
     final String businessId = supplier.businessId.trim();
-    final String supplierId = supplier.id.trim();
+    final String requestedSupplierId = supplier.id.trim();
     final String name = supplier.name.trim();
 
-    _validateIds(
-      businessId: businessId,
-      supplierId: supplierId,
-    );
+    if (businessId.isEmpty) {
+      throw ArgumentError('Business ID cannot be empty.');
+    }
 
     if (name.isEmpty) {
       throw ArgumentError(
@@ -39,27 +38,53 @@ class SupplierRepository extends BaseRepository {
       );
     }
 
+    await _ensureNoDuplicateSupplier(
+      supplier,
+      businessId: businessId,
+      ignoreSupplierId: requestedSupplierId.isEmpty ? null : requestedSupplierId,
+    );
+
     final DateTime now = DateTime.now();
 
-    await _suppliers(businessId)
-        .doc(supplierId)
-        .set({
-      'id': supplierId,
-      'businessId': businessId,
-      'name': name,
-      'contactPerson': supplier.contactPerson.trim(),
-      'mobile': supplier.mobile.trim(),
-      'email': supplier.email.trim(),
-      'address': supplier.address.trim(),
-      'gstNumber': supplier.gstNumber.trim(),
-      'notes': supplier.notes.trim(),
+    final DocumentReference<Map<String, dynamic>> document =
+        requestedSupplierId.isEmpty
+            ? _suppliers(businessId).doc()
+            : _suppliers(businessId).doc(requestedSupplierId);
+    final String supplierId = document.id;
+
+    final SupplierModel savedSupplier = SupplierModel(
+      id: supplierId,
+      businessId: businessId,
+      name: name,
+      contactPerson: supplier.contactPerson.trim(),
+      mobile: supplier.mobile.trim(),
+      email: supplier.email.trim(),
+      address: supplier.address.trim(),
+      gstNumber: supplier.gstNumber.trim(),
+      notes: supplier.notes.trim(),
+      createdAt: supplier.createdAt,
+      updatedAt: now,
+    );
+
+    await document.set({
+      'id': savedSupplier.id,
+      'businessId': savedSupplier.businessId,
+      'name': savedSupplier.name,
+      'contactPerson': savedSupplier.contactPerson,
+      'mobile': savedSupplier.mobile,
+      'email': savedSupplier.email,
+      'address': savedSupplier.address,
+      'gstNumber': savedSupplier.gstNumber,
+      'notes': savedSupplier.notes,
       'createdAt': Timestamp.fromDate(
-        supplier.createdAt,
+        savedSupplier.createdAt,
       ),
       'updatedAt': Timestamp.fromDate(
-        now,
+        savedSupplier.updatedAt,
       ),
     });
+
+    return savedSupplier;
   }
 
   // ---------------------------------------------------------------------------
@@ -182,6 +207,12 @@ class SupplierRepository extends BaseRepository {
       );
     }
 
+    await _ensureNoDuplicateSupplier(
+      supplier,
+      businessId: businessId,
+      ignoreSupplierId: supplierId,
+    );
+
     final DocumentReference<Map<String, dynamic>> document =
         _suppliers(businessId).doc(supplierId);
 
@@ -279,6 +310,32 @@ class SupplierRepository extends BaseRepository {
         data['updatedAt'],
       ),
     );
+  }
+
+  Future<void> _ensureNoDuplicateSupplier(
+    SupplierModel supplier, {
+    required String businessId,
+    String? ignoreSupplierId,
+  }) async {
+    final String mobile = supplier.mobile.trim();
+    final String name = supplier.name.trim().toLowerCase();
+    final String address = supplier.address.trim().toLowerCase();
+    final snapshot = await _suppliers(businessId).get();
+    for (final doc in snapshot.docs) {
+      if (ignoreSupplierId != null && doc.id == ignoreSupplierId.trim()) {
+        continue;
+      }
+      final data = doc.data();
+      final existingMobile = data['mobile']?.toString().trim() ?? '';
+      final existingName = data['name']?.toString().trim().toLowerCase() ?? '';
+      final existingAddress = data['address']?.toString().trim().toLowerCase() ?? '';
+      if (mobile.isNotEmpty && existingMobile == mobile) {
+        throw StateError('A supplier with mobile $mobile already exists.');
+      }
+      if (mobile.isEmpty && existingName == name && existingAddress == address) {
+        throw StateError('This supplier already exists.');
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------

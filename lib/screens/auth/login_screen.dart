@@ -489,11 +489,15 @@ class _LoginScreenState
                     // REMEMBER ME + FORGOT PASSWORD
                     // ---------------------------------------------------------
 
-                    Row(
+                    Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      runSpacing: 4,
                       children: [
-                        Expanded(
-                          child:
-                              CheckboxListTile(
+                        SizedBox(
+                          width: 180,
+                          child: CheckboxListTile(
                             value:
                                 _rememberMe,
                             onChanged:
@@ -587,10 +591,9 @@ class _LoginScreenState
                     // REGISTER
                     // ---------------------------------------------------------
 
-                    Row(
-                      mainAxisAlignment:
-                          MainAxisAlignment
-                              .center,
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         Text(
                           "Don't have an account? ",
@@ -629,10 +632,10 @@ class _LoginScreenState
                     // SECURITY TEXT
                     // ---------------------------------------------------------
 
-                    Row(
-                      mainAxisAlignment:
-                          MainAxisAlignment
-                              .center,
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 5,
                       children: [
                         Icon(
                           Icons

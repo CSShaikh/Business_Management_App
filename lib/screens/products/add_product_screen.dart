@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+
+import '../../core/navigation/app_navigation_controller.dart';
+
 import 'package:firebase_core/firebase_core.dart';
 
 import '../../core/theme/app_colors.dart';
@@ -55,6 +58,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
     'Spices',
     'Powder',
     'Grocery',
+    'Vegetables',
     'Food',
     'Beverages',
     'Liquid',
@@ -264,6 +268,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
         _showMessage('Product added successfully.');
 
+        AppNavigationController.requestHome();
         Navigator.pop(context, true);
       }
     } on FirebaseException catch (e) {
@@ -410,51 +415,53 @@ class _AddProductScreenState extends State<AddProductScreen> {
           icon: const Icon(Icons.arrow_back_rounded),
         ),
       ),
-      body: AppResponsivePage(child: SafeArea(
-        child: Form(
-          key: _formKey,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final bool wide = constraints.maxWidth >= 900;
+      body: AppResponsivePage(
+        child: SafeArea(
+          child: Form(
+            key: _formKey,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final bool wide = constraints.maxWidth >= 900;
 
-              final Widget content = Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildHeader(isEdit),
-                  const SizedBox(height: 20),
-                  _buildBasicInformationCard(),
-                  const SizedBox(height: 16),
-                  _buildPricingCard(),
-                  const SizedBox(height: 16),
-                  _buildStockCard(),
-                  const SizedBox(height: 16),
-                  _buildStatusCard(),
-                  const SizedBox(height: 24),
-                  _buildSaveButton(isEdit),
-                  const SizedBox(height: 24),
-                ],
-              );
+                final Widget content = Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildHeader(isEdit),
+                    const SizedBox(height: 20),
+                    _buildBasicInformationCard(),
+                    const SizedBox(height: 16),
+                    _buildPricingCard(),
+                    const SizedBox(height: 16),
+                    _buildStockCard(),
+                    const SizedBox(height: 16),
+                    _buildStatusCard(),
+                    const SizedBox(height: 24),
+                    _buildSaveButton(isEdit),
+                    const SizedBox(height: 24),
+                  ],
+                );
 
-              return SingleChildScrollView(
-                padding: EdgeInsets.symmetric(
-                  horizontal: wide
-                      ? 40
-                      : constraints.maxWidth < 380
-                      ? 12
-                      : 16,
-                  vertical: constraints.maxWidth < 380 ? 14 : 20,
-                ),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 1000),
-                    child: content,
+                return SingleChildScrollView(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: wide
+                        ? 40
+                        : constraints.maxWidth < 380
+                        ? 12
+                        : 16,
+                    vertical: constraints.maxWidth < 380 ? 14 : 20,
                   ),
-                ),
-              );
-            },
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1000),
+                      child: content,
+                    ),
+                  ),
+                );
+              },
+            ),
           ),
         ),
-      )),
+      ),
     );
   }
 

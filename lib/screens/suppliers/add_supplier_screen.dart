@@ -1,4 +1,10 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+
+import '../../core/navigation/app_navigation_controller.dart';
+import 'package:flutter/services.dart';
+
+import '../../core/utils/validators.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../models/supplier_model.dart';
@@ -123,15 +129,8 @@ class _AddSupplierScreenState extends State<AddSupplierScreen> {
 
         Navigator.pop(context, updatedSupplier);
       } else {
-        final String supplierId = _supplierRepository.firestore
-            .collection('businesses')
-            .doc(businessId)
-            .collection('suppliers')
-            .doc()
-            .id;
-
         final SupplierModel newSupplier = SupplierModel(
-          id: supplierId,
+          id: '',
           businessId: businessId,
           name: _nameController.text.trim(),
           contactPerson: _contactPersonController.text.trim(),
@@ -144,7 +143,8 @@ class _AddSupplierScreenState extends State<AddSupplierScreen> {
           updatedAt: now,
         );
 
-        await _supplierRepository.createSupplier(newSupplier);
+        final SupplierModel savedSupplier =
+            await _supplierRepository.createSupplier(newSupplier);
 
         if (!mounted) {
           return;
@@ -152,15 +152,32 @@ class _AddSupplierScreenState extends State<AddSupplierScreen> {
 
         _showMessage('Supplier added successfully.');
 
-        Navigator.pop(context, newSupplier);
+        AppNavigationController.requestHome();
+        Navigator.pop(context, savedSupplier);
       }
+    } on FirebaseException catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      final String detail = e.message?.trim().isNotEmpty == true
+          ? e.message!.trim()
+          : e.code;
+      _showMessage(
+        _isEditMode
+            ? 'Unable to update supplier: $detail'
+            : 'Unable to add supplier: $detail',
+        isError: true,
+      );
     } catch (e) {
       if (!mounted) {
         return;
       }
 
       _showMessage(
-        _isEditMode ? 'Unable to update supplier.' : 'Unable to add supplier.',
+        _isEditMode
+            ? 'Unable to update supplier: $e'
+            : 'Unable to add supplier: $e',
         isError: true,
       );
     } finally {
@@ -331,6 +348,7 @@ class _AddSupplierScreenState extends State<AddSupplierScreen> {
                     hint: 'Enter mobile number',
                     icon: Icons.phone_outlined,
                     keyboardType: TextInputType.phone,
+                    inputFormatters: AppValidators.mobileInputFormatters,
                     validator: _validateMobile,
                   ),
                 ),
@@ -355,6 +373,7 @@ class _AddSupplierScreenState extends State<AddSupplierScreen> {
                   hint: 'Enter mobile number',
                   icon: Icons.phone_outlined,
                   keyboardType: TextInputType.phone,
+                  inputFormatters: AppValidators.mobileInputFormatters,
                   validator: _validateMobile,
                 ),
                 const SizedBox(height: 16),
@@ -465,6 +484,7 @@ class _AddSupplierScreenState extends State<AddSupplierScreen> {
     required IconData icon,
     String? Function(String?)? validator,
     TextInputType? keyboardType,
+    List<TextInputFormatter>? inputFormatters,
     TextCapitalization textCapitalization = TextCapitalization.none,
     int maxLines = 1,
     bool requiredField = false,
@@ -472,6 +492,7 @@ class _AddSupplierScreenState extends State<AddSupplierScreen> {
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
+      inputFormatters: inputFormatters,
       textCapitalization: textCapitalization,
       maxLines: maxLines,
       validator: validator,
@@ -522,19 +543,10 @@ class _AddSupplierScreenState extends State<AddSupplierScreen> {
   }
 
   String? _validateMobile(String? value) {
-    final String text = value?.trim() ?? '';
-
-    if (text.isEmpty) {
-      return null;
-    }
-
-    final String digits = text.replaceAll(RegExp(r'\D'), '');
-
-    if (digits.length < 10 || digits.length > 15) {
-      return 'Enter a valid mobile number.';
-    }
-
-    return null;
+    return AppValidators.optionalMobile(
+      value,
+      fieldName: 'Mobile number',
+    );
   }
 
   String? _validateEmail(String? value) {
