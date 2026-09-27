@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../core/app_refresh_controller.dart';
+
 import '../models/purchase_model.dart';
 import '../repositories/purchase_repository.dart';
 
@@ -287,7 +289,7 @@ class PurchaseProvider extends ChangeNotifier {
           purchases,
         );
 
-        notifyListeners();
+        _notifyDataChanged();
       },
       onError: (Object error) {
         _setError(
@@ -580,7 +582,7 @@ class PurchaseProvider extends ChangeNotifier {
             purchaseDocumentId,
       );
 
-      notifyListeners();
+      _notifyDataChanged();
 
       return true;
     } catch (e) {
@@ -692,7 +694,7 @@ class PurchaseProvider extends ChangeNotifier {
         _purchases[index] =
             updated;
 
-        notifyListeners();
+        _notifyDataChanged();
       }
 
       return true;
@@ -993,7 +995,7 @@ class PurchaseProvider extends ChangeNotifier {
 
     _purchases = [];
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ---------------------------------------------------------------------------
@@ -1045,7 +1047,7 @@ class PurchaseProvider extends ChangeNotifier {
           b.date.compareTo(a.date),
     );
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ---------------------------------------------------------------------------
@@ -1088,7 +1090,7 @@ class PurchaseProvider extends ChangeNotifier {
 
     _isLoading = value;
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   void _setSaving(
@@ -1100,7 +1102,7 @@ class PurchaseProvider extends ChangeNotifier {
 
     _isSaving = value;
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ---------------------------------------------------------------------------
@@ -1114,7 +1116,7 @@ class PurchaseProvider extends ChangeNotifier {
 
     _errorMessage = null;
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   void clearError() {
@@ -1132,7 +1134,7 @@ class PurchaseProvider extends ChangeNotifier {
             ? 'Something went wrong.'
             : cleaned;
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   String _formatError(
@@ -1176,4 +1178,9 @@ class PurchaseProvider extends ChangeNotifier {
 
     super.dispose();
   }
+  void _notifyDataChanged() {
+    notifyListeners();
+    AppRefreshController.instance.bump();
+  }
+
 }

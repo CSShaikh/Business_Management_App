@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../core/app_refresh_controller.dart';
+
 import '../models/payment_model.dart';
 import '../models/ledger_transaction_model.dart';
 import '../repositories/payment_repository.dart';
@@ -233,7 +235,7 @@ class PaymentProvider extends ChangeNotifier {
         .listen(
           (List<PaymentModel> payments) {
             _payments = List<PaymentModel>.from(payments);
-            notifyListeners();
+            _notifyDataChanged();
           },
           onError: (Object error) {
             _setError(
@@ -699,7 +701,7 @@ class PaymentProvider extends ChangeNotifier {
         (PaymentModel item) =>
             item.id.trim() == paymentDocumentId,
       );
-      notifyListeners();
+      _notifyDataChanged();
 
       return true;
     } catch (e) {
@@ -1107,7 +1109,7 @@ class PaymentProvider extends ChangeNotifier {
       },
     );
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ---------------------------------------------------------------------------
@@ -1123,7 +1125,7 @@ class PaymentProvider extends ChangeNotifier {
 
     _clearError();
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ---------------------------------------------------------------------------
@@ -1155,7 +1157,7 @@ class PaymentProvider extends ChangeNotifier {
 
     _isLoading = value;
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ---------------------------------------------------------------------------
@@ -1171,7 +1173,7 @@ class PaymentProvider extends ChangeNotifier {
 
     _isSaving = value;
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ---------------------------------------------------------------------------
@@ -1182,7 +1184,7 @@ class PaymentProvider extends ChangeNotifier {
     String message,
   ) {
     _errorMessage = message;
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   void _clearError() {
@@ -1191,7 +1193,7 @@ class PaymentProvider extends ChangeNotifier {
     }
 
     _errorMessage = null;
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ---------------------------------------------------------------------------
@@ -1251,4 +1253,9 @@ class PaymentProvider extends ChangeNotifier {
 
     super.dispose();
   }
+  void _notifyDataChanged() {
+    notifyListeners();
+    AppRefreshController.instance.bump();
+  }
+
 }

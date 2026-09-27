@@ -562,11 +562,13 @@ class _PurchaseReportScreenState extends State<PurchaseReportScreen> {
           const SizedBox(width: 4),
         ],
       ),
-      body: AppResponsivePage(child: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _errorMessage != null
-          ? _buildErrorState(theme)
-          : _buildPurchaseReportBody(theme)),
+      body: AppResponsivePage(
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _errorMessage != null
+            ? _buildErrorState(theme)
+            : _buildPurchaseReportBody(theme),
+      ),
     );
   }
 
@@ -1398,7 +1400,7 @@ class _PurchaseReportScreenState extends State<PurchaseReportScreen> {
   // ===========================================================================
 
   String _pdfCurrency(double value) {
-    return 'Rs. ${NumberFormat('#,##0.00', 'en_IN').format(value)}';
+    return 'Rs. ${NumberFormat('#,##0', 'en_IN').format(value)}';
   }
 
   String _pdfFileName() {
@@ -1460,7 +1462,9 @@ class _PurchaseReportScreenState extends State<PurchaseReportScreen> {
         color: PdfColors.grey700,
       );
 
-      final pw.MemoryImage? logo = await BusinessPdfBranding.loadLogo(_business!);
+      final pw.MemoryImage? logo = await BusinessPdfBranding.loadLogo(
+        _business!,
+      );
 
       document.addPage(
         pw.MultiPage(
@@ -1513,7 +1517,12 @@ class _PurchaseReportScreenState extends State<PurchaseReportScreen> {
                 borderRadius: pw.BorderRadius.circular(8),
               ),
               child: logo == null
-                  ? pw.Center(child: pw.Text('LOGO', style: const pw.TextStyle(fontSize: 7)))
+                  ? pw.Center(
+                      child: pw.Text(
+                        'LOGO',
+                        style: const pw.TextStyle(fontSize: 7),
+                      ),
+                    )
                   : pw.Image(logo, fit: pw.BoxFit.contain),
             ),
             pw.SizedBox(height: 8),

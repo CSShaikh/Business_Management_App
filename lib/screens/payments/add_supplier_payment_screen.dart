@@ -4,6 +4,7 @@ import '../../core/navigation/app_navigation_controller.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/widgets/app_date_picker.dart';
+import '../../core/utils/app_number_format.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../models/business_model.dart';
@@ -158,7 +159,7 @@ class _AddSupplierPaymentScreenState extends State<AddSupplierPaymentScreen> {
           }
         }
 
-        _amountController.text = widget.payment!.amount.toStringAsFixed(2);
+        _amountController.text = AppNumberFormat.input(widget.payment!.amount);
 
         _referenceController.text = widget.payment!.transactionReference;
 
@@ -469,10 +470,11 @@ class _AddSupplierPaymentScreenState extends State<AddSupplierPaymentScreen> {
         return;
       }
 
-      if (!widget.isEditMode) {
+      final bool shouldReturnHome = !widget.isEditMode;
+      Navigator.pop(context, true);
+      if (shouldReturnHome) {
         AppNavigationController.requestHome();
       }
-      Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) {
         return;

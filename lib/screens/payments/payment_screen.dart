@@ -32,6 +32,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   String? _businessId;
 
   bool _isInitializing = true;
+  bool _isDeletingPayment = false;
   bool _initialized = false;
 
   String? _pageError;
@@ -353,6 +354,10 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   // ---------------------------------------------------------------------------
 
   Future<void> _deletePayment(PaymentModel payment) async {
+    if (_isDeletingPayment) {
+      return;
+    }
+
     final String customerName = payment.customerName.trim().isEmpty
         ? 'Unknown Customer'
         : payment.customerName.trim();
@@ -385,37 +390,52 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
       return;
     }
 
+    setState(() {
+      _isDeletingPayment = true;
+    });
+
     final PaymentProvider paymentProvider = context.read<PaymentProvider>();
 
-    final bool deleted = await paymentProvider.deletePayment(
-      paymentId: payment.id,
-      businessId: _businessId,
-    );
-
-    if (!mounted) {
-      return;
-    }
-
-    if (deleted) {
-      Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Payment deleted and customer ledger reversed successfully.',
-          ),
-          behavior: SnackBarBehavior.floating,
-        ),
+    try {
+      final bool deleted = await paymentProvider.deletePayment(
+        paymentId: payment.id,
+        businessId: _businessId,
       );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            paymentProvider.errorMessage ?? 'Unable to delete payment safely.',
+
+      if (!mounted) {
+        return;
+      }
+
+      if (deleted) {
+        // PaymentProvider removes the deleted item and notifies listeners.
+        // Do not pop the Payments root route here; doing so can leave the
+        // nested navigation stack in an invalid state and was also involved
+        // in the previous payment-screen recursion/StackOverflow reports.
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Payment deleted and customer ledger reversed successfully.',
+            ),
+            behavior: SnackBarBehavior.floating,
           ),
-          backgroundColor: AppColors.danger,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              paymentProvider.errorMessage ?? 'Unable to delete payment safely.',
+            ),
+            backgroundColor: AppColors.danger,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDeletingPayment = false;
+        });
+      }
     }
   }
 

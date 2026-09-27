@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/purchase_model.dart';
+import '../core/utils/transaction_calculator.dart';
 import 'base_repository.dart';
 
 class PurchaseRepository extends BaseRepository {
@@ -56,8 +57,22 @@ class PurchaseRepository extends BaseRepository {
         ? collection.doc()
         : collection.doc(purchase.id);
 
+    final double calculatedSubtotal =
+        TransactionCalculator.purchaseSubtotal(purchase.items);
+    final double calculatedTotal = TransactionCalculator.purchaseTotal(
+      items: purchase.items,
+      discount: purchase.discount,
+      tax: purchase.tax,
+    );
+
+    if (purchase.paidAmount > calculatedTotal) {
+      throw ArgumentError(
+        'Paid amount cannot be greater than the calculated purchase total.',
+      );
+    }
+
     final paymentStatus = _calculatePaymentStatus(
-      total: purchase.total,
+      total: calculatedTotal,
       paidAmount: purchase.paidAmount,
     );
 
@@ -67,10 +82,10 @@ class PurchaseRepository extends BaseRepository {
       supplierId: purchase.supplierId,
       supplierName: purchase.supplierName,
       items: purchase.items,
-      subtotal: purchase.subtotal,
+      subtotal: calculatedSubtotal,
       discount: purchase.discount,
       tax: purchase.tax,
-      total: purchase.total,
+      total: calculatedTotal,
       paidAmount: purchase.paidAmount,
       paymentStatus: paymentStatus,
       paymentMethod: purchase.paymentMethod,
@@ -245,8 +260,22 @@ class PurchaseRepository extends BaseRepository {
       );
     }
 
+    final double calculatedSubtotal =
+        TransactionCalculator.purchaseSubtotal(purchase.items);
+    final double calculatedTotal = TransactionCalculator.purchaseTotal(
+      items: purchase.items,
+      discount: purchase.discount,
+      tax: purchase.tax,
+    );
+
+    if (purchase.paidAmount > calculatedTotal) {
+      throw ArgumentError(
+        'Paid amount cannot be greater than the calculated purchase total.',
+      );
+    }
+
     final paymentStatus = _calculatePaymentStatus(
-      total: purchase.total,
+      total: calculatedTotal,
       paidAmount: purchase.paidAmount,
     );
 
@@ -256,10 +285,10 @@ class PurchaseRepository extends BaseRepository {
       supplierId: purchase.supplierId,
       supplierName: purchase.supplierName,
       items: purchase.items,
-      subtotal: purchase.subtotal,
+      subtotal: calculatedSubtotal,
       discount: purchase.discount,
       tax: purchase.tax,
-      total: purchase.total,
+      total: calculatedTotal,
       paidAmount: purchase.paidAmount,
       paymentStatus: paymentStatus,
       paymentMethod: purchase.paymentMethod,
@@ -536,6 +565,25 @@ class PurchaseRepository extends BaseRepository {
       }
     }
 
+    final double storedSubtotal = _toDouble(data['subtotal']);
+    final double discount = _toDouble(data['discount']);
+    final double tax = _toDouble(data['tax']);
+    final double storedTotal = _toDouble(data['total']);
+    final double calculatedSubtotal =
+        TransactionCalculator.purchaseSubtotal(items);
+    final double calculatedTotal = TransactionCalculator.purchaseTotal(
+      items: items,
+      discount: discount,
+      tax: tax,
+    );
+
+    final double effectiveSubtotal = items.isNotEmpty
+        ? calculatedSubtotal
+        : storedSubtotal;
+    final double effectiveTotal = items.isNotEmpty
+        ? calculatedTotal
+        : storedTotal;
+
     return PurchaseModel(
       id: data['id'] as String? ?? documentId,
       businessId:
@@ -545,18 +593,10 @@ class PurchaseRepository extends BaseRepository {
       supplierName:
           data['supplierName'] as String? ?? '',
       items: items,
-      subtotal: _toDouble(
-        data['subtotal'],
-      ),
-      discount: _toDouble(
-        data['discount'],
-      ),
-      tax: _toDouble(
-        data['tax'],
-      ),
-      total: _toDouble(
-        data['total'],
-      ),
+      subtotal: effectiveSubtotal,
+      discount: discount,
+      tax: tax,
+      total: effectiveTotal,
       paidAmount: _toDouble(
         data['paidAmount'],
       ),
@@ -591,9 +631,7 @@ class PurchaseRepository extends BaseRepository {
       purchaseRate: _toDouble(
         data['purchaseRate'],
       ),
-      total: _toDouble(
-        data['total'],
-      ),
+      total: _toDouble(data['quantity']) * _toDouble(data['purchaseRate']),
     );
   }
 

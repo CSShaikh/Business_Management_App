@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../core/app_refresh_controller.dart';
+
 class ThemeProvider extends ChangeNotifier {
   ThemeMode _themeMode = ThemeMode.system;
 
@@ -20,6 +22,11 @@ class ThemeProvider extends ChangeNotifier {
     }
 
     _themeMode = mode;
-    notifyListeners();
+    _notifyDataChanged();
   }
+  void _notifyDataChanged() {
+    notifyListeners();
+    AppRefreshController.instance.bump();
+  }
+
 }

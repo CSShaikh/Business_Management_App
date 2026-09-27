@@ -587,10 +587,11 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
 
       if (!mounted) return;
 
-      if (!widget.isEditMode) {
+      final bool shouldReturnHome = !widget.isEditMode;
+      Navigator.pop(context, true);
+      if (shouldReturnHome) {
         AppNavigationController.requestHome();
       }
-      Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
 
@@ -692,7 +693,7 @@ class _AddSaleScreenState extends State<AddSaleScreen> {
 
   Future<void> _editRate(_SaleDraftItem item) async {
     final TextEditingController controller = TextEditingController(
-      text: item.sellingRate.toStringAsFixed(2),
+      text: AppNumberFormat.input(item.sellingRate),
     );
 
     final double? rate = await showDialog<double>(

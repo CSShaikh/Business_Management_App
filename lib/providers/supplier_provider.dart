@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../core/app_refresh_controller.dart';
+
 import '../models/supplier_model.dart';
 import '../repositories/purchase_repository.dart';
 import '../repositories/supplier_repository.dart';
@@ -170,7 +172,7 @@ class SupplierProvider extends ChangeNotifier {
           suppliers,
         );
 
-        notifyListeners();
+        _notifyDataChanged();
       },
       onError: (Object error) {
         _setError(
@@ -459,7 +461,7 @@ class SupplierProvider extends ChangeNotifier {
             supplierIdValue,
       );
 
-      notifyListeners();
+      _notifyDataChanged();
 
       return true;
     } catch (error) {
@@ -628,7 +630,7 @@ class SupplierProvider extends ChangeNotifier {
     _suppliers =
         <SupplierModel>[];
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ---------------------------------------------------------------------------
@@ -655,7 +657,7 @@ class SupplierProvider extends ChangeNotifier {
 
     _errorMessage = null;
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   void _setError(
@@ -663,7 +665,7 @@ class SupplierProvider extends ChangeNotifier {
   ) {
     _errorMessage = message;
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ---------------------------------------------------------------------------
@@ -679,7 +681,7 @@ class SupplierProvider extends ChangeNotifier {
 
     _isLoading = value;
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ---------------------------------------------------------------------------
@@ -695,7 +697,7 @@ class SupplierProvider extends ChangeNotifier {
 
     _isSaving = value;
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ---------------------------------------------------------------------------
@@ -748,7 +750,7 @@ class SupplierProvider extends ChangeNotifier {
               ),
     );
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ---------------------------------------------------------------------------
@@ -792,4 +794,9 @@ class SupplierProvider extends ChangeNotifier {
     _suppliersSubscription?.cancel();
     super.dispose();
   }
+  void _notifyDataChanged() {
+    notifyListeners();
+    AppRefreshController.instance.bump();
+  }
+
 }

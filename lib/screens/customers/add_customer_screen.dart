@@ -122,10 +122,11 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
         return;
       }
 
-      if (!widget.isEditMode) {
+      final bool shouldReturnHome = !widget.isEditMode;
+      Navigator.pop(context, true);
+      if (shouldReturnHome) {
         AppNavigationController.requestHome();
       }
-      Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) {
         return;

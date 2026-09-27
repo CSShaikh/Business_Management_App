@@ -453,7 +453,7 @@ class _SupplierReportScreenState extends State<SupplierReportScreen> {
   // ===========================================================================
 
   String _pdfMoney(double value) {
-    return 'Rs. ${NumberFormat('#,##0.00', 'en_IN').format(value)}';
+    return 'Rs. ${NumberFormat('#,##0', 'en_IN').format(value)}';
   }
 
   Future<void> _downloadPdf() async {
@@ -497,7 +497,12 @@ class _SupplierReportScreenState extends State<SupplierReportScreen> {
                 borderRadius: pw.BorderRadius.circular(8),
               ),
               child: logo == null
-                  ? pw.Center(child: pw.Text('LOGO', style: const pw.TextStyle(fontSize: 7)))
+                  ? pw.Center(
+                      child: pw.Text(
+                        'LOGO',
+                        style: const pw.TextStyle(fontSize: 7),
+                      ),
+                    )
                   : pw.Image(logo, fit: pw.BoxFit.contain),
             ),
             pw.SizedBox(height: 8),
@@ -708,7 +713,9 @@ class _SupplierReportScreenState extends State<SupplierReportScreen> {
           ),
           title: const Text('Supplier Report'),
         ),
-        body: AppResponsivePage(child: const Center(child: CircularProgressIndicator())),
+        body: AppResponsivePage(
+          child: const Center(child: CircularProgressIndicator()),
+        ),
       );
     }
 
@@ -764,45 +771,47 @@ class _SupplierReportScreenState extends State<SupplierReportScreen> {
           const SizedBox(width: 4),
         ],
       ),
-      body: AppResponsivePage(child: LayoutBuilder(
-        builder: (context, constraints) {
-          final bool isDesktop = constraints.maxWidth >= 1000;
+      body: AppResponsivePage(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final bool isDesktop = constraints.maxWidth >= 1000;
 
-          final bool isTablet =
-              constraints.maxWidth >= 650 && constraints.maxWidth < 1000;
+            final bool isTablet =
+                constraints.maxWidth >= 650 && constraints.maxWidth < 1000;
 
-          return SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.symmetric(
-              horizontal: isDesktop
-                  ? 28
-                  : isTablet
-                  ? 22
-                  : 16,
-              vertical: 20,
-            ),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1250),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildHeader(theme, isDesktop),
-                    const SizedBox(height: 20),
-                    _buildSummary(isDesktop),
-                    const SizedBox(height: 20),
-                    _buildPaymentOverview(),
-                    const SizedBox(height: 20),
-                    _buildFilters(theme),
-                    const SizedBox(height: 20),
-                    _buildSupplierList(theme, suppliers),
-                  ],
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: EdgeInsets.symmetric(
+                horizontal: isDesktop
+                    ? 28
+                    : isTablet
+                    ? 22
+                    : 16,
+                vertical: 20,
+              ),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1250),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildHeader(theme, isDesktop),
+                      const SizedBox(height: 20),
+                      _buildSummary(isDesktop),
+                      const SizedBox(height: 20),
+                      _buildPaymentOverview(),
+                      const SizedBox(height: 20),
+                      _buildFilters(theme),
+                      const SizedBox(height: 20),
+                      _buildSupplierList(theme, suppliers),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          );
-        },
-      )),
+            );
+          },
+        ),
+      ),
     );
   }
 
@@ -1999,7 +2008,7 @@ class _SupplierDetailSummary extends StatelessWidget {
           label: 'Outstanding',
           value: outstanding,
           icon: Icons.account_balance_wallet_outlined,
-          color: outstanding == '₹0.00' ? AppColors.success : AppColors.warning,
+          color: outstanding == '₹0' ? AppColors.success : AppColors.warning,
         ),
         _DetailMetric(
           label: 'Purchase Count',

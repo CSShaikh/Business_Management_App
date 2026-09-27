@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../app_refresh_controller.dart';
+
 /// Shared page frame used by the business screens.
 /// It follows the dashboard's centered, card-friendly layout while adapting
 /// padding and maximum content width for phones, tablets and desktops.
-class AppResponsivePage extends StatelessWidget {
+class AppResponsivePage extends StatefulWidget {
   final Widget child;
   final double maxWidth;
 
@@ -12,6 +14,33 @@ class AppResponsivePage extends StatelessWidget {
     required this.child,
     this.maxWidth = 1180,
   });
+
+  @override
+  State<AppResponsivePage> createState() => _AppResponsivePageState();
+}
+
+class _AppResponsivePageState extends State<AppResponsivePage> {
+  late int _refreshVersion;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshVersion = AppRefreshController.instance.version;
+    AppRefreshController.instance.addListener(_handleRefresh);
+  }
+
+  void _handleRefresh() {
+    if (!mounted) return;
+    setState(() {
+      _refreshVersion = AppRefreshController.instance.version;
+    });
+  }
+
+  @override
+  void dispose() {
+    AppRefreshController.instance.removeListener(_handleRefresh);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,15 +60,18 @@ class AppResponsivePage extends StatelessWidget {
             child: Align(
               alignment: Alignment.topCenter,
               child: ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: maxWidth),
-                child: Padding(
+                constraints: BoxConstraints(maxWidth: widget.maxWidth),
+                child: KeyedSubtree(
+                  key: ValueKey<int>(_refreshVersion),
+                  child: Padding(
                   padding: EdgeInsets.fromLTRB(
                     horizontal,
                     vertical,
                     horizontal,
                     vertical + (bottomInset > 0 ? 8 : 0),
                   ),
-                  child: child,
+                  child: widget.child,
+                  ),
                 ),
               ),
             ),

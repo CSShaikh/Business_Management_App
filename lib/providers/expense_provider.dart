@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../core/app_refresh_controller.dart';
+
 import '../models/expense_model.dart';
 import '../repositories/expense_repository.dart';
 
@@ -152,7 +154,7 @@ class ExpenseProvider extends ChangeNotifier {
     _businessId = id;
     clearExpenses(notify: false);
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ---------------------------------------------------------------------------
@@ -185,7 +187,7 @@ class ExpenseProvider extends ChangeNotifier {
         ..clear()
         ..addAll(result);
 
-      notifyListeners();
+      _notifyDataChanged();
 
       return List<ExpenseModel>.unmodifiable(
         _expenses,
@@ -233,7 +235,7 @@ class ExpenseProvider extends ChangeNotifier {
           ..clear()
           ..addAll(values);
 
-        notifyListeners();
+        _notifyDataChanged();
       },
       onError: (Object error) {
         _setError(
@@ -459,7 +461,7 @@ class ExpenseProvider extends ChangeNotifier {
             expense.id == expenseIdValue,
       );
 
-      notifyListeners();
+      _notifyDataChanged();
 
       return true;
     } catch (e) {
@@ -741,7 +743,7 @@ class ExpenseProvider extends ChangeNotifier {
     _expenses.clear();
 
     if (notify) {
-      notifyListeners();
+      _notifyDataChanged();
     }
   }
 
@@ -773,7 +775,7 @@ class ExpenseProvider extends ChangeNotifier {
       },
     );
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   double _calculateCategoryTotal(
@@ -799,7 +801,7 @@ class ExpenseProvider extends ChangeNotifier {
     }
 
     _isLoading = value;
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   void _setSaving(bool value) {
@@ -808,7 +810,7 @@ class ExpenseProvider extends ChangeNotifier {
     }
 
     _isSaving = value;
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   void _clearError() {
@@ -817,12 +819,12 @@ class ExpenseProvider extends ChangeNotifier {
     }
 
     _errorMessage = null;
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   void _setError(String message) {
     _errorMessage = message;
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   String _formatError(
@@ -860,4 +862,9 @@ class ExpenseProvider extends ChangeNotifier {
     _expenseSubscription?.cancel();
     super.dispose();
   }
+  void _notifyDataChanged() {
+    notifyListeners();
+    AppRefreshController.instance.bump();
+  }
+
 }

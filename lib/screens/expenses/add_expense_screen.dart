@@ -376,10 +376,11 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
             : 'Expense saved successfully.',
       );
 
-      if (!widget.isEditMode) {
+      final bool shouldReturnHome = !widget.isEditMode;
+      Navigator.pop(context, true);
+      if (shouldReturnHome) {
         AppNavigationController.requestHome();
       }
-      Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) {
         return;

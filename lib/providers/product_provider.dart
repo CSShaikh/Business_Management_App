@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../core/app_refresh_controller.dart';
+
 import '../models/product_model.dart';
 import '../repositories/product_repository.dart';
 
@@ -115,7 +117,7 @@ class ProductProvider extends ChangeNotifier {
 
     _clearError();
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ===========================================================================
@@ -189,7 +191,7 @@ class ProductProvider extends ChangeNotifier {
         .listen(
       (List<ProductModel> updatedProducts) {
         _products = updatedProducts;
-        notifyListeners();
+        _notifyDataChanged();
       },
       onError: (Object error) {
         _setError(
@@ -407,7 +409,7 @@ class ProductProvider extends ChangeNotifier {
             product.id == normalizedProductId,
       );
 
-      notifyListeners();
+      _notifyDataChanged();
 
       return true;
     } catch (e) {
@@ -484,7 +486,7 @@ class ProductProvider extends ChangeNotifier {
           updatedAt: DateTime.now(),
         );
 
-        notifyListeners();
+        _notifyDataChanged();
       }
 
       return true;
@@ -569,7 +571,7 @@ class ProductProvider extends ChangeNotifier {
           updatedAt: DateTime.now(),
         );
 
-        notifyListeners();
+        _notifyDataChanged();
       }
 
       return true;
@@ -737,7 +739,7 @@ class ProductProvider extends ChangeNotifier {
 
   void clearProducts() {
     _products = <ProductModel>[];
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ===========================================================================
@@ -762,12 +764,12 @@ class ProductProvider extends ChangeNotifier {
     }
 
     _errorMessage = null;
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   void _setError(String message) {
     _errorMessage = message;
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ===========================================================================
@@ -780,7 +782,7 @@ class ProductProvider extends ChangeNotifier {
     }
 
     _isLoading = value;
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   void _setSaving(bool value) {
@@ -789,7 +791,7 @@ class ProductProvider extends ChangeNotifier {
     }
 
     _isSaving = value;
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ===========================================================================
@@ -818,7 +820,7 @@ class ProductProvider extends ChangeNotifier {
       _products = updatedProducts;
     }
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ===========================================================================
@@ -860,4 +862,9 @@ class ProductProvider extends ChangeNotifier {
     _productsSubscription?.cancel();
     super.dispose();
   }
+  void _notifyDataChanged() {
+    notifyListeners();
+    AppRefreshController.instance.bump();
+  }
+
 }

@@ -2,18 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/app_refresh_controller.dart';
+import '../../core/utils/transaction_calculator.dart';
 import '../../models/business_model.dart';
 import '../../models/expense_model.dart';
 import '../../models/payment_model.dart';
 import '../../models/product_model.dart';
 import '../../models/purchase_model.dart';
 import '../../models/sale_model.dart';
+import '../../models/supplier_payment_model.dart';
 import '../../repositories/business_repository.dart';
 import '../../repositories/expense_repository.dart';
 import '../../repositories/payment_repository.dart';
 import '../../repositories/product_repository.dart';
 import '../../repositories/purchase_repository.dart';
 import '../../repositories/sale_repository.dart';
+import '../../repositories/supplier_payment_repository.dart';
 
 import 'analytics_report_screen.dart';
 import 'customer_report_screen.dart';
@@ -47,6 +51,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   final ProductRepository _productRepository = ProductRepository();
 
+  final SupplierPaymentRepository _supplierPaymentRepository =
+      SupplierPaymentRepository();
+
   BusinessModel? _business;
 
   List<SaleModel> _sales = <SaleModel>[];
@@ -54,6 +61,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   List<ExpenseModel> _expenses = <ExpenseModel>[];
   List<PaymentModel> _payments = <PaymentModel>[];
   List<ProductModel> _products = <ProductModel>[];
+  List<SupplierPaymentModel> _supplierPayments = <SupplierPaymentModel>[];
 
   bool _isLoading = true;
   bool _isRefreshing = false;
@@ -65,7 +73,23 @@ class _ReportsScreenState extends State<ReportsScreen> {
   @override
   void initState() {
     super.initState();
+    AppRefreshController.instance.addListener(_handleGlobalDataChange);
     _initialize();
+  }
+
+  void _handleGlobalDataChange() {
+    if (!mounted || _isLoading || _isRefreshing) {
+      return;
+    }
+    // Reload the report data itself, not just the surrounding page widget.
+    // This keeps the currently selected Today/Weekly/Monthly period intact.
+    _refresh(showFeedback: false);
+  }
+
+  @override
+  void dispose() {
+    AppRefreshController.instance.removeListener(_handleGlobalDataChange);
+    super.dispose();
   }
 
   // ===========================================================================
@@ -117,6 +141,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         _expenseRepository.getExpenses(businessId: businessId),
         _paymentRepository.getPayments(businessId: businessId),
         _productRepository.getProducts(businessId),
+        _supplierPaymentRepository.getPayments(businessId: businessId),
       ]);
 
       if (!mounted) {
@@ -130,6 +155,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         _expenses = results[2] as List<ExpenseModel>;
         _payments = results[3] as List<PaymentModel>;
         _products = results[4] as List<ProductModel>;
+        _supplierPayments = results[5] as List<SupplierPaymentModel>;
         _isLoading = false;
         _errorMessage = null;
       });
@@ -149,7 +175,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   // REFRESH
   // ===========================================================================
 
-  Future<void> _refresh() async {
+  Future<void> _refresh({bool showFeedback = true}) async {
     if (_isRefreshing || !mounted) {
       return;
     }
@@ -178,6 +204,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         _expenseRepository.getExpenses(businessId: businessId),
         _paymentRepository.getPayments(businessId: businessId),
         _productRepository.getProducts(businessId),
+        _supplierPaymentRepository.getPayments(businessId: businessId),
       ]);
 
       if (!mounted) {
@@ -191,10 +218,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
         _expenses = results[2] as List<ExpenseModel>;
         _payments = results[3] as List<PaymentModel>;
         _products = results[4] as List<ProductModel>;
+        _supplierPayments = results[5] as List<SupplierPaymentModel>;
         _errorMessage = null;
       });
 
-      if (mounted) {
+      if (mounted && showFeedback) {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(
@@ -213,14 +241,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
         _errorMessage = 'Unable to refresh reports. Please try again.';
       });
 
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(
-            content: Text('Unable to refresh reports.'),
-            behavior: SnackBarBehavior.fixed,
-          ),
-        );
+      if (showFeedback) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text('Unable to refresh reports.'),
+              behavior: SnackBarBehavior.fixed,
+            ),
+          );
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -232,25 +262,53 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   DateTime _periodStart() {
     final DateTime now = DateTime.now();
-    if (_selectedPeriod == 'Weekly') {
-      return DateTime(
-        now.year,
-        now.month,
-        now.day,
-      ).subtract(const Duration(days: 6));
+    final DateTime today = DateTime(now.year, now.month, now.day);
+
+    switch (_selectedPeriod) {
+      case 'Weekly':
+        return today.subtract(
+          Duration(days: today.weekday - DateTime.monday),
+        );
+      case 'Monthly':
+        return DateTime(now.year, now.month, 1);
+      case 'Today':
+      default:
+        return today;
     }
-    if (_selectedPeriod == 'Monthly') {
-      return DateTime(now.year, now.month, 1);
+  }
+
+  /// Exclusive end of the selected calendar period. Using calendar boundaries
+  /// instead of `DateTime.now()` ensures Weekly/Monthly include every
+  /// transaction belonging to that period, regardless of its time-of-day.
+  DateTime _periodEndExclusive() {
+    final DateTime now = DateTime.now();
+    final DateTime start = _periodStart();
+
+    switch (_selectedPeriod) {
+      case 'Weekly':
+        return start.add(const Duration(days: 7));
+      case 'Monthly':
+        return DateTime(now.year, now.month + 1, 1);
+      case 'Today':
+      default:
+        return start.add(const Duration(days: 1));
     }
-    return DateTime(now.year, now.month, now.day);
   }
 
   bool _inSelectedPeriod(DateTime date) {
-    final DateTime start = _periodStart();
-    final DateTime end = DateTime.now();
     final DateTime local = date.toLocal();
-    return !local.isBefore(start) &&
-        local.isBefore(end.add(const Duration(days: 1)));
+    final DateTime start = _periodStart();
+    final DateTime endExclusive = _periodEndExclusive();
+    return !local.isBefore(start) && local.isBefore(endExclusive);
+  }
+
+  String get _periodRangeLabel {
+    final DateFormat format = DateFormat('dd MMM yyyy');
+    final DateTime start = _periodStart();
+    final DateTime end = _periodEndExclusive().subtract(
+      const Duration(days: 1),
+    );
+    return '${format.format(start)} - ${format.format(end)}';
   }
 
   List<SaleModel> get _periodSales => _sales
@@ -266,6 +324,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
       .where((item) => _inSelectedPeriod(item.date))
       .toList(growable: false);
 
+  List<SupplierPaymentModel> get _periodSupplierPayments =>
+      _supplierPayments
+          .where((item) => _inSelectedPeriod(item.date))
+          .toList(growable: false);
+
+  bool _onOrBeforePeriodEnd(DateTime date) {
+    final DateTime endExclusive = _periodEndExclusive();
+    return date.toLocal().isBefore(endExclusive);
+  }
+
   void _selectPeriod(String period) {
     if (_selectedPeriod == period) return;
     setState(() => _selectedPeriod = period);
@@ -276,81 +344,126 @@ class _ReportsScreenState extends State<ReportsScreen> {
   // ===========================================================================
 
   double get _totalSales {
-    return _periodSales.fold<double>(0, (sum, sale) => sum + sale.total);
+    return _periodSales.fold<double>(
+      0,
+      (sum, sale) => sum + TransactionCalculator.saleTotal(
+        items: sale.items,
+        discount: sale.discount,
+        tax: sale.tax,
+      ),
+    );
   }
 
   double get _totalPurchases {
     return _periodPurchases.fold<double>(
       0,
-      (sum, purchase) => sum + purchase.total,
+      (sum, purchase) => sum + TransactionCalculator.purchaseTotal(
+        items: purchase.items,
+        discount: purchase.discount,
+        tax: purchase.tax,
+      ),
     );
   }
 
   double get _totalExpenses {
-    return _periodExpenses.fold<double>(
-      0,
-      (sum, expense) => sum + expense.amount,
-    );
+    return _periodExpenses.fold<double>(0, (sum, expense) => sum + expense.amount);
   }
 
-  /// Total customer receipts across the available sales/payment records.
-  ///
-  /// Customer money can be recorded in two places:
-  /// 1. paidAmount on the sale itself.
-  /// 2. Separate PaymentModel transactions.
-  ///
-  /// Both are intentionally included here.
-  double get _totalPayments {
-    final double salePayments = _periodSales.fold<double>(
+  double get _totalCustomerReceipts {
+    final double saleReceipts = _periodSales.fold<double>(
       0,
-      (sum, sale) => sum + sale.paidAmount,
+      (sum, sale) => sum + (sale.paidAmount > 0 ? sale.paidAmount : 0),
     );
-
-    final double separatePayments = _periodPayments.fold<double>(
+    final double separateReceipts = _periodPayments.fold<double>(
       0,
-      (sum, payment) => sum + payment.amount,
+      (sum, payment) => sum + (payment.amount > 0 ? payment.amount : 0),
     );
+    return saleReceipts + separateReceipts;
+  }
 
-    return salePayments + separatePayments;
+  double get _totalSupplierPayments {
+    return _periodSupplierPayments.fold<double>(
+      0,
+      (sum, payment) => sum + (payment.amount > 0 ? payment.amount : 0),
+    );
   }
 
   double _saleCost(SaleModel sale) {
     return sale.items.fold<double>(
       0,
-      (sum, item) => sum + (item.costPrice * item.quantity),
+      (sum, item) => sum + (item.costPrice > 0 ? item.costPrice * item.quantity : 0),
     );
   }
 
-  /// Gross profit is based on the actual invoice total
-  /// minus the actual cost of goods sold.
   double get _grossProfit {
     return _periodSales.fold<double>(
       0,
-      (sum, sale) => sum + (sale.total - _saleCost(sale)),
+      (sum, sale) => sum +
+          (TransactionCalculator.saleTotal(
+                items: sale.items,
+                discount: sale.discount,
+                tax: sale.tax,
+              ) -
+              _saleCost(sale)),
     );
   }
 
-  double get _netProfit {
-    return _grossProfit - _totalExpenses;
-  }
+  double get _netProfit => _grossProfit - _totalExpenses;
 
   double get _profitMargin {
-    if (_totalSales <= 0) {
-      return 0;
-    }
-
+    if (_totalSales <= 0) return 0;
     return (_netProfit / _totalSales) * 100;
   }
 
-  /// Current customer outstanding based on available
-  /// sales and payment records.
-  double get _outstandingSales {
-    final double outstanding = _totalSales - _totalPayments;
+  /// Outstanding is the balance still due at the end of the selected period.
+  /// It therefore includes historical invoices/payments up to that boundary,
+  /// not just transactions created inside the selected period.
+  double get _customerOutstandingAtPeriodEnd {
+    final double salesUpToEnd = _sales
+        .where((sale) => _onOrBeforePeriodEnd(sale.date))
+        .fold<double>(
+          0,
+          (sum, sale) => sum +
+              TransactionCalculator.saleTotal(
+                items: sale.items,
+                discount: sale.discount,
+                tax: sale.tax,
+              ),
+        );
+    final double paidUpToEnd = _sales
+            .where((sale) => _onOrBeforePeriodEnd(sale.date))
+            .fold<double>(0, (sum, sale) => sum + sale.paidAmount) +
+        _payments
+            .where((payment) => _onOrBeforePeriodEnd(payment.date))
+            .fold<double>(0, (sum, payment) => sum + payment.amount);
+    final double value = salesUpToEnd - paidUpToEnd;
+    return value > 0 ? value : 0;
+  }
 
-    return outstanding > 0 ? outstanding : 0;
+  double get _supplierOutstandingAtPeriodEnd {
+    final double purchasesUpToEnd = _purchases
+        .where((purchase) => _onOrBeforePeriodEnd(purchase.date))
+        .fold<double>(
+          0,
+          (sum, purchase) => sum +
+              TransactionCalculator.purchaseTotal(
+                items: purchase.items,
+                discount: purchase.discount,
+                tax: purchase.tax,
+              ),
+        );
+    final double paidUpToEnd = _purchases
+            .where((purchase) => _onOrBeforePeriodEnd(purchase.date))
+            .fold<double>(0, (sum, purchase) => sum + purchase.paidAmount) +
+        _supplierPayments
+            .where((payment) => _onOrBeforePeriodEnd(payment.date))
+            .fold<double>(0, (sum, payment) => sum + payment.amount);
+    final double value = purchasesUpToEnd - paidUpToEnd;
+    return value > 0 ? value : 0;
   }
 
   double get _stockValue {
+
     return _products.fold<double>(
       0,
       (sum, product) => sum + (product.currentStock * product.purchasePrice),
@@ -546,6 +659,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         const SizedBox(height: 18),
                         _buildPeriodDetails(theme),
                         const SizedBox(height: 22),
+                        _buildPeriodTransactions(theme),
+                        const SizedBox(height: 22),
                         _buildReportGrid(theme),
                         const SizedBox(height: 22),
                         _buildInventorySnapshot(theme),
@@ -710,15 +825,27 @@ class _ReportsScreenState extends State<ReportsScreen> {
       ),
       _MetricItem(
         title: 'Received',
-        value: _currency(_totalPayments),
+        value: _currency(_totalCustomerReceipts),
         icon: Icons.payments_rounded,
         color: AppColors.info,
       ),
       _MetricItem(
         title: 'Outstanding',
-        value: _currency(_outstandingSales),
+        value: _currency(_customerOutstandingAtPeriodEnd),
         icon: Icons.pending_actions_rounded,
         color: AppColors.warning,
+      ),
+      _MetricItem(
+        title: 'Supplier Paid',
+        value: _currency(_totalSupplierPayments),
+        icon: Icons.account_balance_wallet_rounded,
+        color: AppColors.secondary,
+      ),
+      _MetricItem(
+        title: 'Supplier Outstanding',
+        value: _currency(_supplierOutstandingAtPeriodEnd),
+        icon: Icons.inventory_2_rounded,
+        color: AppColors.danger,
       ),
     ];
 
@@ -728,7 +855,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         _sectionTitle(
           theme,
           'Overview',
-          '$_selectedPeriod business performance',
+          '$_selectedPeriod • $_periodRangeLabel',
           Icons.dashboard_rounded,
         ),
         const SizedBox(height: 12),
@@ -764,7 +891,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return AppMetricCard(
       title: metric.title,
       value: metric.value,
-      subtitle: _selectedPeriod,
+      subtitle: _periodRangeLabel,
       icon: metric.icon,
       color: metric.color,
     );
@@ -778,13 +905,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final List<_MetricItem> metrics = [
       _MetricItem(
         title: 'Amount Received',
-        value: _currency(_totalPayments),
+        value: _currency(_totalCustomerReceipts),
         icon: Icons.payments_rounded,
         color: AppColors.success,
       ),
       _MetricItem(
         title: 'Outstanding',
-        value: _currency(_outstandingSales),
+        value: _currency(_customerOutstandingAtPeriodEnd),
         icon: Icons.pending_actions_rounded,
         color: AppColors.warning,
       ),
@@ -808,7 +935,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         _sectionTitle(
           theme,
           'Quick Summary',
-          '$_selectedPeriod business position',
+          '$_selectedPeriod • $_periodRangeLabel',
           Icons.dashboard_customize_rounded,
         ),
         const SizedBox(height: 12),
@@ -861,10 +988,19 @@ class _ReportsScreenState extends State<ReportsScreen> {
       ),
       _PeriodDetail(
         'Received',
-        _periodPayments.length,
-        _currency(_totalPayments),
+        _periodPayments.length +
+            _periodSales.where((sale) => sale.paidAmount > 0).length,
+        _currency(_totalCustomerReceipts),
         Icons.payments_rounded,
         AppColors.info,
+      ),
+      _PeriodDetail(
+        'Supplier Paid',
+        _periodSupplierPayments.length +
+            _periodPurchases.where((purchase) => purchase.paidAmount > 0).length,
+        _currency(_totalSupplierPayments),
+        Icons.account_balance_wallet_rounded,
+        AppColors.secondary,
       ),
     ];
 
@@ -874,7 +1010,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         _sectionTitle(
           theme,
           '$_selectedPeriod Details',
-          'Complete transaction totals for the selected period',
+          'Complete totals for $_periodRangeLabel',
           Icons.view_column_rounded,
         ),
         const SizedBox(height: 12),
@@ -905,6 +1041,179 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   .toList(),
             );
           },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPeriodTransactions(ThemeData theme) {
+    final List<_ReportTransaction> transactions = <_ReportTransaction>[];
+
+    for (final sale in _periodSales) {
+      transactions.add(
+        _ReportTransaction(
+          type: 'Sale',
+          title: sale.invoiceNumber.trim().isEmpty
+              ? (sale.customerName.trim().isEmpty ? 'Sale' : sale.customerName)
+              : sale.invoiceNumber,
+          subtitle: sale.customerName.trim().isEmpty
+              ? 'Sale transaction'
+              : sale.customerName,
+          amount: TransactionCalculator.saleTotal(
+            items: sale.items,
+            discount: sale.discount,
+            tax: sale.tax,
+          ),
+          date: sale.date,
+          icon: Icons.point_of_sale_rounded,
+          color: AppColors.success,
+        ),
+      );
+    }
+
+    for (final sale in _periodSales) {
+      if (sale.paidAmount <= 0) {
+        continue;
+      }
+      transactions.add(
+        _ReportTransaction(
+          type: 'Sale Payment',
+          title: sale.invoiceNumber.trim().isEmpty
+              ? (sale.customerName.trim().isEmpty ? 'Sale receipt' : sale.customerName)
+              : sale.invoiceNumber,
+          subtitle: 'Paid on sale',
+          amount: sale.paidAmount,
+          date: sale.date,
+          icon: Icons.payments_rounded,
+          color: AppColors.info,
+        ),
+      );
+    }
+
+    for (final purchase in _periodPurchases) {
+      transactions.add(
+        _ReportTransaction(
+          type: 'Purchase',
+          title: purchase.supplierName.trim().isEmpty
+              ? 'Purchase'
+              : purchase.supplierName,
+          subtitle: '${purchase.items.length} item${purchase.items.length == 1 ? '' : 's'}',
+          amount: TransactionCalculator.purchaseTotal(
+            items: purchase.items,
+            discount: purchase.discount,
+            tax: purchase.tax,
+          ),
+          date: purchase.date,
+          icon: Icons.shopping_bag_rounded,
+          color: AppColors.primary,
+        ),
+      );
+    }
+
+    for (final payment in _periodPayments) {
+      transactions.add(
+        _ReportTransaction(
+          type: 'Payment',
+          title: payment.customerName.trim().isEmpty
+              ? 'Customer payment'
+              : payment.customerName,
+          subtitle: payment.paymentMethod.trim().isEmpty
+              ? 'Payment received'
+              : payment.paymentMethod,
+          amount: payment.amount,
+          date: payment.date,
+          icon: Icons.payments_rounded,
+          color: AppColors.info,
+        ),
+      );
+    }
+
+    for (final payment in _periodSupplierPayments) {
+      transactions.add(
+        _ReportTransaction(
+          type: 'Supplier Payment',
+          title: payment.supplierName.trim().isEmpty ? 'Supplier payment' : payment.supplierName,
+          subtitle: payment.paymentMethod.trim().isEmpty ? 'Payment made' : payment.paymentMethod,
+          amount: payment.amount,
+          date: payment.date,
+          icon: Icons.account_balance_wallet_rounded,
+          color: AppColors.secondary,
+        ),
+      );
+    }
+
+    for (final expense in _periodExpenses) {
+      transactions.add(
+        _ReportTransaction(
+          type: 'Expense',
+          title: expense.category.trim().isEmpty ? 'Expense' : expense.category,
+          subtitle: expense.description.trim().isEmpty
+              ? (expense.paymentMethod.trim().isEmpty ? 'Business expense' : expense.paymentMethod)
+              : expense.description,
+          amount: expense.amount,
+          date: expense.date,
+          icon: Icons.receipt_long_rounded,
+          color: AppColors.warning,
+        ),
+      );
+    }
+
+    transactions.sort((a, b) => b.date.compareTo(a.date));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionTitle(
+          theme,
+          '$_selectedPeriod Transactions',
+          'Every sale, purchase, payment and expense from $_periodRangeLabel',
+          Icons.receipt_long_rounded,
+        ),
+        const SizedBox(height: 12),
+        Card(
+          elevation: 0,
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: transactions.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.all(22),
+                    child: Center(
+                      child: Text(
+                        'No transactions found for $_selectedPeriod.',
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                    ),
+                  )
+                : Column(
+                    children: transactions.map((item) {
+                      return ListTile(
+                        dense: true,
+                        leading: CircleAvatar(
+                          backgroundColor: item.color.withValues(alpha: 0.12),
+                          child: Icon(item.icon, color: item.color, size: 20),
+                        ),
+                        title: Text(
+                          item.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        subtitle: Text(
+                          '${item.type} • ${item.subtitle} • ${DateFormat('dd MMM yyyy').format(item.date.toLocal())}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: Text(
+                          _currency(item.amount),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: item.color,
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+          ),
         ),
       ],
     );
@@ -1194,6 +1503,26 @@ class _ReportsScreenState extends State<ReportsScreen> {
 // =============================================================================
 // DATA CLASSES
 // =============================================================================
+
+class _ReportTransaction {
+  final String type;
+  final String title;
+  final String subtitle;
+  final double amount;
+  final DateTime date;
+  final IconData icon;
+  final Color color;
+
+  const _ReportTransaction({
+    required this.type,
+    required this.title,
+    required this.subtitle,
+    required this.amount,
+    required this.date,
+    required this.icon,
+    required this.color,
+  });
+}
 
 class _PeriodDetail {
   final String title;

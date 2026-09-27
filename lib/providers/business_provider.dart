@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../core/app_refresh_controller.dart';
+
 import '../models/business_model.dart';
 import '../repositories/business_repository.dart';
 
@@ -173,7 +175,7 @@ class BusinessProvider extends ChangeNotifier {
         _repository.watchBusiness(id).listen(
       (BusinessModel? business) {
         _business = business;
-        notifyListeners();
+        _notifyDataChanged();
       },
       onError: (Object error) {
         _setError(
@@ -295,7 +297,7 @@ class BusinessProvider extends ChangeNotifier {
   ) {
     _business = business;
     _clearError();
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ============================================================
@@ -305,7 +307,7 @@ class BusinessProvider extends ChangeNotifier {
   void clearBusiness() {
     _business = null;
     _clearError();
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ============================================================
@@ -330,14 +332,14 @@ class BusinessProvider extends ChangeNotifier {
     }
 
     _errorMessage = null;
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   void _setError(
     String message,
   ) {
     _errorMessage = message;
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ============================================================
@@ -352,7 +354,7 @@ class BusinessProvider extends ChangeNotifier {
     }
 
     _isLoading = value;
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ============================================================
@@ -394,4 +396,9 @@ class BusinessProvider extends ChangeNotifier {
     _businessSubscription?.cancel();
     super.dispose();
   }
+  void _notifyDataChanged() {
+    notifyListeners();
+    AppRefreshController.instance.bump();
+  }
+
 }

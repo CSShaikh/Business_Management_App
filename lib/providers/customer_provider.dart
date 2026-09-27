@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../core/app_refresh_controller.dart';
+
 import '../models/customer_model.dart';
 import '../repositories/customer_repository.dart';
 
@@ -69,7 +71,7 @@ class CustomerProvider extends ChangeNotifier {
 
     _clearError();
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ===========================================================================
@@ -146,7 +148,7 @@ class CustomerProvider extends ChangeNotifier {
     ).listen(
       (List<CustomerModel> updatedCustomers) {
         _customers = updatedCustomers;
-        notifyListeners();
+        _notifyDataChanged();
       },
       onError: (Object error) {
         _setError(
@@ -381,7 +383,7 @@ class CustomerProvider extends ChangeNotifier {
             customer.id == normalizedCustomerId,
       );
 
-      notifyListeners();
+      _notifyDataChanged();
 
       return true;
     } catch (e) {
@@ -554,7 +556,7 @@ class CustomerProvider extends ChangeNotifier {
 
   void clearCustomers() {
     _customers = <CustomerModel>[];
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ===========================================================================
@@ -579,12 +581,12 @@ class CustomerProvider extends ChangeNotifier {
     }
 
     _errorMessage = null;
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   void _setError(String message) {
     _errorMessage = message;
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ===========================================================================
@@ -597,7 +599,7 @@ class CustomerProvider extends ChangeNotifier {
     }
 
     _isLoading = value;
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ===========================================================================
@@ -610,7 +612,7 @@ class CustomerProvider extends ChangeNotifier {
     }
 
     _isSaving = value;
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ===========================================================================
@@ -639,7 +641,7 @@ class CustomerProvider extends ChangeNotifier {
       _customers = updatedCustomers;
     }
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ===========================================================================
@@ -681,4 +683,9 @@ class CustomerProvider extends ChangeNotifier {
     _customersSubscription?.cancel();
     super.dispose();
   }
+  void _notifyDataChanged() {
+    notifyListeners();
+    AppRefreshController.instance.bump();
+  }
+
 }

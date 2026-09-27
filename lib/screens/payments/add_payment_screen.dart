@@ -163,7 +163,7 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
         _selectedCustomer = existingCustomer;
 
         if (widget.isEditMode && widget.payment != null) {
-          _amountController.text = widget.payment!.amount.toStringAsFixed(2);
+          _amountController.text = AppNumberFormat.input(widget.payment!.amount);
           _referenceController.text = widget.payment!.transactionReference;
           _notesController.text = widget.payment!.notes;
           _paymentDate = widget.payment!.date;

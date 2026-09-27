@@ -916,7 +916,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
     final TextEditingController quantityController = TextEditingController();
 
     final TextEditingController unitCostController = TextEditingController(
-      text: product != null ? product.purchasePrice.toStringAsFixed(2) : '0',
+      text: product != null ? AppNumberFormat.input(product.purchasePrice) : '0',
     );
 
     final TextEditingController notesController = TextEditingController();

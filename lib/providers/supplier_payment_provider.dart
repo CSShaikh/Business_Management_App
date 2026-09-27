@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../core/app_refresh_controller.dart';
+
 import '../models/supplier_payment_model.dart';
 import '../repositories/supplier_payment_repository.dart';
 
@@ -288,7 +290,7 @@ class SupplierPaymentProvider extends ChangeNotifier {
           payments,
         );
 
-        notifyListeners();
+        _notifyDataChanged();
       },
       onError: (Object error) {
         _setError(
@@ -622,7 +624,7 @@ class SupplierPaymentProvider extends ChangeNotifier {
             paymentDocumentId,
       );
 
-      notifyListeners();
+      _notifyDataChanged();
 
       return true;
     } catch (error) {
@@ -1107,7 +1109,7 @@ class SupplierPaymentProvider extends ChangeNotifier {
       },
     );
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ---------------------------------------------------------------------------
@@ -1124,7 +1126,7 @@ class SupplierPaymentProvider extends ChangeNotifier {
 
     _clearError();
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ---------------------------------------------------------------------------
@@ -1157,7 +1159,7 @@ class SupplierPaymentProvider extends ChangeNotifier {
 
     _isLoading = value;
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ---------------------------------------------------------------------------
@@ -1173,7 +1175,7 @@ class SupplierPaymentProvider extends ChangeNotifier {
 
     _isSaving = value;
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ---------------------------------------------------------------------------
@@ -1185,7 +1187,7 @@ class SupplierPaymentProvider extends ChangeNotifier {
   ) {
     _errorMessage = message;
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   void _clearError() {
@@ -1195,7 +1197,7 @@ class SupplierPaymentProvider extends ChangeNotifier {
 
     _errorMessage = null;
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ---------------------------------------------------------------------------
@@ -1261,4 +1263,9 @@ class SupplierPaymentProvider extends ChangeNotifier {
 
     super.dispose();
   }
+  void _notifyDataChanged() {
+    notifyListeners();
+    AppRefreshController.instance.bump();
+  }
+
 }

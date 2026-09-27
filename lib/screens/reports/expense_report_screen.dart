@@ -198,7 +198,7 @@ class _ExpenseReportScreenState extends State<ExpenseReportScreen> {
   }
 
   String _pdfCurrency(double value) =>
-      'Rs. ${NumberFormat('#,##0.00', 'en_IN').format(value)}';
+      'Rs. ${NumberFormat('#,##0', 'en_IN').format(value)}';
 
   void _showMessage(String message, {bool isError = false}) {
     if (!mounted) {
@@ -306,7 +306,12 @@ class _ExpenseReportScreenState extends State<ExpenseReportScreen> {
                 borderRadius: pw.BorderRadius.circular(8),
               ),
               child: logo == null
-                  ? pw.Center(child: pw.Text('LOGO', style: const pw.TextStyle(fontSize: 7)))
+                  ? pw.Center(
+                      child: pw.Text(
+                        'LOGO',
+                        style: const pw.TextStyle(fontSize: 7),
+                      ),
+                    )
                   : pw.Image(logo, fit: pw.BoxFit.contain),
             ),
             pw.SizedBox(height: 8),
@@ -646,7 +651,9 @@ class _ExpenseReportScreenState extends State<ExpenseReportScreen> {
     if (_loading) {
       return Scaffold(
         appBar: AppBar(title: const Text('Expense Report')),
-        body: AppResponsivePage(child: const Center(child: CircularProgressIndicator())),
+        body: AppResponsivePage(
+          child: const Center(child: CircularProgressIndicator()),
+        ),
       );
     }
 
@@ -698,54 +705,56 @@ class _ExpenseReportScreenState extends State<ExpenseReportScreen> {
           ),
         ],
       ),
-      body: AppResponsivePage(child: RefreshIndicator(
-        onRefresh: _refreshReport,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final bool isDesktop = constraints.maxWidth >= 1000;
+      body: AppResponsivePage(
+        child: RefreshIndicator(
+          onRefresh: _refreshReport,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final bool isDesktop = constraints.maxWidth >= 1000;
 
-            final bool isTablet =
-                constraints.maxWidth >= 650 && constraints.maxWidth < 1000;
+              final bool isTablet =
+                  constraints.maxWidth >= 650 && constraints.maxWidth < 1000;
 
-            return SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: EdgeInsets.symmetric(
-                horizontal: isDesktop
-                    ? 28
-                    : isTablet
-                    ? 22
-                    : 16,
-                vertical: 20,
-              ),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1250),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildHeader(theme, isDesktop),
-                      const SizedBox(height: 20),
-                      _buildDateFilter(theme),
-                      const SizedBox(height: 20),
-                      _buildSummaryCards(theme, expenses, isDesktop),
-                      const SizedBox(height: 20),
-                      _buildFilters(theme),
-                      const SizedBox(height: 20),
-                      _buildCategorySection(theme, expenses),
-                      const SizedBox(height: 20),
-                      _buildPaymentMethodSection(theme, expenses),
-                      const SizedBox(height: 20),
-                      _buildExpenseList(theme, expenses),
-                      const SizedBox(height: 20),
-                      _buildFooter(theme, expenses),
-                    ],
+              return SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: EdgeInsets.symmetric(
+                  horizontal: isDesktop
+                      ? 28
+                      : isTablet
+                      ? 22
+                      : 16,
+                  vertical: 20,
+                ),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1250),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildHeader(theme, isDesktop),
+                        const SizedBox(height: 20),
+                        _buildDateFilter(theme),
+                        const SizedBox(height: 20),
+                        _buildSummaryCards(theme, expenses, isDesktop),
+                        const SizedBox(height: 20),
+                        _buildFilters(theme),
+                        const SizedBox(height: 20),
+                        _buildCategorySection(theme, expenses),
+                        const SizedBox(height: 20),
+                        _buildPaymentMethodSection(theme, expenses),
+                        const SizedBox(height: 20),
+                        _buildExpenseList(theme, expenses),
+                        const SizedBox(height: 20),
+                        _buildFooter(theme, expenses),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            );
-          },
+              );
+            },
+          ),
         ),
-      )),
+      ),
     );
   }
 

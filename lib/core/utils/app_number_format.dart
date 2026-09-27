@@ -12,6 +12,14 @@ class AppNumberFormat {
     'en_IN',
   );
 
+  static String input(double value) {
+    if (!value.isFinite) {
+      return '0';
+    }
+    final double normalized = value.abs() < 0.000001 ? 0 : value;
+    return _number.format(normalized);
+  }
+
   static String amount(double value, {String symbol = '₹'}) {
     if (!value.isFinite) {
       return '${symbol}0';

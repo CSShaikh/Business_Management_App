@@ -13,6 +13,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:public_file_saver/public_file_saver.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/transaction_calculator.dart';
 import '../../models/business_model.dart';
 import '../../models/expense_model.dart';
 import '../../models/payment_model.dart';
@@ -186,7 +187,8 @@ class _AnalyticsReportScreenState extends State<AnalyticsReportScreen> {
       return true;
     }
 
-    return !date.isBefore(start) && !date.isAfter(end);
+    final DateTime localDate = date.toLocal();
+    return !localDate.isBefore(start) && !localDate.isAfter(end);
   }
 
   Future<void> _selectDateRange() async {
@@ -449,11 +451,15 @@ class _AnalyticsReportScreenState extends State<AnalyticsReportScreen> {
   }
 
   double _totalSales(List<SaleModel> sales) {
-    return sales.fold<double>(0, (sum, sale) => sum + sale.total);
+    return sales.fold<double>(0, (sum, sale) => sum + TransactionCalculator.saleTotal(
+        items: sale.items, discount: sale.discount, tax: sale.tax,
+      ));
   }
 
   double _totalPurchases(List<PurchaseModel> purchases) {
-    return purchases.fold<double>(0, (sum, purchase) => sum + purchase.total);
+    return purchases.fold<double>(0, (sum, purchase) => sum + TransactionCalculator.purchaseTotal(
+        items: purchase.items, discount: purchase.discount, tax: purchase.tax,
+      ));
   }
 
   double _totalExpenses(List<ExpenseModel> expenses) {
@@ -487,7 +493,9 @@ class _AnalyticsReportScreenState extends State<AnalyticsReportScreen> {
   }
 
   double _saleGrossProfit(SaleModel sale) {
-    return sale.total - _saleCost(sale);
+    return TransactionCalculator.saleTotal(
+      items: sale.items, discount: sale.discount, tax: sale.tax,
+    ) - _saleCost(sale);
   }
 
   double _totalCost(List<SaleModel> sales) {
@@ -586,25 +594,30 @@ class _AnalyticsReportScreenState extends State<AnalyticsReportScreen> {
 
       switch (_period) {
         case _AnalyticsPeriod.daily:
-          key = DateTime(sale.date.year, sale.date.month, sale.date.day);
+          final DateTime localSaleDate = sale.date.toLocal();
+          key = DateTime(localSaleDate.year, localSaleDate.month, localSaleDate.day);
           break;
 
         case _AnalyticsPeriod.weekly:
+          final DateTime localSaleDate = sale.date.toLocal();
           final DateTime date = DateTime(
-            sale.date.year,
-            sale.date.month,
-            sale.date.day,
+            localSaleDate.year,
+            localSaleDate.month,
+            localSaleDate.day,
           );
 
           key = date.subtract(Duration(days: date.weekday - 1));
           break;
 
         case _AnalyticsPeriod.monthly:
-          key = DateTime(sale.date.year, sale.date.month);
+          final DateTime localSaleDate = sale.date.toLocal();
+          key = DateTime(localSaleDate.year, localSaleDate.month);
           break;
       }
 
-      values[key] = (values[key] ?? 0) + sale.total;
+      values[key] = (values[key] ?? 0) + TransactionCalculator.saleTotal(
+        items: sale.items, discount: sale.discount, tax: sale.tax,
+      );
     }
 
     final List<DateTime> dates = values.keys.toList()..sort();
@@ -634,33 +647,39 @@ class _AnalyticsReportScreenState extends State<AnalyticsReportScreen> {
     final Map<DateTime, double> values = <DateTime, double>{};
 
     for (final purchase in purchases) {
+      final DateTime localPurchaseDate = purchase.date.toLocal();
       DateTime key;
 
       switch (_period) {
         case _AnalyticsPeriod.daily:
           key = DateTime(
-            purchase.date.year,
-            purchase.date.month,
-            purchase.date.day,
+            localPurchaseDate.year,
+            localPurchaseDate.month,
+            localPurchaseDate.day,
           );
           break;
 
         case _AnalyticsPeriod.weekly:
           final DateTime date = DateTime(
-            purchase.date.year,
-            purchase.date.month,
-            purchase.date.day,
+            localPurchaseDate.year,
+            localPurchaseDate.month,
+            localPurchaseDate.day,
           );
 
           key = date.subtract(Duration(days: date.weekday - 1));
           break;
 
         case _AnalyticsPeriod.monthly:
-          key = DateTime(purchase.date.year, purchase.date.month);
+          key = DateTime(
+            localPurchaseDate.year,
+            localPurchaseDate.month,
+          );
           break;
       }
 
-      values[key] = (values[key] ?? 0) + purchase.total;
+      values[key] = (values[key] ?? 0) + TransactionCalculator.purchaseTotal(
+        items: purchase.items, discount: purchase.discount, tax: purchase.tax,
+      );
     }
 
     final List<DateTime> dates = values.keys.toList()..sort();
@@ -692,19 +711,7 @@ class _AnalyticsReportScreenState extends State<AnalyticsReportScreen> {
   }
 
   String _compactCurrency(double value) {
-    if (value.abs() >= 10000000) {
-      return '₹${(value / 10000000).toStringAsFixed(2)}Cr';
-    }
-
-    if (value.abs() >= 100000) {
-      return '₹${(value / 100000).toStringAsFixed(2)}L';
-    }
-
-    if (value.abs() >= 1000) {
-      return '₹${(value / 1000).toStringAsFixed(1)}K';
-    }
-
-    return _currency(value);
+    return '₹${NumberFormat('#,##,##0.##', 'en_IN').format(value)}';
   }
 
   String _number(double value) {
@@ -2180,19 +2187,7 @@ class _TrendChartPainter extends CustomPainter {
   }
 
   String _formatCompact(double value) {
-    if (value >= 10000000) {
-      return '₹${(value / 10000000).toStringAsFixed(1)}Cr';
-    }
-
-    if (value >= 100000) {
-      return '₹${(value / 100000).toStringAsFixed(1)}L';
-    }
-
-    if (value >= 1000) {
-      return '₹${(value / 1000).toStringAsFixed(1)}K';
-    }
-
-    return '₹${value.toStringAsFixed(0)}';
+    return '₹${NumberFormat('#,##,##0.##', 'en_IN').format(value)}';
   }
 
   void _drawLegend(Canvas canvas, Size size, TextPainter textPainter) {

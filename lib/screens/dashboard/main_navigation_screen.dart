@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/navigation/app_navigation_controller.dart';
 import '../../models/business_model.dart';
 import '../../models/supplier_model.dart';
 import '../../repositories/business_repository.dart';
@@ -64,6 +65,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   @override
   void initState() {
     super.initState();
+    AppNavigationController.homeRequests.addListener(_handleHomeRequest);
 
     // This order MUST exactly match the navigation indexes above.
     _screens = const [
@@ -83,6 +85,24 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       _screens.length,
       (_) => GlobalKey<NavigatorState>(),
     );
+  }
+
+  void _handleHomeRequest() {
+    if (!mounted) {
+      return;
+    }
+
+    if (_currentIndex != _homeIndex) {
+      setState(() {
+        _currentIndex = _homeIndex;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    AppNavigationController.homeRequests.removeListener(_handleHomeRequest);
+    super.dispose();
   }
 
   // ============================================================
@@ -117,13 +137,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     });
   }
 
-  void _openProducts() => _setNavigationIndex(_productsIndex);
-
   void _openCustomers() => _setNavigationIndex(_customersIndex);
-
-  void _openSales() => _setNavigationIndex(_salesIndex);
-
-  void _openPurchases() => _setNavigationIndex(_purchasesIndex);
 
   void _openSuppliers() => _setNavigationIndex(_suppliersIndex);
 
@@ -406,8 +420,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     if (!mounted) {
       return;
     }
-
-    _openSales();
   }
 
   // ============================================================
@@ -424,8 +436,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     if (!mounted) {
       return;
     }
-
-    _openPurchases();
   }
 
   // ============================================================
@@ -442,8 +452,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     if (!mounted) {
       return;
     }
-
-    _openPayments();
   }
 
   // ============================================================
@@ -463,8 +471,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     if (!mounted) {
       return;
     }
-
-    _openSuppliers();
   }
 
   // ============================================================
@@ -481,8 +487,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     if (!mounted) {
       return;
     }
-
-    _openExpenses();
   }
 
   // ============================================================
@@ -515,8 +519,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     if (!mounted) {
       return;
     }
-
-    _openCustomers();
   }
 
   // ============================================================
@@ -553,7 +555,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     // AddSupplierScreen returns SupplierModel after a successful save.
     // The Suppliers screen remains the source of truth for the list.
     if (supplier != null) {
-      _openSuppliers();
     } else {
       _openSuppliers();
     }
@@ -589,8 +590,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     if (!mounted) {
       return;
     }
-
-    _openProducts();
   }
 
   Future<T?> _pushOnSection<T>(int index, Widget page) async {

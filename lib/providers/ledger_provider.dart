@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../core/app_refresh_controller.dart';
+
 import '../models/ledger_transaction_model.dart';
 import '../repositories/ledger_repository.dart';
 
@@ -143,7 +145,7 @@ class LedgerProvider extends ChangeNotifier {
     }
 
     _businessId = normalizedId;
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   void setCustomerId(String customerId) {
@@ -154,7 +156,7 @@ class LedgerProvider extends ChangeNotifier {
     }
 
     _customerId = normalizedId;
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   void setContext({
@@ -180,7 +182,7 @@ class LedgerProvider extends ChangeNotifier {
     }
 
     if (changed) {
-      notifyListeners();
+      _notifyDataChanged();
     }
   }
 
@@ -232,7 +234,7 @@ class LedgerProvider extends ChangeNotifier {
                   b.date.compareTo(a.date),
             );
 
-      notifyListeners();
+      _notifyDataChanged();
 
       return List<LedgerTransactionModel>.unmodifiable(
         _transactions,
@@ -301,7 +303,7 @@ class LedgerProvider extends ChangeNotifier {
                     b.date.compareTo(a.date),
               );
 
-        notifyListeners();
+        _notifyDataChanged();
       },
       onError: (Object error) {
         _setError(
@@ -693,7 +695,7 @@ class LedgerProvider extends ChangeNotifier {
 
     _clearError();
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ===========================================================================
@@ -738,7 +740,7 @@ class LedgerProvider extends ChangeNotifier {
           b.date.compareTo(a.date),
     );
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ===========================================================================
@@ -768,7 +770,7 @@ class LedgerProvider extends ChangeNotifier {
     }
 
     _isLoading = value;
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ===========================================================================
@@ -781,7 +783,7 @@ class LedgerProvider extends ChangeNotifier {
     }
 
     _isSaving = value;
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ===========================================================================
@@ -794,12 +796,12 @@ class LedgerProvider extends ChangeNotifier {
     }
 
     _errorMessage = null;
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   void _setError(String message) {
     _errorMessage = message;
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ===========================================================================
@@ -843,4 +845,9 @@ class LedgerProvider extends ChangeNotifier {
 
     super.dispose();
   }
+  void _notifyDataChanged() {
+    notifyListeners();
+    AppRefreshController.instance.bump();
+  }
+
 }

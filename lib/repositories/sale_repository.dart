@@ -1,21 +1,14 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/sale_model.dart';
+import '../core/utils/transaction_calculator.dart';
 import 'base_repository.dart';
 
 class SaleRepository extends BaseRepository {
-  SaleRepository({
-    super.firestore,
-  });
+  SaleRepository({super.firestore});
 
-  CollectionReference<Map<String, dynamic>> _sales(
-    String businessId,
-  ) {
-    final String normalizedBusinessId =
-        _requireId(
-      businessId,
-      'Business ID',
-    );
+  CollectionReference<Map<String, dynamic>> _sales(String businessId) {
+    final String normalizedBusinessId = _requireId(businessId, 'Business ID');
 
     return firestore
         .collection('businesses')
@@ -27,27 +20,14 @@ class SaleRepository extends BaseRepository {
   // CREATE
   // ===========================================================================
 
-  Future<SaleModel> createSale(
-    SaleModel sale,
-  ) async {
-    _validateSale(
-      sale,
-      requireId: false,
-    );
+  Future<SaleModel> createSale(SaleModel sale) async {
+    _validateSale(sale, requireId: false);
 
-    final String businessId =
-        _requireId(
-      sale.businessId,
-      'Business ID',
-    );
+    final String businessId = _requireId(sale.businessId, 'Business ID');
 
-    final CollectionReference<Map<String, dynamic>>
-        sales = _sales(
-      businessId,
-    );
+    final CollectionReference<Map<String, dynamic>> sales = _sales(businessId);
 
-    final String requestedSaleId =
-        sale.id.trim();
+    final String requestedSaleId = sale.id.trim();
 
     final String invoiceNumber = sale.invoiceNumber.trim();
     if (invoiceNumber.isNotEmpty) {
@@ -63,13 +43,10 @@ class SaleRepository extends BaseRepository {
       }
     }
 
-    final DocumentReference<Map<String, dynamic>>
-        document = requestedSaleId.isEmpty
-            ? sales.doc()
-            : sales.doc(requestedSaleId);
+    final DocumentReference<Map<String, dynamic>> document =
+        requestedSaleId.isEmpty ? sales.doc() : sales.doc(requestedSaleId);
 
-    final SaleModel saleToSave =
-        _normalizedSale(
+    final SaleModel saleToSave = _normalizedSale(
       sale,
       id: document.id,
       businessId: businessId,
@@ -78,9 +55,7 @@ class SaleRepository extends BaseRepository {
 
     // Use create() instead of set() so a caller cannot accidentally overwrite
     // an existing sale when an ID is supplied.
-    await document.set(
-      _toMap(saleToSave),
-    );
+    await document.set(_toMap(saleToSave));
 
     return saleToSave;
   }
@@ -93,120 +68,64 @@ class SaleRepository extends BaseRepository {
     required String businessId,
     required String saleId,
   }) async {
-    final String normalizedBusinessId =
-        _requireId(
-      businessId,
-      'Business ID',
-    );
+    final String normalizedBusinessId = _requireId(businessId, 'Business ID');
 
-    final String normalizedSaleId =
-        _requireId(
-      saleId,
-      'Sale ID',
-    );
+    final String normalizedSaleId = _requireId(saleId, 'Sale ID');
 
-    final DocumentSnapshot<
-        Map<String, dynamic>> snapshot =
-        await _sales(
+    final DocumentSnapshot<Map<String, dynamic>> snapshot = await _sales(
       normalizedBusinessId,
-    ).doc(
-      normalizedSaleId,
-    ).get();
+    ).doc(normalizedSaleId).get();
 
-    if (!snapshot.exists ||
-        snapshot.data() == null) {
+    if (!snapshot.exists || snapshot.data() == null) {
       return null;
     }
 
-    return _fromMap(
-      snapshot.id,
-      snapshot.data()!,
-      normalizedBusinessId,
-    );
+    return _fromMap(snapshot.id, snapshot.data()!, normalizedBusinessId);
   }
 
   // ===========================================================================
   // GET ALL SALES
   // ===========================================================================
 
-  Future<List<SaleModel>> getSales({
-    required String businessId,
-  }) async {
-    final String normalizedBusinessId =
-        _requireId(
-      businessId,
-      'Business ID',
-    );
+  Future<List<SaleModel>> getSales({required String businessId}) async {
+    final String normalizedBusinessId = _requireId(businessId, 'Business ID');
 
-    final QuerySnapshot<
-        Map<String, dynamic>> snapshot =
-        await _sales(
+    final QuerySnapshot<Map<String, dynamic>> snapshot = await _sales(
       normalizedBusinessId,
-    ).orderBy(
-      'date',
-      descending: true,
-    ).get();
+    ).orderBy('date', descending: true).get();
 
     return snapshot.docs
-        .map(
-          (
-            QueryDocumentSnapshot<
-                Map<String, dynamic>> document,
-          ) {
-            return _fromMap(
-              document.id,
-              document.data(),
-              normalizedBusinessId,
-            );
-          },
-        )
-        .toList(
-          growable: false,
-        );
+        .map((QueryDocumentSnapshot<Map<String, dynamic>> document) {
+          return _fromMap(document.id, document.data(), normalizedBusinessId);
+        })
+        .toList(growable: false);
   }
 
   // ===========================================================================
   // WATCH ALL SALES
   // ===========================================================================
 
-  Stream<List<SaleModel>> watchSales({
-    required String businessId,
-  }) {
-    final String normalizedBusinessId =
-        businessId.trim();
+  Stream<List<SaleModel>> watchSales({required String businessId}) {
+    final String normalizedBusinessId = businessId.trim();
 
     if (normalizedBusinessId.isEmpty) {
       return const Stream.empty();
     }
 
-    return _sales(
-      normalizedBusinessId,
-    ).orderBy(
-      'date',
-      descending: true,
-    ).snapshots().map(
-      (
-        QuerySnapshot<
-            Map<String, dynamic>> snapshot,
-      ) {
-        return snapshot.docs
-            .map(
-              (
-                QueryDocumentSnapshot<
-                    Map<String, dynamic>> document,
-              ) {
+    return _sales(normalizedBusinessId)
+        .orderBy('date', descending: true)
+        .snapshots()
+        .map((QuerySnapshot<Map<String, dynamic>> snapshot) {
+          return snapshot.docs
+              .map((QueryDocumentSnapshot<Map<String, dynamic>> document) {
                 return _fromMap(
                   document.id,
                   document.data(),
                   normalizedBusinessId,
                 );
-              },
-            )
-            .toList(
-              growable: false,
-            );
-      },
-    );
+              })
+              .toList(growable: false);
+        });
   }
 
   // ===========================================================================
@@ -217,46 +136,21 @@ class SaleRepository extends BaseRepository {
     required String businessId,
     required String customerId,
   }) async {
-    final String normalizedBusinessId =
-        _requireId(
-      businessId,
-      'Business ID',
-    );
+    final String normalizedBusinessId = _requireId(businessId, 'Business ID');
 
-    final String normalizedCustomerId =
-        _requireId(
-      customerId,
-      'Customer ID',
-    );
+    final String normalizedCustomerId = _requireId(customerId, 'Customer ID');
 
-    final QuerySnapshot<
-        Map<String, dynamic>> snapshot =
-        await _sales(
-      normalizedBusinessId,
-    ).where(
-      'customerId',
-      isEqualTo: normalizedCustomerId,
-    ).orderBy(
-      'date',
-      descending: true,
-    ).get();
+    final QuerySnapshot<Map<String, dynamic>> snapshot =
+        await _sales(normalizedBusinessId)
+            .where('customerId', isEqualTo: normalizedCustomerId)
+            .orderBy('date', descending: true)
+            .get();
 
     return snapshot.docs
-        .map(
-          (
-            QueryDocumentSnapshot<
-                Map<String, dynamic>> document,
-          ) {
-            return _fromMap(
-              document.id,
-              document.data(),
-              normalizedBusinessId,
-            );
-          },
-        )
-        .toList(
-          growable: false,
-        );
+        .map((QueryDocumentSnapshot<Map<String, dynamic>> document) {
+          return _fromMap(document.id, document.data(), normalizedBusinessId);
+        })
+        .toList(growable: false);
   }
 
   // ===========================================================================
@@ -267,113 +161,66 @@ class SaleRepository extends BaseRepository {
     required String businessId,
     required String customerId,
   }) {
-    final String normalizedBusinessId =
-        businessId.trim();
+    final String normalizedBusinessId = businessId.trim();
 
-    final String normalizedCustomerId =
-        customerId.trim();
+    final String normalizedCustomerId = customerId.trim();
 
-    if (normalizedBusinessId.isEmpty ||
-        normalizedCustomerId.isEmpty) {
+    if (normalizedBusinessId.isEmpty || normalizedCustomerId.isEmpty) {
       return const Stream.empty();
     }
 
-    return _sales(
-      normalizedBusinessId,
-    ).where(
-      'customerId',
-      isEqualTo: normalizedCustomerId,
-    ).orderBy(
-      'date',
-      descending: true,
-    ).snapshots().map(
-      (
-        QuerySnapshot<
-            Map<String, dynamic>> snapshot,
-      ) {
-        return snapshot.docs
-            .map(
-              (
-                QueryDocumentSnapshot<
-                    Map<String, dynamic>> document,
-              ) {
+    return _sales(normalizedBusinessId)
+        .where('customerId', isEqualTo: normalizedCustomerId)
+        .orderBy('date', descending: true)
+        .snapshots()
+        .map((QuerySnapshot<Map<String, dynamic>> snapshot) {
+          return snapshot.docs
+              .map((QueryDocumentSnapshot<Map<String, dynamic>> document) {
                 return _fromMap(
                   document.id,
                   document.data(),
                   normalizedBusinessId,
                 );
-              },
-            )
-            .toList(
-              growable: false,
-            );
-      },
-    );
+              })
+              .toList(growable: false);
+        });
   }
 
   // ===========================================================================
   // UPDATE
   // ===========================================================================
 
-  Future<void> updateSale(
-    SaleModel sale,
-  ) async {
-    _validateSale(
-      sale,
-      requireId: true,
-    );
+  Future<void> updateSale(SaleModel sale) async {
+    _validateSale(sale, requireId: true);
 
-    final String businessId =
-        _requireId(
-      sale.businessId,
-      'Business ID',
-    );
+    final String businessId = _requireId(sale.businessId, 'Business ID');
 
-    final String saleId =
-        _requireId(
-      sale.id,
-      'Sale ID',
-    );
+    final String saleId = _requireId(sale.id, 'Sale ID');
 
-    final DocumentReference<
-        Map<String, dynamic>> reference =
-        _sales(
-      businessId,
-    ).doc(
-      saleId,
-    );
+    final DocumentReference<Map<String, dynamic>> reference = _sales(businessId)
+        .doc(saleId);
 
-    final DocumentSnapshot<
-        Map<String, dynamic>> snapshot =
-        await reference.get();
+    final DocumentSnapshot<Map<String, dynamic>> snapshot = await reference
+        .get();
 
     if (!snapshot.exists) {
-      throw Exception(
-        'Sale not found.',
-      );
+      throw Exception('Sale not found.');
     }
 
-    final Map<String, dynamic>? existingData =
-        snapshot.data();
+    final Map<String, dynamic>? existingData = snapshot.data();
 
-    final DateTime createdAt =
-        existingData?['createdAt'] != null
-            ? dateFromFirestore(
-                existingData!['createdAt'],
-              )
-            : sale.createdAt;
+    final DateTime createdAt = existingData?['createdAt'] != null
+        ? dateFromFirestore(existingData!['createdAt'])
+        : sale.createdAt;
 
-    final SaleModel saleToUpdate =
-        _normalizedSale(
+    final SaleModel saleToUpdate = _normalizedSale(
       sale,
       id: saleId,
       businessId: businessId,
       createdAt: createdAt,
     );
 
-    await reference.update(
-      _toMap(saleToUpdate),
-    );
+    await reference.update(_toMap(saleToUpdate));
   }
 
   // ===========================================================================
@@ -384,34 +231,19 @@ class SaleRepository extends BaseRepository {
     required String businessId,
     required String saleId,
   }) async {
-    final String normalizedBusinessId =
-        _requireId(
-      businessId,
-      'Business ID',
-    );
+    final String normalizedBusinessId = _requireId(businessId, 'Business ID');
 
-    final String normalizedSaleId =
-        _requireId(
-      saleId,
-      'Sale ID',
-    );
+    final String normalizedSaleId = _requireId(saleId, 'Sale ID');
 
-    final DocumentReference<
-        Map<String, dynamic>> reference =
-        _sales(
+    final DocumentReference<Map<String, dynamic>> reference = _sales(
       normalizedBusinessId,
-    ).doc(
-      normalizedSaleId,
-    );
+    ).doc(normalizedSaleId);
 
-    final DocumentSnapshot<
-        Map<String, dynamic>> snapshot =
-        await reference.get();
+    final DocumentSnapshot<Map<String, dynamic>> snapshot = await reference
+        .get();
 
     if (!snapshot.exists) {
-      throw Exception(
-        'Sale not found.',
-      );
+      throw Exception('Sale not found.');
     }
 
     await reference.delete();
@@ -426,69 +258,40 @@ class SaleRepository extends BaseRepository {
     required String saleId,
     required double paidAmount,
   }) async {
-    final String normalizedBusinessId =
-        _requireId(
-      businessId,
-      'Business ID',
-    );
+    final String normalizedBusinessId = _requireId(businessId, 'Business ID');
 
-    final String normalizedSaleId =
-        _requireId(
-      saleId,
-      'Sale ID',
-    );
+    final String normalizedSaleId = _requireId(saleId, 'Sale ID');
 
-    if (!paidAmount.isFinite ||
-        paidAmount < 0) {
-      throw ArgumentError(
-        'Paid amount must be a valid non-negative number.',
-      );
+    if (!paidAmount.isFinite || paidAmount < 0) {
+      throw ArgumentError('Paid amount must be a valid non-negative number.');
     }
 
-    final DocumentReference<
-        Map<String, dynamic>> reference =
-        _sales(
+    final DocumentReference<Map<String, dynamic>> reference = _sales(
       normalizedBusinessId,
-    ).doc(
-      normalizedSaleId,
-    );
+    ).doc(normalizedSaleId);
 
-    final DocumentSnapshot<
-        Map<String, dynamic>> snapshot =
-        await reference.get();
+    final DocumentSnapshot<Map<String, dynamic>> snapshot = await reference
+        .get();
 
-    if (!snapshot.exists ||
-        snapshot.data() == null) {
-      throw Exception(
-        'Sale not found.',
-      );
+    if (!snapshot.exists || snapshot.data() == null) {
+      throw Exception('Sale not found.');
     }
 
-    final Map<String, dynamic> data =
-        snapshot.data()!;
+    final Map<String, dynamic> data = snapshot.data()!;
 
-    final double total =
-        _toDouble(
-      data['total'],
-    );
+    final double total = _toDouble(data['total']);
 
-    if (!total.isFinite ||
-        total < 0) {
-      throw StateError(
-        'Stored sale total is invalid.',
-      );
+    if (!total.isFinite || total < 0) {
+      throw StateError('Stored sale total is invalid.');
     }
 
     if (paidAmount > total) {
-      throw ArgumentError(
-        'Paid amount cannot be greater than sale total.',
-      );
+      throw ArgumentError('Paid amount cannot be greater than sale total.');
     }
 
     await reference.update({
       'paidAmount': paidAmount,
-      'paymentStatus':
-          _calculatePaymentStatus(
+      'paymentStatus': _calculatePaymentStatus(
         total: total,
         paidAmount: paidAmount,
       ),
@@ -503,225 +306,137 @@ class SaleRepository extends BaseRepository {
     required String businessId,
     required String query,
   }) async {
-    final List<SaleModel> sales =
-        await getSales(
-      businessId: businessId,
-    );
+    final List<SaleModel> sales = await getSales(businessId: businessId);
 
-    final String searchQuery =
-        query.trim().toLowerCase();
+    final String searchQuery = query.trim().toLowerCase();
 
     if (searchQuery.isEmpty) {
       return sales;
     }
 
-    return sales.where(
-      (SaleModel sale) {
-        final bool invoiceMatches =
-            sale.invoiceNumber
-                .toLowerCase()
-                .contains(searchQuery);
+    return sales
+        .where((SaleModel sale) {
+          final bool invoiceMatches = sale.invoiceNumber.toLowerCase().contains(
+            searchQuery,
+          );
 
-        final bool customerMatches =
-            sale.customerName
-                .toLowerCase()
-                .contains(searchQuery);
+          final bool customerMatches = sale.customerName.toLowerCase().contains(
+            searchQuery,
+          );
 
-        final bool notesMatch =
-            sale.notes
-                .toLowerCase()
-                .contains(searchQuery);
+          final bool notesMatch = sale.notes.toLowerCase().contains(
+            searchQuery,
+          );
 
-        final bool productMatches =
-            sale.items.any(
-          (SaleItemModel item) {
-            return item.productName
-                .toLowerCase()
-                .contains(searchQuery);
-          },
-        );
+          final bool productMatches = sale.items.any((SaleItemModel item) {
+            return item.productName.toLowerCase().contains(searchQuery);
+          });
 
-        return invoiceMatches ||
-            customerMatches ||
-            notesMatch ||
-            productMatches;
-      },
-    ).toList(
-      growable: false,
-    );
+          return invoiceMatches ||
+              customerMatches ||
+              notesMatch ||
+              productMatches;
+        })
+        .toList(growable: false);
   }
 
   // ===========================================================================
   // TOTAL SALES
   // ===========================================================================
 
-  Future<double> getTotalSales({
-    required String businessId,
-  }) async {
-    final List<SaleModel> sales =
-        await getSales(
-      businessId: businessId,
-    );
+  Future<double> getTotalSales({required String businessId}) async {
+    final List<SaleModel> sales = await getSales(businessId: businessId);
 
-    return sales.fold<double>(
-      0,
-      (
-        double total,
-        SaleModel sale,
-      ) {
-        return total + sale.total;
-      },
-    );
+    return sales.fold<double>(0, (double total, SaleModel sale) {
+      return total + sale.total;
+    });
   }
 
   // ===========================================================================
   // TOTAL PAID
   // ===========================================================================
 
-  Future<double> getTotalPaid({
-    required String businessId,
-  }) async {
-    final List<SaleModel> sales =
-        await getSales(
-      businessId: businessId,
-    );
+  Future<double> getTotalPaid({required String businessId}) async {
+    final List<SaleModel> sales = await getSales(businessId: businessId);
 
-    return sales.fold<double>(
-      0,
-      (
-        double total,
-        SaleModel sale,
-      ) {
-        return total + sale.paidAmount;
-      },
-    );
+    return sales.fold<double>(0, (double total, SaleModel sale) {
+      return total + sale.paidAmount;
+    });
   }
 
   // ===========================================================================
   // TOTAL OUTSTANDING
   // ===========================================================================
 
-  Future<double> getTotalOutstanding({
-    required String businessId,
-  }) async {
-    final List<SaleModel> sales =
-        await getSales(
-      businessId: businessId,
-    );
+  Future<double> getTotalOutstanding({required String businessId}) async {
+    final List<SaleModel> sales = await getSales(businessId: businessId);
 
-    return sales.fold<double>(
-      0,
-      (
-        double total,
-        SaleModel sale,
-      ) {
-        final double outstanding =
-            sale.total - sale.paidAmount;
+    return sales.fold<double>(0, (double total, SaleModel sale) {
+      final double outstanding = sale.total - sale.paidAmount;
 
-        return total +
-            (outstanding > 0
-                ? outstanding
-                : 0);
-      },
-    );
+      return total + (outstanding > 0 ? outstanding : 0);
+    });
   }
 
   // ===========================================================================
   // TODAY'S SALES
   // ===========================================================================
 
-  Future<List<SaleModel>> getTodaySales({
-    required String businessId,
-  }) async {
-    final List<SaleModel> sales =
-        await getSales(
-      businessId: businessId,
-    );
+  Future<List<SaleModel>> getTodaySales({required String businessId}) async {
+    final List<SaleModel> sales = await getSales(businessId: businessId);
 
-    final DateTime now =
-        DateTime.now();
+    final DateTime now = DateTime.now();
 
-    return sales.where(
-      (SaleModel sale) {
-        return sale.date.year ==
-                now.year &&
-            sale.date.month ==
-                now.month &&
-            sale.date.day ==
-                now.day;
-      },
-    ).toList(
-      growable: false,
-    );
+    return sales
+        .where((SaleModel sale) {
+          return sale.date.year == now.year &&
+              sale.date.month == now.month &&
+              sale.date.day == now.day;
+        })
+        .toList(growable: false);
   }
 
   // ===========================================================================
   // TODAY'S SALES TOTAL
   // ===========================================================================
 
-  Future<double> getTodaySalesTotal({
-    required String businessId,
-  }) async {
-    final List<SaleModel> sales =
-        await getTodaySales(
-      businessId: businessId,
-    );
+  Future<double> getTodaySalesTotal({required String businessId}) async {
+    final List<SaleModel> sales = await getTodaySales(businessId: businessId);
 
-    return sales.fold<double>(
-      0,
-      (
-        double runningTotal,
-        SaleModel sale,
-      ) {
-        return runningTotal + sale.total;
-      },
-    );
+    return sales.fold<double>(0, (double runningTotal, SaleModel sale) {
+      return runningTotal + sale.total;
+    });
   }
 
   // ===========================================================================
   // INVOICE NUMBER
   // ===========================================================================
 
-  Future<String> generateInvoiceNumber({
-    required String businessId,
-  }) async {
-    final String normalizedBusinessId =
-        _requireId(
-      businessId,
-      'Business ID',
-    );
+  Future<String> generateInvoiceNumber({required String businessId}) async {
+    final String normalizedBusinessId = _requireId(businessId, 'Business ID');
 
-    final List<SaleModel> sales =
-        await getSales(
+    final List<SaleModel> sales = await getSales(
       businessId: normalizedBusinessId,
     );
 
     int highestNumber = 0;
 
     for (final SaleModel sale in sales) {
-      final String invoiceNumber =
-          sale.invoiceNumber.trim();
+      final String invoiceNumber = sale.invoiceNumber.trim();
 
       if (invoiceNumber.isEmpty) {
         continue;
       }
 
-      final RegExpMatch? match =
-          RegExp(r'(\d+)$').firstMatch(
-        invoiceNumber,
-      );
+      final RegExpMatch? match = RegExp(r'(\d+)$').firstMatch(invoiceNumber);
 
       if (match == null) {
         continue;
       }
 
-      final int? number =
-          int.tryParse(
-        match.group(1)!,
-      );
+      final int? number = int.tryParse(match.group(1)!);
 
-      if (number != null &&
-          number > highestNumber) {
+      if (number != null && number > highestNumber) {
         highestNumber = number;
       }
     }
@@ -733,81 +448,48 @@ class SaleRepository extends BaseRepository {
   // SALE VALIDATION
   // ===========================================================================
 
-  void _validateSale(
-    SaleModel sale, {
-    required bool requireId,
-  }) {
+  void _validateSale(SaleModel sale, {required bool requireId}) {
     if (sale.businessId.trim().isEmpty) {
-      throw ArgumentError(
-        'Business ID cannot be empty.',
-      );
+      throw ArgumentError('Business ID cannot be empty.');
     }
 
-    if (requireId &&
-        sale.id.trim().isEmpty) {
-      throw ArgumentError(
-        'Sale ID cannot be empty.',
-      );
+    if (requireId && sale.id.trim().isEmpty) {
+      throw ArgumentError('Sale ID cannot be empty.');
     }
 
     if (sale.items.isEmpty) {
-      throw ArgumentError(
-        'Sale must contain at least one item.',
-      );
+      throw ArgumentError('Sale must contain at least one item.');
     }
 
-    _validateNumber(
-      sale.subtotal,
-      'Sale subtotal',
-    );
+    _validateNumber(sale.subtotal, 'Sale subtotal');
 
-    _validateNumber(
-      sale.discount,
-      'Sale discount',
-    );
+    _validateNumber(sale.discount, 'Sale discount');
 
-    _validateNumber(
-      sale.tax,
-      'Sale tax',
-    );
+    _validateNumber(sale.tax, 'Sale tax');
 
-    _validateNumber(
-      sale.total,
-      'Sale total',
-    );
+    _validateNumber(sale.total, 'Sale total');
 
-    _validateNumber(
-      sale.paidAmount,
-      'Paid amount',
-    );
+    _validateNumber(sale.paidAmount, 'Paid amount');
 
     if (sale.subtotal < 0 ||
         sale.discount < 0 ||
         sale.tax < 0 ||
         sale.total < 0) {
-      throw ArgumentError(
-        'Sale amounts cannot be negative.',
-      );
+      throw ArgumentError('Sale amounts cannot be negative.');
     }
 
     if (sale.paidAmount < 0) {
-      throw ArgumentError(
-        'Paid amount cannot be negative.',
-      );
+      throw ArgumentError('Paid amount cannot be negative.');
     }
 
     if (sale.paidAmount > sale.total) {
-      throw ArgumentError(
-        'Paid amount cannot be greater than sale total.',
-      );
+      throw ArgumentError('Paid amount cannot be greater than sale total.');
     }
 
-    for (final SaleItemModel item
-        in sale.items) {
-      final String productName =
-          item.productName.trim().isEmpty
-              ? item.productId.trim()
-              : item.productName.trim();
+    for (final SaleItemModel item in sale.items) {
+      final String productName = item.productName.trim().isEmpty
+          ? item.productId.trim()
+          : item.productName.trim();
 
       if (item.productId.trim().isEmpty) {
         throw ArgumentError(
@@ -816,48 +498,42 @@ class SaleRepository extends BaseRepository {
         );
       }
 
-      if (!item.quantity.isFinite ||
-          item.quantity <= 0) {
+      if (!item.quantity.isFinite || item.quantity <= 0) {
         throw ArgumentError(
           'Sale quantity must be greater than zero for '
           '$productName.',
         );
       }
 
-      if (!item.sellingRate.isFinite ||
-          item.sellingRate < 0) {
+      if (!item.sellingRate.isFinite || item.sellingRate < 0) {
         throw ArgumentError(
           'Selling rate cannot be negative for '
           '$productName.',
         );
       }
 
-      if (!item.discount.isFinite ||
-          item.discount < 0) {
+      if (!item.discount.isFinite || item.discount < 0) {
         throw ArgumentError(
           'Item discount cannot be negative for '
           '$productName.',
         );
       }
 
-      if (!item.tax.isFinite ||
-          item.tax < 0) {
+      if (!item.tax.isFinite || item.tax < 0) {
         throw ArgumentError(
           'Item tax cannot be negative for '
           '$productName.',
         );
       }
 
-      if (!item.total.isFinite ||
-          item.total < 0) {
+      if (!item.total.isFinite || item.total < 0) {
         throw ArgumentError(
           'Item total cannot be negative for '
           '$productName.',
         );
       }
 
-      if (!item.costPrice.isFinite ||
-          item.costPrice < 0) {
+      if (!item.costPrice.isFinite || item.costPrice < 0) {
         throw ArgumentError(
           'Cost price cannot be negative for '
           '$productName.',
@@ -870,14 +546,9 @@ class SaleRepository extends BaseRepository {
   // NUMBER VALIDATION
   // ===========================================================================
 
-  void _validateNumber(
-    double value,
-    String label,
-  ) {
+  void _validateNumber(double value, String label) {
     if (!value.isFinite) {
-      throw ArgumentError(
-        '$label must be a valid number.',
-      );
+      throw ArgumentError('$label must be a valid number.');
     }
   }
 
@@ -885,17 +556,11 @@ class SaleRepository extends BaseRepository {
   // ID VALIDATION
   // ===========================================================================
 
-  String _requireId(
-    String value,
-    String label,
-  ) {
-    final String normalized =
-        value.trim();
+  String _requireId(String value, String label) {
+    final String normalized = value.trim();
 
     if (normalized.isEmpty) {
-      throw ArgumentError(
-        '$label cannot be empty.',
-      );
+      throw ArgumentError('$label cannot be empty.');
     }
 
     return normalized;
@@ -911,34 +576,43 @@ class SaleRepository extends BaseRepository {
     required String businessId,
     required DateTime createdAt,
   }) {
+    final List<SaleItemModel> normalizedItems = sale.items
+        .map(_normalizedItem)
+        .toList(growable: false);
+    final double normalizedSubtotal = TransactionCalculator.saleSubtotal(
+      normalizedItems,
+    );
+    final double normalizedTotal = TransactionCalculator.saleTotal(
+      items: normalizedItems,
+      discount: sale.discount,
+      tax: sale.tax,
+    );
+
+    if (sale.paidAmount > normalizedTotal) {
+      throw ArgumentError(
+        'Paid amount cannot be greater than the calculated sale total.',
+      );
+    }
+
     return SaleModel(
       id: id.trim(),
       businessId: businessId.trim(),
       customerId: sale.customerId.trim(),
       customerName: sale.customerName.trim(),
-      items: sale.items
-          .map(
-            _normalizedItem,
-          )
-          .toList(
-            growable: false,
-          ),
-      subtotal: sale.subtotal,
+      items: normalizedItems,
+      subtotal: normalizedSubtotal,
       discount: sale.discount,
       tax: sale.tax,
-      total: sale.total,
+      total: normalizedTotal,
       paidAmount: sale.paidAmount,
-      paymentStatus:
-          _calculatePaymentStatus(
-        total: sale.total,
+      paymentStatus: _calculatePaymentStatus(
+        total: normalizedTotal,
         paidAmount: sale.paidAmount,
       ),
-      paymentMethod:
-          sale.paymentMethod.trim(),
+      paymentMethod: sale.paymentMethod.trim(),
       date: sale.date,
       notes: sale.notes.trim(),
-      invoiceNumber:
-          sale.invoiceNumber.trim(),
+      invoiceNumber: sale.invoiceNumber.trim(),
       createdAt: createdAt,
     );
   }
@@ -947,9 +621,7 @@ class SaleRepository extends BaseRepository {
   // NORMALIZE SALE ITEM
   // ===========================================================================
 
-  SaleItemModel _normalizedItem(
-    SaleItemModel item,
-  ) {
+  SaleItemModel _normalizedItem(SaleItemModel item) {
     return SaleItemModel(
       productId: item.productId.trim(),
       productName: item.productName.trim(),
@@ -958,7 +630,7 @@ class SaleRepository extends BaseRepository {
       sellingRate: item.sellingRate,
       discount: item.discount,
       tax: item.tax,
-      total: item.total,
+      total: TransactionCalculator.saleItemTotal(item),
       costPrice: item.costPrice,
     );
   }
@@ -971,8 +643,7 @@ class SaleRepository extends BaseRepository {
     required double total,
     required double paidAmount,
   }) {
-    if (total <= 0 ||
-        paidAmount >= total) {
+    if (total <= 0 || paidAmount >= total) {
       return 'paid';
     }
 
@@ -987,21 +658,13 @@ class SaleRepository extends BaseRepository {
   // FIRESTORE MAP
   // ===========================================================================
 
-  Map<String, dynamic> _toMap(
-    SaleModel sale,
-  ) {
+  Map<String, dynamic> _toMap(SaleModel sale) {
     return {
       'id': sale.id,
       'businessId': sale.businessId,
       'customerId': sale.customerId,
       'customerName': sale.customerName,
-      'items': sale.items
-          .map(
-            _saleItemToMap,
-          )
-          .toList(
-            growable: false,
-          ),
+      'items': sale.items.map(_saleItemToMap).toList(growable: false),
       'subtotal': sale.subtotal,
       'discount': sale.discount,
       'tax': sale.tax,
@@ -1009,14 +672,10 @@ class SaleRepository extends BaseRepository {
       'paidAmount': sale.paidAmount,
       'paymentStatus': sale.paymentStatus,
       'paymentMethod': sale.paymentMethod,
-      'date': Timestamp.fromDate(
-        sale.date,
-      ),
+      'date': Timestamp.fromDate(sale.date),
       'notes': sale.notes,
       'invoiceNumber': sale.invoiceNumber,
-      'createdAt': Timestamp.fromDate(
-        sale.createdAt,
-      ),
+      'createdAt': Timestamp.fromDate(sale.createdAt),
     };
   }
 
@@ -1024,9 +683,7 @@ class SaleRepository extends BaseRepository {
   // SALE ITEM MAP
   // ===========================================================================
 
-  Map<String, dynamic> _saleItemToMap(
-    SaleItemModel item,
-  ) {
+  Map<String, dynamic> _saleItemToMap(SaleItemModel item) {
     return {
       'productId': item.productId,
       'productName': item.productName,
@@ -1049,122 +706,67 @@ class SaleRepository extends BaseRepository {
     Map<String, dynamic> data,
     String businessId,
   ) {
-    final List<SaleItemModel> items =
-        <SaleItemModel>[];
+    final List<SaleItemModel> items = <SaleItemModel>[];
 
-    final dynamic rawItems =
-        data['items'];
+    final dynamic rawItems = data['items'];
 
     if (rawItems is List) {
-      for (final dynamic rawItem
-          in rawItems) {
+      for (final dynamic rawItem in rawItems) {
         if (rawItem is Map) {
-          items.add(
-            _saleItemFromMap(
-              Map<String, dynamic>.from(
-                rawItem,
-              ),
-            ),
-          );
+          items.add(_saleItemFromMap(Map<String, dynamic>.from(rawItem)));
         }
       }
     }
 
-    final double subtotal =
-        _toDouble(
-      data['subtotal'],
-    );
+    final double subtotal = _toDouble(data['subtotal']);
 
-    final double discount =
-        _toDouble(
-      data['discount'],
-    );
+    final double discount = _toDouble(data['discount']);
 
-    final double tax =
-        _toDouble(
-      data['tax'],
-    );
+    final double tax = _toDouble(data['tax']);
 
-    final double total =
-        _toDouble(
-      data['total'],
-    );
+    final double storedTotal = _toDouble(data['total']);
 
-    final double paidAmount =
-        _toDouble(
-      data['paidAmount'],
-    );
+    final double paidAmount = _toDouble(data['paidAmount']);
 
-    final String rawId =
-        data['id']
-                ?.toString()
-                .trim() ??
-            '';
+    final String rawId = data['id']?.toString().trim() ?? '';
 
-    final String rawBusinessId =
-        data['businessId']
-                ?.toString()
-                .trim() ??
-            '';
+    final String rawBusinessId = data['businessId']?.toString().trim() ?? '';
 
-    final String rawPaymentStatus =
-        data['paymentStatus']
-                ?.toString()
-                .trim() ??
-            '';
-
-    return SaleModel(
-      id: rawId.isEmpty
-          ? documentId
-          : rawId,
-      businessId: rawBusinessId.isEmpty
-          ? businessId
-          : rawBusinessId,
-      customerId:
-          data['customerId']
-                  ?.toString()
-                  .trim() ??
-              '',
-      customerName:
-          data['customerName']
-                  ?.toString()
-                  .trim() ??
-              '',
+    final double calculatedSubtotal = TransactionCalculator.saleSubtotal(items);
+    final double calculatedTotal = TransactionCalculator.saleTotal(
       items: items,
-      subtotal: subtotal,
       discount: discount,
       tax: tax,
-      total: total,
+    );
+    // Legacy records can contain a valid stored total even when item totals
+    // were not normalized. Prefer calculated arithmetic when line data exists.
+    final double effectiveTotal = items.isNotEmpty
+        ? calculatedTotal
+        : storedTotal;
+    final double effectiveSubtotal = items.isNotEmpty
+        ? calculatedSubtotal
+        : subtotal;
+
+    return SaleModel(
+      id: rawId.isEmpty ? documentId : rawId,
+      businessId: rawBusinessId.isEmpty ? businessId : rawBusinessId,
+      customerId: data['customerId']?.toString().trim() ?? '',
+      customerName: data['customerName']?.toString().trim() ?? '',
+      items: items,
+      subtotal: effectiveSubtotal,
+      discount: discount,
+      tax: tax,
+      total: effectiveTotal,
       paidAmount: paidAmount,
-      paymentStatus:
-          rawPaymentStatus.isEmpty
-              ? _calculatePaymentStatus(
-                  total: total,
-                  paidAmount:
-                      paidAmount,
-                )
-              : rawPaymentStatus,
-      paymentMethod:
-          data['paymentMethod']
-                  ?.toString()
-                  .trim() ??
-              '',
-      date: dateFromFirestore(
-        data['date'],
+      paymentStatus: _calculatePaymentStatus(
+        total: effectiveTotal,
+        paidAmount: paidAmount,
       ),
-      notes:
-          data['notes']
-                  ?.toString()
-                  .trim() ??
-              '',
-      invoiceNumber:
-          data['invoiceNumber']
-                  ?.toString()
-                  .trim() ??
-              '',
-      createdAt: dateFromFirestore(
-        data['createdAt'],
-      ),
+      paymentMethod: data['paymentMethod']?.toString().trim() ?? '',
+      date: dateFromFirestore(data['date']),
+      notes: data['notes']?.toString().trim() ?? '',
+      invoiceNumber: data['invoiceNumber']?.toString().trim() ?? '',
+      createdAt: dateFromFirestore(data['createdAt']),
     );
   }
 
@@ -1172,43 +774,29 @@ class SaleRepository extends BaseRepository {
   // FIRESTORE → SALE ITEM
   // ===========================================================================
 
-  SaleItemModel _saleItemFromMap(
-    Map<String, dynamic> data,
-  ) {
+  SaleItemModel _saleItemFromMap(Map<String, dynamic> data) {
     return SaleItemModel(
-      productId:
-          data['productId']
-                  ?.toString()
-                  .trim() ??
-              '',
-      productName:
-          data['productName']
-                  ?.toString()
-                  .trim() ??
-              '',
-      quantity: _toDouble(
-        data['quantity'],
+      productId: data['productId']?.toString().trim() ?? '',
+      productName: data['productName']?.toString().trim() ?? '',
+      quantity: _toDouble(data['quantity']),
+      unit: data['unit']?.toString().trim() ?? '',
+      sellingRate: _toDouble(data['sellingRate']),
+      discount: _toDouble(data['discount']),
+      tax: _toDouble(data['tax']),
+      total: TransactionCalculator.saleItemTotal(
+        SaleItemModel(
+          productId: data['productId']?.toString().trim() ?? '',
+          productName: data['productName']?.toString().trim() ?? '',
+          quantity: _toDouble(data['quantity']),
+          unit: data['unit']?.toString().trim() ?? '',
+          sellingRate: _toDouble(data['sellingRate']),
+          discount: _toDouble(data['discount']),
+          tax: _toDouble(data['tax']),
+          total: 0,
+          costPrice: _toDouble(data['costPrice']),
+        ),
       ),
-      unit:
-          data['unit']
-                  ?.toString()
-                  .trim() ??
-              '',
-      sellingRate: _toDouble(
-        data['sellingRate'],
-      ),
-      discount: _toDouble(
-        data['discount'],
-      ),
-      tax: _toDouble(
-        data['tax'],
-      ),
-      total: _toDouble(
-        data['total'],
-      ),
-      costPrice: _toDouble(
-        data['costPrice'],
-      ),
+      costPrice: _toDouble(data['costPrice']),
     );
   }
 
@@ -1216,26 +804,17 @@ class SaleRepository extends BaseRepository {
   // SAFE NUMBER CONVERSION
   // ===========================================================================
 
-  double _toDouble(
-    dynamic value,
-  ) {
+  double _toDouble(dynamic value) {
     if (value is num) {
-      final double result =
-          value.toDouble();
+      final double result = value.toDouble();
 
-      return result.isFinite
-          ? result
-          : 0;
+      return result.isFinite ? result : 0;
     }
 
     if (value is String) {
-      final double? result =
-          double.tryParse(
-        value.trim(),
-      );
+      final double? result = double.tryParse(value.trim());
 
-      if (result != null &&
-          result.isFinite) {
+      if (result != null && result.isFinite) {
         return result;
       }
     }

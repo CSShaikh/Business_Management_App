@@ -5,6 +5,7 @@ import '../../core/navigation/app_navigation_controller.dart';
 import 'package:firebase_core/firebase_core.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/app_number_format.dart';
 import '../../models/product_model.dart';
 import '../../repositories/product_repository.dart';
 import '../../core/widgets/app_responsive_page.dart';
@@ -80,9 +81,9 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
       _selectedUnit = product.unit;
 
-      _purchasePriceController.text = product.purchasePrice.toStringAsFixed(2);
+      _purchasePriceController.text = AppNumberFormat.input(product.purchasePrice);
 
-      _sellingPriceController.text = product.sellingPrice.toStringAsFixed(2);
+      _sellingPriceController.text = AppNumberFormat.input(product.sellingPrice);
 
       _stockController.text = _formatStock(product.currentStock);
 

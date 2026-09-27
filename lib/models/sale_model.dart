@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class SaleItemModel {
   final String productId;
   final String productName;
@@ -543,24 +545,23 @@ class SaleModel {
   static DateTime _dateFromMap(
     dynamic value,
   ) {
+    // Firestore stores Dart DateTime values as Timestamp.
+    if (value is Timestamp) {
+      return value.toDate();
+    }
+
     if (value is DateTime) {
       return value;
     }
 
     if (value is String) {
-      final DateTime? parsed =
-          DateTime.tryParse(
-        value,
-      );
-
+      final DateTime? parsed = DateTime.tryParse(value);
       if (parsed != null) {
         return parsed;
       }
     }
 
     // Keep the model safe for legacy/malformed records.
-    return DateTime.fromMillisecondsSinceEpoch(
-      0,
-    );
+    return DateTime.fromMillisecondsSinceEpoch(0);
   }
 }

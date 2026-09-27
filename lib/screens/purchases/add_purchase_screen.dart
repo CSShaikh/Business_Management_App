@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/widgets/app_date_picker.dart';
+import '../../core/utils/app_number_format.dart';
+import '../../core/navigation/app_navigation_controller.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../models/business_model.dart';
@@ -153,11 +155,11 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
       _paymentMethod = 'Other';
     }
 
-    _discountController.text = purchase.discount.toStringAsFixed(2);
+    _discountController.text = AppNumberFormat.input(purchase.discount);
 
-    _taxController.text = purchase.tax.toStringAsFixed(2);
+    _taxController.text = AppNumberFormat.input(purchase.tax);
 
-    _paidAmountController.text = purchase.paidAmount.toStringAsFixed(2);
+    _paidAmountController.text = AppNumberFormat.input(purchase.paidAmount);
 
     _notesController.text = purchase.notes;
 
@@ -352,7 +354,7 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
     );
 
     final rateController = TextEditingController(
-      text: item.purchaseRate.toStringAsFixed(2),
+      text: AppNumberFormat.input(item.purchaseRate),
     );
 
     final result = await showDialog<Map<String, double>>(
@@ -596,11 +598,58 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
        */
 
       if (widget.isEditMode) {
-        await _purchaseRepository.updatePurchase(purchase);
-      } else {
-        await _purchaseRepository.createPurchase(purchase);
+        final PurchaseModel oldPurchase = widget.purchase!;
+        bool oldStockReversed = false;
+        bool newStockProcessed = false;
 
-        await _purchaseStockService.processPurchaseStock(purchase: purchase);
+        try {
+          await _purchaseStockService.reversePurchaseStock(
+            purchase: oldPurchase,
+          );
+          oldStockReversed = true;
+
+          await _purchaseStockService.processPurchaseStock(
+            purchase: purchase,
+          );
+          newStockProcessed = true;
+
+          await _purchaseRepository.updatePurchase(purchase);
+        } catch (_) {
+          if (newStockProcessed) {
+            try {
+              await _purchaseStockService.reversePurchaseStock(
+                purchase: purchase,
+              );
+            } catch (_) {}
+          }
+
+          if (oldStockReversed) {
+            try {
+              await _purchaseStockService.processPurchaseStock(
+                purchase: oldPurchase,
+              );
+            } catch (_) {}
+          }
+
+          rethrow;
+        }
+      } else {
+        final PurchaseModel savedPurchase =
+            await _purchaseRepository.createPurchase(purchase);
+
+        try {
+          await _purchaseStockService.processPurchaseStock(
+            purchase: savedPurchase,
+          );
+        } catch (error) {
+          try {
+            await _purchaseRepository.deletePurchase(
+              businessId: savedPurchase.businessId,
+              purchaseId: savedPurchase.id,
+            );
+          } catch (_) {}
+          rethrow;
+        }
       }
 
       if (!mounted) {
@@ -617,7 +666,11 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
         ),
       );
 
+      final bool shouldReturnHome = !widget.isEditMode;
       Navigator.pop(context, true);
+      if (shouldReturnHome) {
+        AppNavigationController.requestHome();
+      }
     } catch (e) {
       if (!mounted) {
         return;
@@ -1327,7 +1380,7 @@ class _PurchaseItemCardState extends State<_PurchaseItemCard> {
       text: _formatNumber(widget.item.quantity),
     );
     _rateController = TextEditingController(
-      text: widget.item.purchaseRate.toStringAsFixed(2),
+      text: AppNumberFormat.input(widget.item.purchaseRate),
     );
   }
 
@@ -1337,7 +1390,7 @@ class _PurchaseItemCardState extends State<_PurchaseItemCard> {
 
     if (oldWidget.item != widget.item) {
       _quantityController.text = _formatNumber(widget.item.quantity);
-      _rateController.text = widget.item.purchaseRate.toStringAsFixed(2);
+      _rateController.text = AppNumberFormat.input(widget.item.purchaseRate);
     }
   }
 

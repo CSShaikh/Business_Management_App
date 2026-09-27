@@ -563,11 +563,13 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: _buildAppBar(),
-      body: AppResponsivePage(child: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _errorMessage != null
-          ? _buildErrorState(theme)
-          : _buildReportBody(theme)),
+      body: AppResponsivePage(
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _errorMessage != null
+            ? _buildErrorState(theme)
+            : _buildReportBody(theme),
+      ),
     );
   }
 
@@ -1337,7 +1339,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   // ===========================================================================
 
   String _pdfCurrency(double value) {
-    return 'Rs. ${NumberFormat('#,##0.00', 'en_IN').format(value)}';
+    return 'Rs. ${NumberFormat('#,##0', 'en_IN').format(value)}';
   }
 
   String _pdfFileName() {
@@ -1416,7 +1418,9 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
         color: PdfColors.grey700,
       );
 
-      final pw.MemoryImage? logo = await BusinessPdfBranding.loadLogo(_business!);
+      final pw.MemoryImage? logo = await BusinessPdfBranding.loadLogo(
+        _business!,
+      );
 
       document.addPage(
         pw.MultiPage(
@@ -1468,19 +1472,24 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
           },
           build: (context) {
             return [
-            pw.Container(
-              width: 52,
-              height: 52,
-              padding: const pw.EdgeInsets.all(4),
-              decoration: pw.BoxDecoration(
-                border: pw.Border.all(color: PdfColors.grey300),
-                borderRadius: pw.BorderRadius.circular(8),
+              pw.Container(
+                width: 52,
+                height: 52,
+                padding: const pw.EdgeInsets.all(4),
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: PdfColors.grey300),
+                  borderRadius: pw.BorderRadius.circular(8),
+                ),
+                child: logo == null
+                    ? pw.Center(
+                        child: pw.Text(
+                          'LOGO',
+                          style: const pw.TextStyle(fontSize: 7),
+                        ),
+                      )
+                    : pw.Image(logo, fit: pw.BoxFit.contain),
               ),
-              child: logo == null
-                  ? pw.Center(child: pw.Text('LOGO', style: const pw.TextStyle(fontSize: 7)))
-                  : pw.Image(logo, fit: pw.BoxFit.contain),
-            ),
-            pw.SizedBox(height: 8),
+              pw.SizedBox(height: 8),
               pw.Container(
                 padding: const pw.EdgeInsets.all(9),
                 decoration: pw.BoxDecoration(

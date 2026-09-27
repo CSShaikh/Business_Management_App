@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../core/app_refresh_controller.dart';
+
 import '../models/sale_model.dart';
 import '../repositories/sale_repository.dart';
 
@@ -239,7 +241,7 @@ class SaleProvider extends ChangeNotifier {
       _clearErrorWithoutNotification();
     }
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ---------------------------------------------------------------------------
@@ -292,7 +294,7 @@ class SaleProvider extends ChangeNotifier {
         sales,
       );
 
-      notifyListeners();
+      _notifyDataChanged();
 
       return List<SaleModel>.from(
         _sales,
@@ -357,7 +359,7 @@ class SaleProvider extends ChangeNotifier {
           sales,
         );
 
-        notifyListeners();
+        _notifyDataChanged();
       },
       onError: (Object error) {
         if (_businessId != id) {
@@ -675,7 +677,7 @@ class SaleProvider extends ChangeNotifier {
               saleDocumentId,
         );
 
-        notifyListeners();
+        _notifyDataChanged();
       }
 
       return true;
@@ -815,7 +817,7 @@ class SaleProvider extends ChangeNotifier {
         _sales[index] =
             updatedSale;
 
-        notifyListeners();
+        _notifyDataChanged();
       }
 
       return true;
@@ -1149,7 +1151,7 @@ class SaleProvider extends ChangeNotifier {
 
     _sales = <SaleModel>[];
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ---------------------------------------------------------------------------
@@ -1206,7 +1208,7 @@ class SaleProvider extends ChangeNotifier {
       },
     );
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ---------------------------------------------------------------------------
@@ -1279,7 +1281,7 @@ class SaleProvider extends ChangeNotifier {
 
     _isLoading = value;
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ---------------------------------------------------------------------------
@@ -1295,7 +1297,7 @@ class SaleProvider extends ChangeNotifier {
 
     _isSaving = value;
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   // ---------------------------------------------------------------------------
@@ -1309,7 +1311,7 @@ class SaleProvider extends ChangeNotifier {
 
     _errorMessage = null;
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   void _clearErrorWithoutNotification() {
@@ -1331,7 +1333,7 @@ class SaleProvider extends ChangeNotifier {
             ? 'Something went wrong.'
             : cleaned;
 
-    notifyListeners();
+    _notifyDataChanged();
   }
 
   String _formatError(
@@ -1374,4 +1376,9 @@ class SaleProvider extends ChangeNotifier {
 
     super.dispose();
   }
+  void _notifyDataChanged() {
+    notifyListeners();
+    AppRefreshController.instance.bump();
+  }
+
 }
